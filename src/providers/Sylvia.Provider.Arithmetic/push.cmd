@@ -1,0 +1,1 @@
+.nuget\nuget push %1 %SYLVIA_NUGET_API_KEY% -Source nuget.org

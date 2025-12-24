@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Product>Sylvia</Product>
+    <Description>Base type-level fixed-point arithmetic class for Sylvia.</Description>
+    <AssemblyVersion>0.2.2.0</AssemblyVersion>
+    <FileVersion>0.2.2.0</FileVersion>
+    <Authors>Allister Beharry</Authors>
+    <Copyright>Copyright © 2025 Allister Beharry</Copyright>
+    <Version>0.2.7</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Bool.fs" />
+    <Compile Include="Constraints.fs" />
+    <Compile Include="Base10.fs" />
+    <Compile Include="Arithmetic.fs" />
+    <Compile Include="N10.fs" />
+  </ItemGroup>
+
+</Project>

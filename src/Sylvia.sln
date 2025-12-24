@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36811.4
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sylvia.Runtime", "Sylvia.Runtime\Sylvia.Runtime.csproj", "{840121D5-F365-40E5-9F63-7180274DB1E7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sylvia.Runtime", "base\Sylvia.Runtime\Sylvia.Runtime.csproj", "{840121D5-F365-40E5-9F63-7180274DB1E7}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "External", "External", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
 EndProject
@@ -15,6 +15,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Configuration", "Configurat
 	ProjectSection(SolutionItems) = preProject
 		Directory.Build.props = Directory.Build.props
 	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Base", "Base", "{92F1E39E-FD01-4C23-8412-551EC365ADC2}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Arithmetic.FixedPoint", "base\Sylvia.Arithmetic.FixedPoint\Sylvia.Arithmetic.FixedPoint.fsproj", "{29E5A6BD-45C8-4215-A636-0C28E69ACE1F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -30,12 +34,18 @@ Global
 		{E20DD857-F9B4-E249-D8BE-C37EF52FE4C3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E20DD857-F9B4-E249-D8BE-C37EF52FE4C3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E20DD857-F9B4-E249-D8BE-C37EF52FE4C3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{29E5A6BD-45C8-4215-A636-0C28E69ACE1F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{29E5A6BD-45C8-4215-A636-0C28E69ACE1F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{29E5A6BD-45C8-4215-A636-0C28E69ACE1F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{29E5A6BD-45C8-4215-A636-0C28E69ACE1F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
+		{840121D5-F365-40E5-9F63-7180274DB1E7} = {92F1E39E-FD01-4C23-8412-551EC365ADC2}
 		{E20DD857-F9B4-E249-D8BE-C37EF52FE4C3} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{29E5A6BD-45C8-4215-A636-0C28E69ACE1F} = {92F1E39E-FD01-4C23-8412-551EC365ADC2}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E40D909F-6B62-4714-AD1E-DE15A95FCFA3}

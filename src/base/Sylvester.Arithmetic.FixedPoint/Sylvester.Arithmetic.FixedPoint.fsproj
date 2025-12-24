@@ -1,0 +1,36 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;net45</TargetFrameworks>
+    <Product>Sylvester</Product>
+    <Description>Base type-level fixed-point arithmetic class for Sylvester.</Description>
+    <AssemblyVersion>0.2.2.0</AssemblyVersion>
+    <FileVersion>0.2.2.0</FileVersion>
+    <Authors>Allister Beharry</Authors>
+    <Copyright>Copyright © 2019, 2020 Allister Beharry</Copyright>
+    <Version>0.2.7</Version>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|netstandard2.0|AnyCPU'">
+    <Optimize>false</Optimize>
+    <Tailcalls>false</Tailcalls>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Bool.fs" />
+    <Compile Include="Constraints.fs" />
+    <Compile Include="Base10.fs" />
+    <Compile Include="Arithmetic.fs" />
+    <Compile Include="N10.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="FSharp.Core" Version="4.3.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" PrivateAssets="All" Version="1.0.0" />
+    <PackageReference Include="System.ValueTuple" Version="4.4.0" />
+  </ItemGroup>
+
+</Project>

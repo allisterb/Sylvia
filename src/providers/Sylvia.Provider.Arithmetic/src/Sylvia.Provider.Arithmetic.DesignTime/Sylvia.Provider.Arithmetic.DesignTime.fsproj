@@ -1,0 +1,48 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\netfx.props" />
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFrameworks>netstandard2.0;net45;netcoreapp2.0</TargetFrameworks>
+    <Optimize>true</Optimize>
+    <Tailcalls>true</Tailcalls>
+    <DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference>
+    <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <Version>0.2.8.1</Version>
+    <Description>Type-level natural number arithmetic and constraints</Description>
+    <Authors>Allister Beharry</Authors>
+    <Company>Allister Beharry</Company>
+    <Product>Sylvester</Product>
+    <RepositoryUrl></RepositoryUrl>
+    <AssemblyVersion>0.2.8.1</AssemblyVersion>
+    <FileVersion>0.2.8.1</FileVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\..\..\Base\Sylvester.Arithmetic.FixedPoint\Bool.fs" />
+    <Compile Include="..\..\..\..\Base\Sylvester.Arithmetic.FixedPoint\Constraints.fs" />
+    <Compile Include="..\..\..\..\Base\Sylvester.Arithmetic.FixedPoint\Base10.fs" />
+    <Compile Include="..\..\..\..\Base\Sylvester.Arithmetic.FixedPoint\Arithmetic.fs" />
+    <Compile Include="..\..\..\..\Base\Sylvester.Arithmetic.FixedPoint\N10.fs" />
+    
+    <Compile Include="..\..\paket-files\fsprojects\FSharp.TypeProviders.SDK\src\ProvidedTypes.fsi">
+      <Paket>True</Paket>
+      <Link>paket-files/ProvidedTypes.fsi</Link>
+    </Compile>
+    <Compile Include="..\..\paket-files\fsprojects\FSharp.TypeProviders.SDK\src\ProvidedTypes.fs">
+      <Paket>True</Paket>
+      <Link>paket-files/ProvidedTypes.fs</Link>
+    </Compile>
+    
+    <Compile Include="AssemblyInfo.fs" />
+    <Compile Include="ArithmeticProvider.fs" />
+    <None Include="paket.references" />
+    <None Include="..\..\packages\NETStandard.Library.NETFramework\build\net461\lib\netstandard.dll" Condition="'$(TargetFramework)' == 'net45'">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Update="FSharp.Core" Version="4.3.4" />
+  </ItemGroup>
+  <Import Project="..\..\.paket\Paket.Restore.targets" />
+</Project>
