@@ -9,8 +9,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "External", "External", "{02
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Expect.NETStandard", "..\ext\Expect.NET\Expect.NET\Expect.NETStandard.csproj", "{E20DD857-F9B4-E249-D8BE-C37EF52FE4C3}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Scripts", "Scripts", "{EBFFAB34-C316-4179-92BC-9CA38887B44B}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Configuration", "Configuration", "{87D8DE13-6F41-4BAC-B027-B01AF612B81A}"
 	ProjectSection(SolutionItems) = preProject
 		Directory.Build.props = Directory.Build.props
@@ -21,8 +19,6 @@ EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Arithmetic.FixedPoint", "base\Sylvia.Arithmetic.FixedPoint\Sylvia.Arithmetic.FixedPoint.fsproj", "{29E5A6BD-45C8-4215-A636-0C28E69ACE1F}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Collections", "base\Sylvia.Collections\Sylvia.Collections.fsproj", "{ABD06731-E25A-250B-133A-F53294318360}"
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Providers", "Providers", "{70AE08AA-2734-467C-83C1-23828F64F4D0}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Lang", "Lang", "{97D4C0AB-EEA9-4966-AB55-1D16A0BABD87}"
 EndProject
