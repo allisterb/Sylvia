@@ -1,4 +1,4 @@
-﻿namespace Sylvester
+﻿namespace Sylvia
 
 open System.IO
 open System.Reflection

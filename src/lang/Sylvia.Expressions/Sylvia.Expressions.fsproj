@@ -10,6 +10,10 @@
     <Compile Include="Symbols.fs" />
     <Compile Include="FsExpr.fs" />
     <Compile Include="MathNetExpr.fs" />
+    <Compile Include="Symbolic.fs" />
+    <Compile Include="Formula.fs" />
+    <Compile Include="Term.fs" />
+    <Compile Include="Parsers.fs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -19,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\ext\mathnet-symbolics\src\Symbolics\Symbolics.fsproj" />
+    <ProjectReference Include="..\..\..\ext\TPTPParser\TPTPParser.csproj" />
     <ProjectReference Include="..\..\base\Sylvia.Runtime\Sylvia.Runtime.csproj" />
   </ItemGroup>
 
