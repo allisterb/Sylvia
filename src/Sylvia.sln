@@ -24,6 +24,10 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Collections", "base\
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Providers", "Providers", "{70AE08AA-2734-467C-83C1-23828F64F4D0}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Lang", "Lang", "{97D4C0AB-EEA9-4966-AB55-1D16A0BABD87}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Expressions", "lang\Sylvia.Expressions\Sylvia.Expressions.fsproj", "{975CE4E9-02C1-4CE4-9A9C-0409D4D4A6AB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -46,6 +50,10 @@ Global
 		{ABD06731-E25A-250B-133A-F53294318360}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{ABD06731-E25A-250B-133A-F53294318360}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{ABD06731-E25A-250B-133A-F53294318360}.Release|Any CPU.Build.0 = Release|Any CPU
+		{975CE4E9-02C1-4CE4-9A9C-0409D4D4A6AB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{975CE4E9-02C1-4CE4-9A9C-0409D4D4A6AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{975CE4E9-02C1-4CE4-9A9C-0409D4D4A6AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{975CE4E9-02C1-4CE4-9A9C-0409D4D4A6AB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -55,6 +63,7 @@ Global
 		{E20DD857-F9B4-E249-D8BE-C37EF52FE4C3} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{29E5A6BD-45C8-4215-A636-0C28E69ACE1F} = {92F1E39E-FD01-4C23-8412-551EC365ADC2}
 		{ABD06731-E25A-250B-133A-F53294318360} = {92F1E39E-FD01-4C23-8412-551EC365ADC2}
+		{975CE4E9-02C1-4CE4-9A9C-0409D4D4A6AB} = {97D4C0AB-EEA9-4966-AB55-1D16A0BABD87}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E40D909F-6B62-4714-AD1E-DE15A95FCFA3}
