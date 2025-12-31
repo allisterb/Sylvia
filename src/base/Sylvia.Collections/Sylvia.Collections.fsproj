@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="ICollection.fs" />
+    <Compile Include="VArray.fs" />
+    <Compile Include="VArray2D.fs" />
+    <Compile Include="HList.fs" />
+    <Compile Include="HCollection.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Sylvia.Arithmetic" Version="0.2.8" />
+  </ItemGroup>
+
+</Project>

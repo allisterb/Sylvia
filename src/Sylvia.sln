@@ -20,6 +20,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Base", "Base", "{92F1E39E-F
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Arithmetic.FixedPoint", "base\Sylvia.Arithmetic.FixedPoint\Sylvia.Arithmetic.FixedPoint.fsproj", "{29E5A6BD-45C8-4215-A636-0C28E69ACE1F}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Collections", "base\Sylvia.Collections\Sylvia.Collections.fsproj", "{ABD06731-E25A-250B-133A-F53294318360}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Providers", "Providers", "{70AE08AA-2734-467C-83C1-23828F64F4D0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -38,6 +42,10 @@ Global
 		{29E5A6BD-45C8-4215-A636-0C28E69ACE1F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{29E5A6BD-45C8-4215-A636-0C28E69ACE1F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{29E5A6BD-45C8-4215-A636-0C28E69ACE1F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ABD06731-E25A-250B-133A-F53294318360}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ABD06731-E25A-250B-133A-F53294318360}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ABD06731-E25A-250B-133A-F53294318360}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ABD06731-E25A-250B-133A-F53294318360}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -46,6 +54,7 @@ Global
 		{840121D5-F365-40E5-9F63-7180274DB1E7} = {92F1E39E-FD01-4C23-8412-551EC365ADC2}
 		{E20DD857-F9B4-E249-D8BE-C37EF52FE4C3} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{29E5A6BD-45C8-4215-A636-0C28E69ACE1F} = {92F1E39E-FD01-4C23-8412-551EC365ADC2}
+		{ABD06731-E25A-250B-133A-F53294318360} = {92F1E39E-FD01-4C23-8412-551EC365ADC2}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E40D909F-6B62-4714-AD1E-DE15A95FCFA3}

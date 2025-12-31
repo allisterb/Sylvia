@@ -1,24 +1,24 @@
 type file
 
-id Sylvester.Arithmetic
+id Sylvia.Arithmetic
 
-title Sylvester.Arithmetic
+title Sylvia.Arithmetic
 
 authors
     Allister Beharry
 owners
     allisterb
 projectUrl
-    https://github.com/allisterb/Sylvester/tree/master/src/Providers/Sylvester.Provider.Arithmetic
+    https://github.com/allisterb/Sylvia/tree/master/src/providers/Sylvia.Provider.Arithmetic
 repositoryUrl
-	https://github.com/allisterb/Sylvester.git
+	https://github.com/allisterb/Sylvia.git
 licenseUrl
-    https://raw.githubusercontent.com/allisterb/Sylvester/blob/master/LiCENSE
+    https://raw.githubusercontent.com/allisterb/Sylvia/blob/master/LiCENSE
 requireLicenseAcceptance
     false
 iconUrl https://github.com/allisterb/Compute.NET/raw/master/numanalysis.png
 
-copyright Copyright(c) 2019 2020 2021 by Allister Beharry
+copyright Copyright(c) 2025 2026 by Allister Beharry
 
 tags
     F# fsharp math arithmetic type-level
@@ -27,15 +27,16 @@ summary
 description
     Type-level natural number arithmetic and constraints using fixed-point decimal types.
 files
-    bin/Release/net45/Sylvester.Provider.Arithmetic.Runtime.* ==> lib/net45
-    bin/Release/net45/Sylvester.Provider.Arithmetic.DesignTime.* ==> lib/net45
+    bin/Release/net45/Sylvia.Provider.Arithmetic.Runtime.* ==> lib/net45
+    bin/Release/net45/Sylvia.Provider.Arithmetic.DesignTime.* ==> lib/net45
     bin/Release/net45/netstandard.dll ==> lib/net45
-    bin/Release/netstandard2.0/Sylvester.Provider.Arithmetic.Runtime.* ==> lib/netstandard2.0
+    bin/Release/netstandard2.0/Sylvia.Provider.Arithmetic.Runtime.* ==> lib/netstandard2.0
+	bin/Release/netstandard2.0/Sylvia.Provider.Arithmetic.DesignTime.* ==> lib/netstandard2.0
     bin/Release/typeproviders/fsharp41/netstandard2.0/*.dll ==> typeproviders/fsharp41/netstandard2.0
     bin/Release/typeproviders/fsharp41/netcoreapp2.0/*.dll ==> typeproviders/fsharp41/netcoreapp2.0
     bin/Release/typeproviders/fsharp41/net45/*.dll ==> typeproviders/fsharp41/net45
 references
-    Sylvester.Provider.Arithmetic.Runtime.dll
+    Sylvia.Provider.Arithmetic.Runtime.dll
 dependencies
   FSharp.Core >= LOCKEDVERSION
 

@@ -1,4 +1,4 @@
-module Sylvester.Provider.ArithmeticImplementation
+module Sylvia.Provider.ArithmeticImplementation
 
 open System
 open System.Reflection
@@ -8,15 +8,15 @@ open FSharp.Reflection
 open ProviderImplementation
 open ProviderImplementation.ProvidedTypes
 
-open Sylvester
+open Sylvia
 open Base10
 open Arithmetic
 
 [<TypeProvider>]
 type ArithmeticProvider (config : TypeProviderConfig) as this =
-    inherit TypeProviderForNamespaces (config, assemblyReplacementMap=[("Sylvester.Provider.Arithmetic.DesignTime", "Sylvester.Provider.Arithmetic.Runtime")], addDefaultProbingLocation=true)
+    inherit TypeProviderForNamespaces (config, assemblyReplacementMap=[("Sylvia.Provider.Arithmetic.DesignTime", "Sylvia.Provider.Arithmetic.Runtime")], addDefaultProbingLocation=true)
 
-    let ns = "Sylvester"
+    let ns = "Sylvia"
     let asm = Assembly.GetExecutingAssembly()
 
     let Nat =
