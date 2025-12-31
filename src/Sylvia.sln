@@ -28,6 +28,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Lang", "Lang", "{97D4C0AB-E
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Expressions", "lang\Sylvia.Expressions\Sylvia.Expressions.fsproj", "{975CE4E9-02C1-4CE4-9A9C-0409D4D4A6AB}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Symbolics", "..\ext\mathnet-symbolics\src\Symbolics\Symbolics.fsproj", "{DAC8502F-D971-7E71-457D-B5A1127C115B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -54,6 +56,10 @@ Global
 		{975CE4E9-02C1-4CE4-9A9C-0409D4D4A6AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{975CE4E9-02C1-4CE4-9A9C-0409D4D4A6AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{975CE4E9-02C1-4CE4-9A9C-0409D4D4A6AB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DAC8502F-D971-7E71-457D-B5A1127C115B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DAC8502F-D971-7E71-457D-B5A1127C115B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DAC8502F-D971-7E71-457D-B5A1127C115B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DAC8502F-D971-7E71-457D-B5A1127C115B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -64,6 +70,7 @@ Global
 		{29E5A6BD-45C8-4215-A636-0C28E69ACE1F} = {92F1E39E-FD01-4C23-8412-551EC365ADC2}
 		{ABD06731-E25A-250B-133A-F53294318360} = {92F1E39E-FD01-4C23-8412-551EC365ADC2}
 		{975CE4E9-02C1-4CE4-9A9C-0409D4D4A6AB} = {97D4C0AB-EEA9-4966-AB55-1D16A0BABD87}
+		{DAC8502F-D971-7E71-457D-B5A1127C115B} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E40D909F-6B62-4714-AD1E-DE15A95FCFA3}

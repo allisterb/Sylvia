@@ -8,14 +8,17 @@
   <ItemGroup>
     <Compile Include="Numbers.fs" />
     <Compile Include="Symbols.fs" />
+    <Compile Include="FsExpr.fs" />
+    <Compile Include="MathNetExpr.fs" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="MathNet.Symbolics" Version="0.25.0" />
+    <PackageReference Include="FSharp.Quotations.Evaluator" Version="2.1.0" />
     <PackageReference Include="Unquote" Version="7.0.1" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\..\ext\mathnet-symbolics\src\Symbolics\Symbolics.fsproj" />
     <ProjectReference Include="..\..\base\Sylvia.Runtime\Sylvia.Runtime.csproj" />
   </ItemGroup>
 
