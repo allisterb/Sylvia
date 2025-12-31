@@ -44,6 +44,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{0A5DF3B9
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Tests.Expressions", "..\tests\Sylvia.Tests.Expressions\Sylvia.Tests.Expressions.fsproj", "{94E24E40-34CD-4AA0-993C-B94AA001992F}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Tests.CAS.Maxima", "..\tests\Sylvia.Tests.CAS.Maxima\Sylvia.Tests.CAS.Maxima.fsproj", "{6E75932B-F190-4C74-B3AB-C9B487F6A9DE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -90,6 +92,10 @@ Global
 		{94E24E40-34CD-4AA0-993C-B94AA001992F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{94E24E40-34CD-4AA0-993C-B94AA001992F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{94E24E40-34CD-4AA0-993C-B94AA001992F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6E75932B-F190-4C74-B3AB-C9B487F6A9DE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6E75932B-F190-4C74-B3AB-C9B487F6A9DE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6E75932B-F190-4C74-B3AB-C9B487F6A9DE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6E75932B-F190-4C74-B3AB-C9B487F6A9DE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -106,6 +112,7 @@ Global
 		{0B053DC3-538D-4DC1-9956-EDE1599C9D62} = {D47EC21D-188A-4CF0-82E2-502B9F0BA3CE}
 		{25774C0D-1794-4007-A431-2ADC3D157E86} = {92F1E39E-FD01-4C23-8412-551EC365ADC2}
 		{94E24E40-34CD-4AA0-993C-B94AA001992F} = {0A5DF3B9-699A-4E9C-BB68-B6249A99F8EC}
+		{6E75932B-F190-4C74-B3AB-C9B487F6A9DE} = {0A5DF3B9-699A-4E9C-BB68-B6249A99F8EC}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E40D909F-6B62-4714-AD1E-DE15A95FCFA3}

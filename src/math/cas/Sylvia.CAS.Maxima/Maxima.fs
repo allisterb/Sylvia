@@ -1,4 +1,4 @@
-﻿namespace Sylvia
+﻿namespace Sylvia.CAS
 
 open System
 open System.Text
@@ -7,6 +7,7 @@ open FSharp.Quotations
 open FSharp.Quotations.Patterns
 open FSharp.Quotations.DerivedPatterns
 
+open Sylvia
 open ExpectNet
 open Expect
 
@@ -33,13 +34,13 @@ type Maxima(?maximaCmd:string) =
                 if s.Expect.Contains("diag.mac", Nullable(2000)).IsMatch then
                     true
                 else
-                    //err' "Could not set Maxima default options."
+                    err' "Could not set Maxima default options."
                     false
             else
-                //err' "Did not receive expected response from Maxima console process."
+                err' "Did not receive expected response from Maxima console process."
                 false
         | Error f -> 
-            //err "Could not initialize Maxima." [f]
+            err "Could not initialize Maxima." [f]
             false
 
     let failIfNotInitialized x = if not initialized then failwith "The Maxima process is not started." else x
@@ -48,7 +49,7 @@ type Maxima(?maximaCmd:string) =
     
     member x.ConsoleProcess = failIfNotInitialized p
     
-    member x.ConsoleSession = failIfNotInitialized session.
+    member x.ConsoleSession = session |> success |> failIfNotInitialized 
 
     member x.Output = failIfNotInitialized output
 
@@ -124,9 +125,9 @@ module Maxima =
     let extract_output text =
         let m = outputRegex.Match text 
         if m.Success then 
-            ((m.Groups.Item 1).Value, (m.Groups.Item 2).Value, (m.Groups.Item 3).Value) |> Success 
+            ((m.Groups.Item 1).Value, (m.Groups.Item 2).Value, (m.Groups.Item 3).Value) |> Ok 
         else 
-            sprintf "Could not extract Maxima output from process response: %s" text |> exn |> Failure
+            sprintf "Could not extract Maxima output from process response: %s" text |> exn |> Error
         
     let start path = new Maxima(path)
     
@@ -135,11 +136,12 @@ module Maxima =
     let send (m:Maxima) (input:string) = 
         m.Input.AppendLine input |> ignore
         !> m.ConsoleSession.Send.Line input 
-        >>|> (m.ConsoleSession.Expect.Regex(outputPattern, Nullable(m.ProcessTimeOut))) |> wrap_result'
+        >>|> (m.ConsoleSession.Expect.Regex(outputPattern, Nullable(m.ProcessTimeOut)) |> wrap_result)
         >>>= extract_output
         >>= fun (_, r, n) -> 
             do m.CurrentInputLine <- Int32.Parse n
-            r
+            Ok r
+       
 
     let mutable defaultInt:Maxima option = None
 
@@ -153,8 +155,8 @@ module Maxima =
         match defaultInt with
         | Some m ->
             match send (defaultInt.Value) s with
-            | Success o -> Ok o
-            | Failure e -> Error e
+            | Ok o -> Ok o
+            | Error e -> Error e
         | None -> failwith "The default Maxima interpreter is not initialized."
 
     let last_output n =
@@ -169,7 +171,7 @@ module Maxima =
 
     let set_stardisp()  =
         match send' "stardisp:true;" with
-        | Ok r -> if r.Trim() <> "true" then failwithf "Could not set stardisp variable. Maxima returned %s." r
+        | Ok (r:string) -> if r.Trim() <> "true" then failwithf "Could not set stardisp variable. Maxima returned %s." r
         | Error e -> failwithf "Could not set stardisp variable. Maxima returned %s." e.Message
 
 

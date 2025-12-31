@@ -1,8 +1,8 @@
-﻿namespace Sylvester.CAS
+﻿namespace Sylvia.CAS
 
 open FSharp.Quotations
 
-open Sylvester
+open Sylvia
 open Maxima
 
 open MathNet.Symbolics

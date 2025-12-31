@@ -2,7 +2,6 @@
 
 open System
 open ExpectNet
-open Result
 
 module Expect =
 
@@ -20,10 +19,7 @@ module Expect =
 
     let wrap_result (r:IResult) = if r.IsMatch then Ok(r.Text) else sprintf "The text %s does not match the expected result" r.Text |> exn |> Error
     
-    let wrap_result' (res:Result<IResult, exn>) = 
-        match res with
-        | Ok r -> wrap_result r
-        | Error f -> Error f
+    let wrap_result' (res:Result<IResult, exn>) = res |> Result.bind wrap_result        
         
     let starts_with (s:Session) (q:string) (timeout_ms:int option) (retries: int option) = 
         let p = default_expect_params (wrap_nullable timeout_ms) (wrap_nullable retries)

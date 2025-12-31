@@ -1,9 +1,8 @@
-﻿namespace Sylvester.CAS
+﻿namespace Sylvia.CAS
 
 open FSharp.Quotations
-open FSharp.Quotations.Patterns
 
-open Sylvester
+open Sylvia
 open Maxima
 
 module Analysis =
