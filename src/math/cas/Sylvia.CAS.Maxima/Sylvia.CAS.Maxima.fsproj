@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Maxima.fs" />
+    <Compile Include="Algebra.fs" />
+    <Compile Include="Analysis.fs" />
+    <Compile Include="LinearAlgebra.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\ext\Expect.NET\Expect.NET\Expect.NETStandard.csproj" />
+    <ProjectReference Include="..\..\..\base\Sylvia.Runtime.Fs\Sylvia.Runtime.Fs.fsproj" />
+    <ProjectReference Include="..\..\..\base\Sylvia.Runtime\Sylvia.Runtime.csproj" />
+    <ProjectReference Include="..\..\..\lang\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
+  </ItemGroup>
+
+</Project>
