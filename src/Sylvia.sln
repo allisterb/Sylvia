@@ -58,6 +58,10 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FunScript.Bindings.Base", "
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FunScript.Bindings.JSXGraph", "..\ext\FunScript\src\extra\FunScript.Bindings.JSXGraph\FunScript.Bindings.JSXGraph.fsproj", "{420B81D6-4779-242F-4990-F371768C8A9F}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Visualization", "Visualization", "{1EB75E1F-1B59-49E5-B63A-A283B10D2F9D}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Visualization.Html", "visualization\Sylvia.Visualization.Html\Sylvia.Visualization.Html.fsproj", "{E0AD7C75-7AA0-4BA6-8836-32175FAD7631}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -128,6 +132,10 @@ Global
 		{420B81D6-4779-242F-4990-F371768C8A9F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{420B81D6-4779-242F-4990-F371768C8A9F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{420B81D6-4779-242F-4990-F371768C8A9F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E0AD7C75-7AA0-4BA6-8836-32175FAD7631}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E0AD7C75-7AA0-4BA6-8836-32175FAD7631}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E0AD7C75-7AA0-4BA6-8836-32175FAD7631}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E0AD7C75-7AA0-4BA6-8836-32175FAD7631}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -153,6 +161,7 @@ Global
 		{0D9CF091-E911-D2F5-56C7-1CEB1BF612CB} = {7BE73A1E-976C-4FC3-B785-11083EE83C6F}
 		{00ED0BD2-486F-BCE6-068E-1B3A9DCD5D06} = {7BE73A1E-976C-4FC3-B785-11083EE83C6F}
 		{420B81D6-4779-242F-4990-F371768C8A9F} = {CC1840EE-9124-443B-B230-D92C46AB7396}
+		{E0AD7C75-7AA0-4BA6-8836-32175FAD7631} = {1EB75E1F-1B59-49E5-B63A-A283B10D2F9D}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E40D909F-6B62-4714-AD1E-DE15A95FCFA3}
