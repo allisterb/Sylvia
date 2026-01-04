@@ -87,6 +87,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Data", "Data", "{97645AA1-8
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sylvia.Data", "data\Sylvia.Data\Sylvia.Data.csproj", "{8848EC35-5108-4716-A21E-00686E0095D6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sylvia.DataFrame", "data\Sylva.DataFrame\Sylvia.DataFrame.csproj", "{1B02F610-BE7B-2FC9-1583-EF893845D5E5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -181,6 +183,10 @@ Global
 		{8848EC35-5108-4716-A21E-00686E0095D6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8848EC35-5108-4716-A21E-00686E0095D6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8848EC35-5108-4716-A21E-00686E0095D6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1B02F610-BE7B-2FC9-1583-EF893845D5E5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1B02F610-BE7B-2FC9-1583-EF893845D5E5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1B02F610-BE7B-2FC9-1583-EF893845D5E5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1B02F610-BE7B-2FC9-1583-EF893845D5E5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -215,6 +221,7 @@ Global
 		{0F5003E9-2114-48F1-A1FA-C5513EEA0C0D} = {AC1672AD-A327-414A-93AB-68F47D244C93}
 		{0C05F302-8293-4A19-B9DE-160462DF6B78} = {8C46F974-178E-4CF3-A7DE-274A641013AE}
 		{8848EC35-5108-4716-A21E-00686E0095D6} = {97645AA1-8C40-42F7-9B6E-F3CB16A92CF3}
+		{1B02F610-BE7B-2FC9-1583-EF893845D5E5} = {97645AA1-8C40-42F7-9B6E-F3CB16A92CF3}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E40D909F-6B62-4714-AD1E-DE15A95FCFA3}

@@ -1,0 +1,42 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0</TargetFrameworks>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
+    <LangVersion>latest</LangVersion>
+    <Nullable>warnings</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>Sylvia.DataFrame</PackageId>
+    <Version>0.1.7</Version>
+    <Authors>Allister Beharry</Authors>
+    <Company />
+    <Product>Sylvia</Product>
+    <Description>Efficient, powerful data frames for .NET</Description>
+    <PackageProjectUrl>https://github.com/allisterb/Sylvia</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/allisterb/Sylvia</RepositoryUrl>
+    <PackageLicenseUrl>https://raw.githubusercontent.com/allisterb/Sylvia/master/LICENSE</PackageLicenseUrl>
+    <PackageTags>numeric data-science f# dataframe statistics</PackageTags>
+    <AssemblyVersion>0.1.7.0</AssemblyVersion>
+    <PackageReleaseNotes>Add custom columns to FrameR.</PackageReleaseNotes>
+    
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CSharp" Version="4.5.0" />
+    <PackageReference Include="System.Dynamic.Runtime" Version="4.3.0" PrivateAssets="all" />
+    <PackageReference Include="System.Reflection.Emit.Lightweight" Version="4.3.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sylvia.Data\Sylvia.Data.csproj" />
+  </ItemGroup>
+
+
+
+  <Target Name="CopyProjectReferencesToPackage" DependsOnTargets="ResolveReferences">
+    <ItemGroup>
+      <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths-&gt;WithMetadataValue('ReferenceSourceTarget', 'ProjectReference'))" />
+    </ItemGroup>
+  </Target>
+</Project>
