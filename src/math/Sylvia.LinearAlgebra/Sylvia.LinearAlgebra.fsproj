@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+
+  <ItemGroup>
+    <Compile Include="Definitions\Shapes.fs" />
+    <Compile Include="Definitions\Ops.fs" />
+    <Compile Include="Definitions\LinearEquations.fs" />
+    <Compile Include="Definitions\HtmlVisualization.fs" />
+    <Compile Include="Definitions\Vector.fs" />
+    <Compile Include="Definitions\VectorSpace.fs" />
+    <Compile Include="Definitions\Matrix.fs" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="MathNet.Numerics.FSharp" Version="4.15.0" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <ProjectReference Include="..\..\base\Sylvia.Collections\Sylvia.Collections.fsproj" />
+    <ProjectReference Include="..\..\base\Sylvia.Runtime.Fs\Sylvia.Runtime.Fs.fsproj" />
+    <ProjectReference Include="..\..\visualization\Sylvia.Visualization.Html\Sylvia.Visualization.Html.fsproj" />
+    <ProjectReference Include="..\cas\Sylvia.CAS.Maxima\Sylvia.CAS.Maxima.fsproj" />
+    <ProjectReference Include="..\Sylvia.AbstractAlgebra\Sylvia.AbstractAlgebra.fsproj" />
+  </ItemGroup>
+
+
+</Project>

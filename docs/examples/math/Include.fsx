@@ -1,0 +1,32 @@
+#r "C:\\Users\\Allister\\.nuget\\packages\\microsoft.extensions.logging.abstractions\\10.0.1\\lib\\net10.0\\Microsoft.Extensions.Logging.Abstractions.dll"
+#r "C:\\Users\\Allister\\.nuget\\packages\\microsoft.extensions.configuration.json\\10.0.1\\lib\\net10.0\\Microsoft.Extensions.Configuration.Json.dll"
+#r "C:\\Users\\Allister\\.nuget\\packages\\fparsec\\1.0.3\\lib\\netstandard1.6\FParsec.dll"
+#r "C:\\Users\\Allister\\.nuget\\packages\\fparsec\\1.0.3\\lib\\netstandard1.6\FParsecCS.dll"
+#r "C:\\Users\\Allister\\.nuget\\packages\\mathnet.numerics\\4.15.0\\lib\\netstandard2.0\MathNet.Numerics.dll"
+#r "C:\\Users\\Allister\\.nuget\\packages\\mathnet.numerics.fsharp\\4.15.0\\lib\\netstandard2.0\\MathNet.Numerics.FSharp.dll"
+#r @"C:\\Users\\Allister\\.nuget\\packages\\microsoft.z3.x64\4.8.10\\lib\\netstandard1.4\\Microsoft.Z3.dll"
+
+#r "C:\\Users\\Allister\\.nuget\\packages\\unquote\\7.0.1\\lib\\netstandard2.0\\Unquote.dll"
+#r "C:\\Projects\\Sylvia\\src\\Lang\\Sylvia.Expressions\\bin\\Debug\\net10.0\\Expect.NETStandard.dll"
+#r "C:\\Projects\\Sylvia\\src\\Lang\\Sylvia.Expressions\\bin\\Debug\\net10.0\\Sylvia.Expressions.dll"
+
+
+#r "C:\\Projects\\Sylvia\\src\\Providers\\Sylvia.Provider.Arithmetic\\src\\Sylvia.Provider.Arithmetic.Runtime\\bin\\Release\\netstandard2.0\\Sylvia.Provider.Arithmetic.Runtime.dll"
+#r "C:\\Projects\\Sylvia\\src\\Base\\Sylvia.Collections\\bin\\Debug\\netstandard2.0\\Sylvia.Collections.dll"
+#r "C:\\Projects\\Sylvia\\src\\Math\\CAS\\Sylvia.CAS.Maxima\\bin\\Debug\\net10.0\\MathNet.Symbolics.dll"
+#r "C:\\Projects\\Sylvia\\src\\Math\\CAS\\Sylvia.CAS.Maxima\\bin\\Debug\\net10.0\\Sylvia.CAS.Maxima.dll"
+#r "C:\\Projects\\Sylvia\\src\\Math\\CAS\\Sylvia.CAS.Maxima\\bin\\Debug\\net10.0\\Sylvia.Runtime.dll"
+
+#r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.AbstractAlgebra\\bin\\Debug\\net10.0\\Sylvia.AbstractAlgebra.dll"
+#r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.LinearAlgebra\\bin\\Debug\\net10.0\\Sylvia.LinearAlgebra.dll"
+
+
+
+#r "C:\\Projects\\Sylvia\\src\\Visualization\\Sylvia.Visualization.Html\\bin\\Debug\\net10.0\\Sylvia.Visualization.Html.dll"
+
+
+#r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\main\\FunScript\\bin\\Debug\\netstandard2.0\\FunScript.dll"
+#r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\main\\FunScript\\bin\\Debug\\netstandard2.0\\FunScript.Interop.NETStandard.dll"
+#r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\main\\FunScript\\bin\\Debug\\netstandard2.0\\FunScript.Util.dll"
+#r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\extra\\FunScript.Bindings.JSXGraph\\bin\\Debug\\netstandard2.0\\FunScript.Bindings.Base.dll"
+#r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\extra\\FunScript.Bindings.JSXGraph\\bin\\Debug\\netstandard2.0\\FunScript.Bindings.JSXGraph.dll"
