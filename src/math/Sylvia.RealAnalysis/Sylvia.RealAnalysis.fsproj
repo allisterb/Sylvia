@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Definitions\RealNumbers.fs" />
+    <Compile Include="Definitions\HtmlVisualization.fs" />
+    <Compile Include="Definitions\Ops.fs" />
+    <Compile Include="Definitions\R.fs" />
+    <Compile Include="Definitions\RealFunction.fs" />
+    <Compile Include="Definitions\RealSequence.fs" />
+    <Compile Include="Definitions\Measure.fs" />
+    <Compile Include="Definitions\Integrals.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MathNet.Numerics" Version="4.15.0" />
+    <PackageReference Include="MathNet.Numerics.FSharp" Version="4.15.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\tests\Sylvia.Tests.CAS.Maxima\Sylvia.Tests.CAS.Maxima.fsproj" />
+    <ProjectReference Include="..\solvers\Sylvia.Solver.Z3\Sylvia.Solver.Z3.fsproj" />
+    <ProjectReference Include="..\Sylvia.AbstractAlgebra\Sylvia.AbstractAlgebra.fsproj" />
+    <ProjectReference Include="..\Sylvia.LinearAlgebra\Sylvia.LinearAlgebra.fsproj" />
+  </ItemGroup>
+
+
+</Project>
