@@ -74,6 +74,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Math", "Math", "{3A68D4C0-A
 	ProjectSection(SolutionItems) = preProject
 		..\docs\examples\math\Include.fsx = ..\docs\examples\math\Include.fsx
 		..\docs\examples\math\LinearAlgebra.fsx = ..\docs\examples\math\LinearAlgebra.fsx
+		..\docs\examples\math\RealAnalysis.fsx = ..\docs\examples\math\RealAnalysis.fsx
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solvers", "Solvers", "{AC1672AD-A327-414A-93AB-68F47D244C93}"

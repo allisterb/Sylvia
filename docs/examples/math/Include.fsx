@@ -5,7 +5,7 @@
 #r "C:\\Users\\Allister\\.nuget\\packages\\mathnet.numerics\\4.15.0\\lib\\netstandard2.0\MathNet.Numerics.dll"
 #r "C:\\Users\\Allister\\.nuget\\packages\\mathnet.numerics.fsharp\\4.15.0\\lib\\netstandard2.0\\MathNet.Numerics.FSharp.dll"
 #r @"C:\\Users\\Allister\\.nuget\\packages\\microsoft.z3.x64\4.8.10\\lib\\netstandard1.4\\Microsoft.Z3.dll"
-
+#r "C:\\Users\\Allister\\.nuget\\packages\\fsharp.quotations.evaluator\\2.1.0\\lib\\netstandard2.0\\FSharp.Quotations.Evaluator.dll"
 #r "C:\\Users\\Allister\\.nuget\\packages\\unquote\\7.0.1\\lib\\netstandard2.0\\Unquote.dll"
 #r "C:\\Projects\\Sylvia\\src\\Lang\\Sylvia.Expressions\\bin\\Debug\\net10.0\\Expect.NETStandard.dll"
 #r "C:\\Projects\\Sylvia\\src\\Lang\\Sylvia.Expressions\\bin\\Debug\\net10.0\\Sylvia.Expressions.dll"
@@ -19,6 +19,7 @@
 
 #r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.AbstractAlgebra\\bin\\Debug\\net10.0\\Sylvia.AbstractAlgebra.dll"
 #r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.LinearAlgebra\\bin\\Debug\\net10.0\\Sylvia.LinearAlgebra.dll"
+#r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.RealAnalysis\\bin\\Debug\\net10.0\\Sylvia.RealAnalysis.dll"
 
 
 
