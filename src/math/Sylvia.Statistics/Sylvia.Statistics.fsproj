@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="LinearRegression.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\data\Sylva.DataFrame\Sylvia.DataFrame.csproj" />
+    <ProjectReference Include="..\..\lang\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
+    <ProjectReference Include="..\..\visualization\Sylvia.Visualization.Html\Sylvia.Visualization.Html.fsproj" />
+    <ProjectReference Include="..\Sylvia.RealAnalysis\Sylvia.RealAnalysis.fsproj" />
+  </ItemGroup>
+
+</Project>
