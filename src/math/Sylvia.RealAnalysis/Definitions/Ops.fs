@@ -27,7 +27,7 @@ type IRealAnalysisSymbolicOps =
     abstract SolveFor:Expr<real>->Expr<bool> list->Expr<bool> list
     abstract SolveForPosVars:Expr<real>->Expr<bool> list->Expr<bool> list
   
- type MaximaRealAnalysisOps() = 
+type MaximaRealAnalysisOps() = 
     interface IRealAnalysisSymbolicOps with
         member __.AlgExpand x = Algebra.algexpand x
         member __.RatExpand x = Algebra.ratexpand x
