@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+
+  <ItemGroup>
+    <Compile Include="Descriptions.fs" />
+    <Compile Include="Patterns.fs" />
+    <Compile Include="Display.fs" />
+    <Compile Include="EquationalLogic.fs" />
+    <Compile Include="Proof.fs" />
+    <Compile Include="Tactics.fs" />
+    <Compile Include="Theories\PropCalculus.fs" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
+  </ItemGroup>
+
+</Project>

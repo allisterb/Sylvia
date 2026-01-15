@@ -32,6 +32,7 @@
 #r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.LinearAlgebra\\bin\\Debug\\net10.0\\Sylvia.LinearAlgebra.dll"
 #r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.RealAnalysis\\bin\\Debug\\net10.0\\Sylvia.RealAnalysis.dll"
 #r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.Statistics\\bin\\Debug\\net10.0\\Sylvia.Statistics.dll"
+#r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.Sylvia.Economics\\bin\\Debug\\net10.0\\Sylvia.Economics.dll"
 
 
 
