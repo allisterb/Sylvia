@@ -69,7 +69,7 @@ type Array<'n, 't when 'n :> Number>(items:'t[]) =
     new() = 
         Array<'n, 't>(Array.create number<'n>.IntVal Unchecked.defaultof<'t>)
 
- type Array<'n when 'n :> Number> with
+type Array<'n when 'n :> Number> with
     /// Create an array of n objects of type 't.
     static member create(arr: 't[]) = new Array<'n, 't>(arr)
     

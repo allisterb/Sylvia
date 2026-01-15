@@ -152,7 +152,7 @@ type RealFunction(n:int, f, s, ?vars: ScalarVar<real> list, ?symbol:string) =
 
     new (eqn:ScalarVarMap<real>) = RealFunction(eqn.Rhs, symbol=eqn.Var.Name)
     
- type RealFunctionGroupVisualization(_grp:seq<IRealFunction<RealFunction>>) =
+type RealFunctionGroupVisualization(_grp:seq<IRealFunction<RealFunction>>) =
     interface IHtmlVisualization with
            member x.Draw(attrs:_) = 
               //let grp = Seq.toArray _grp in
