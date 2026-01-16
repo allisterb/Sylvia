@@ -7,6 +7,8 @@
 
 
   <ItemGroup>
+    <None Include="proofs\Include.fsx" />
+    <None Include="proofs\ALogicalApproachToDiscreteMath.fsx" />
     <Compile Include="Descriptions.fs" />
     <Compile Include="Patterns.fs" />
     <Compile Include="Display.fs" />
@@ -15,6 +17,9 @@
     <Compile Include="Tactics.fs" />
     <Compile Include="Theories\PropCalculus.fs" />
   </ItemGroup>
+
+
+  <ItemGroup />
 
 
   <ItemGroup>

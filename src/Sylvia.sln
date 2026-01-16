@@ -97,10 +97,11 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Economics", "math\Sy
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Prover", "lang\Sylvia.Prover\Sylvia.Prover.fsproj", "{262F0B73-A43E-43DE-8DE5-76E66D7B01FF}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Proofs", "Proofs", "{F53594C8-81A1-414D-9BFD-EBA69622475C}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Prover", "Prover", "{A021BF8C-D984-4D3F-80AB-3531A3A1AC26}"
 	ProjectSection(SolutionItems) = preProject
-		..\docs\examples\proofs\ALogicalApproachToDiscreteMath.fsx = ..\docs\examples\proofs\ALogicalApproachToDiscreteMath.fsx
-		..\docs\examples\proofs\Include.fsx = ..\docs\examples\proofs\Include.fsx
+		lang\Sylvia.Prover\docs\gries_calculational_logic_heuristics.pdf = lang\Sylvia.Prover\docs\gries_calculational_logic_heuristics.pdf
+		lang\Sylvia.Prover\docs\gries_calculational_logic_introduction.pdf = lang\Sylvia.Prover\docs\gries_calculational_logic_introduction.pdf
+		lang\Sylvia.Prover\docs\gries_schneider_equational_propositional_logic.pdf = lang\Sylvia.Prover\docs\gries_schneider_equational_propositional_logic.pdf
 	EndProjectSection
 EndProject
 Global
@@ -251,7 +252,7 @@ Global
 		{19A42F99-6125-41FA-92C4-C4C383F54C30} = {8C46F974-178E-4CF3-A7DE-274A641013AE}
 		{8544FD52-3E63-4269-B26D-8C30190CDBCA} = {8C46F974-178E-4CF3-A7DE-274A641013AE}
 		{262F0B73-A43E-43DE-8DE5-76E66D7B01FF} = {97D4C0AB-EEA9-4966-AB55-1D16A0BABD87}
-		{F53594C8-81A1-414D-9BFD-EBA69622475C} = {90231D93-09C2-4A7B-9235-F2F38FB7505F}
+		{A021BF8C-D984-4D3F-80AB-3531A3A1AC26} = {B91F432D-4004-4FCC-BDFC-FDC1A3689347}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E40D909F-6B62-4714-AD1E-DE15A95FCFA3}
