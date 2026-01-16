@@ -12,9 +12,9 @@ module Tactics =
             | Equals(l, r) when sequal r <@ true @> -> l
             | _ -> failwith "This theorem is not an identity with the constant true."
         let theory = proof.Theory
-        let true_id = ident theory (prop <@(true = true) = true@>) [LR commute]
+        let true_id = ident theory (prop <@(true = true) = true@>) [Apply commute]
         let stmt = <@@ (%%l:bool) = (true = true) @@>
-        let p = Proof(stmt, proof.Theory, R true_id :: proof.Steps, true) in 
+        let p = Proof(stmt, proof.Theory, ApplyRight true_id :: proof.Steps, true) in 
         Theorem(stmt, p) |> Ident
 
     /// If A is a theorem then so is A = true
@@ -23,7 +23,7 @@ module Tactics =
         let theory = proof.Theory
         let expr = proof.Stmt
         let stmt = <@@ (%%expr) = true @@>
-        let p = Proof(stmt, theory, (expr |> ident |> LR) :: proof.Steps, true) in 
+        let p = Proof(stmt, theory, (expr |> ident |> Apply) :: proof.Steps, true) in 
         Theorem(stmt, p) |> Ident 
 
     /// If A = B is a theorem then so is (A = B) = true.
@@ -32,7 +32,7 @@ module Tactics =
         let theory = proof.Theory
         let expr = proof.Stmt
         let stmt = <@@ (%%expr) = true @@>
-        let p = Proof(stmt, theory, (expr |> ident |> LR) :: proof.Steps, true) in 
+        let p = Proof(stmt, theory, (expr |> ident |> Apply) :: proof.Steps, true) in 
         Theorem(stmt, p) |> Ident 
 
     /// If A is theorem then so is the dual of A.
@@ -41,7 +41,7 @@ module Tactics =
         let theory = proof.Theory
         let expr = proof.Stmt
         let stmt = EquationalLogic._dual expr
-        let p = Proof(stmt, theory, (dual |> LR) :: proof.Steps, true) in
+        let p = Proof(stmt, theory, (dual |> Apply) :: proof.Steps, true) in
         Theorem(stmt, p)
 
     /// If A = B is an identity then so is the dual of A with B.
@@ -50,7 +50,7 @@ module Tactics =
         let theory = proof.Theory
         let expr = proof.Stmt
         let stmt = EquationalLogic._dual expr
-        let p = Proof(stmt, theory, (dual |> LR) :: proof.Steps, true) in
+        let p = Proof(stmt, theory, (dual |> Apply) :: proof.Steps, true) in
         Theorem(stmt, p) |> Ident
 
     /// If A = B is a theorem then so is B = A.
@@ -60,7 +60,7 @@ module Tactics =
             match proof.Stmt with 
             | Equals(l, r) -> <@@ (%%r:bool) = (%%l:bool) @@>
             | _ -> failwith "This theorem is not an identity."
-        let p = Proof(stmt, proof.Theory, LR commute :: proof.Steps, true) in 
+        let p = Proof(stmt, proof.Theory, Apply commute :: proof.Steps, true) in 
         Theorem(stmt, p) |> Ident
 
     /// If (L = R) = X is a theorem then so is (R = L) = X.
@@ -92,7 +92,7 @@ module Tactics =
             | _ -> failwith "The rHS of this theorem is not an identity."
 
         let stmt = <@@ ((%%l:bool)) = (%%r1:bool) @@>
-        let p = Proof(stmt, proof.Theory, R commute :: proof.Steps, true) in 
+        let p = Proof(stmt, proof.Theory, ApplyRight commute :: proof.Steps, true) in 
         Theorem(stmt, p) |> Ident
 
     /// If (A1 = A2) = A3 is a theorem then so is A1 = (A2 = A3)
@@ -102,7 +102,7 @@ module Tactics =
              match proof.Stmt with 
              | Equals(Equals(l1, l2), r) -> <@@ (%%l1:bool) = ((%%l2:bool) = (%%r:bool)) @@>
              | _ -> failwith "This theorem is not an identity."
-         let p = Proof(stmt, proof.Theory, LR lassoc :: proof.Steps, true) in 
+         let p = Proof(stmt, proof.Theory, Apply lassoc :: proof.Steps, true) in 
          Theorem(stmt, p) |> Ident
 
     /// If A1 = (A2 =  A3) is a theorem then so is (A1 = A2) = A3
@@ -112,7 +112,7 @@ module Tactics =
              match proof.Stmt with 
              | Equals(l, Equals(r1, r2)) -> <@@ ((%%l:bool) = (%%r1:bool)) = (%%r2:bool) @@>
              | _ -> failwith "This theorem is not an identity."
-         let p = Proof(stmt, proof.Theory, LR rassoc :: proof.Steps, true) in 
+         let p = Proof(stmt, proof.Theory, Apply rassoc :: proof.Steps, true) in 
          Theorem(stmt, p) |> Ident
 
     let RightAssocL lassoc rule =
@@ -138,7 +138,7 @@ module Tactics =
              match r with 
              | Equals(Equals(l1, l2), r2) -> <@@ (%%l:bool) = ((%%l1:bool) = ((%%l2:bool) = (%%r2:bool)))  @@>
              | _ -> failwith "This theorem is not an identity."
-         let p = Proof(stmt, proof.Theory, R lassoc :: proof.Steps, true) in 
+         let p = Proof(stmt, proof.Theory, ApplyRight lassoc :: proof.Steps, true) in 
          Theorem(stmt, p) |> Ident
 
     let LeftAssocL rassoc rule =
@@ -164,7 +164,7 @@ module Tactics =
              match r with 
              | Equals(l1, Equals(r1, r2)) -> <@@ (%%l:bool) = (((%%l1:bool) = (%%r1:bool)) = (%%r2:bool)) @@>
              | _ -> failwith "The RHS of this theorem is not an identity."
-         let p = Proof(stmt, proof.Theory, R rassoc :: proof.Steps, true) in 
+         let p = Proof(stmt, proof.Theory, ApplyRight rassoc :: proof.Steps, true) in 
          Theorem(stmt, p) |> Ident
 
     let MutualImplication theory taut ident stmt =
@@ -184,9 +184,9 @@ module Tactics =
             Theorem(s, p)
 
         let p lhs rhs = Proof(stmt, theory,  [
-            ident |> LR
+            ident |> Apply
             lhs |> taut |> ApplyLeft
-            rhs |> taut |> R
+            rhs |> taut |> ApplyRight
         ])
 
         lhs, rhs, p

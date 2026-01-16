@@ -222,7 +222,7 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
                         (conjs |> List.find(fun v -> List.exists(fun v' -> not (sequal v v')) current_conjuncts.Value) |> print_formula) stepId n (print_formula a)
                 if not step.RightApplication then failwith "A deduction rule can only be applied to the consequent of a logical implication."
             | _ -> ()
-        let _a = step.Apply _state
+        let _a = step.ApplyRule _state
 
         let msg =
             match step.Rule with
@@ -285,7 +285,7 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
     member val Steps = steps
     abstract Complete:bool; default val Complete = logic |- _state || theory |- _state
     member val State = state
-    member val Subst = steps |> List.map (fun s  -> s.Apply) |> List.fold(fun e r -> e >> r) id
+    member val Subst = steps |> List.map (fun s  -> s.ApplyRule) |> List.fold(fun e r -> e >> r) id
     member val Log = logBuilder
     member val Msg = prooflog
     /// Proof log level.
@@ -303,9 +303,9 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
         else Proof(l.Stmt, l.Theory, l.Steps @ r)
 
 and RuleApplication =
+    | Apply of Rule
     | ApplyLeft  of Rule
-    | R of Rule
-    | LR of Rule
+    | ApplyRight of Rule    
     | QR of Rule
     | QB of Rule
     | NextLeft of RuleApplication
@@ -316,9 +316,9 @@ and RuleApplication =
 with
     member x.Rule = 
         match x with
-        | LR rule
+        | Apply rule
         | ApplyLeft rule
-        | R rule
+        | ApplyRight rule
         | QR rule
         | QB rule -> rule
         | NextLeft ra 
@@ -327,15 +327,15 @@ with
         | QR' ra
         | QB' ra -> ra.Rule
     member x.RuleName = x.Rule.Name
-    member x.Apply(expr:Expr) =
+    member x.ApplyRule(expr:Expr) =
         let print_formula = Proof.Logic.PrintFormula
         match x with
-        | LR rule -> rule.Apply expr
+        | Apply rule -> rule.Apply expr
         | ApplyLeft rule -> 
             match expr with
             | Patterns.Call(o, m, l::r::[]) -> let s = rule.Apply l in binary_call(o, m, s, r)
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
-        | R rule -> 
+        | ApplyRight rule -> 
             match expr with
             | Patterns.Call(o, m, l::r::[]) -> let s = rule.Apply r in binary_call(o, m, l, s)
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
@@ -349,29 +349,29 @@ with
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
         | NextLeft ra ->
             match expr with
-            | Patterns.Call(o, m, l::r::[]) -> let s = ra.Apply l in binary_call(o, m, s, r)
+            | Patterns.Call(o, m, l::r::[]) -> let s = ra.ApplyRule l in binary_call(o, m, s, r)
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
         | R' ra ->
             match expr with
-            | Patterns.Call(o, m, l::r::[]) -> let s = ra.Apply r in binary_call(o, m, l, s)
+            | Patterns.Call(o, m, l::r::[]) -> let s = ra.ApplyRule r in binary_call(o, m, l, s)
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
         | LR' ra ->
             match expr with
-            | Patterns.Call(o, m, l::[]) -> let s = ra.Apply l in unary_call(o, m, s)
+            | Patterns.Call(o, m, l::[]) -> let s = ra.ApplyRule l in unary_call(o, m, s)
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
         | QR' ra ->
             match expr with
-            | Quantifier(op, x, range, body) -> let s = ra.Apply range in let v = vars_to_tuple x in call op (v::s::body::[])
+            | Quantifier(op, x, range, body) -> let s = ra.ApplyRule range in let v = vars_to_tuple x in call op (v::s::body::[])
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
         | QB' ra ->
             match expr with
-            | Quantifier(op, x, range, body) -> let s = ra.Apply body in let v = vars_to_tuple x in call op (v::range::s::[])
+            | Quantifier(op, x, range, body) -> let s = ra.ApplyRule body in let v = vars_to_tuple x in call op (v::range::s::[])
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
     member x.Pos =
         match x with
-        | LR _ -> "expression"
+        | Apply _ -> "expression"
         | ApplyLeft _ -> "left of expression"
-        | R _ -> "right of expression"
+        | ApplyRight _ -> "right of expression"
         | QR _ -> "quantifier range"
         | QB _ -> "quantifier body"
         | NextLeft ra -> sprintf "left>%s of expression" (ra.Pos.Replace(" of expression", ""))
@@ -403,30 +403,38 @@ and Theorem (expr: Expr, proof:Proof) =
 
 [<AutoOpen>]
 module ProofOps =
-    type Apply = RuleApplication
+    //type Apply = RuleApplication
     
     let apply_left = ApplyLeft
     
-    let apply_right = Apply.R
-    
-    let apply = Apply.LR
+    let apply_right = ApplyRight
+        
+    let apply = RuleApplication.Apply
 
-    let apply_body = Apply.QB
+    let apply_body = RuleApplication.QB
 
-    let apply_range = Apply.QR
+    let apply_range = RuleApplication.QR
 
     let after_left = NextLeft
 
-    let after_right = Apply.R'
+    let after_right = RuleApplication.R'
     
-    let after_both = Apply.LR'
+    let rec apply_left_after n x = 
+        let mutable x' = x |> apply_left
+        for i in 1 .. n do x' <- after_left x'
+        x'
 
-    let after_body = Apply.QB'
+    let rec apply_right_after n x = 
+        let mutable x' = x |> apply_right
+        for i in 1 .. n do x' <- after_right x'
+        x'
 
-    let after_range = Apply.QR'
+    let after_both = RuleApplication.LR'
 
-    let print_formula (p:Proof) = p.Theory.PrintFormula
-    
+    let after_body = RuleApplication.QB'
+
+    let after_range = RuleApplication.QR'
+
     let last_state (p:Proof) = p.LastState
 
     let left_state p = p |> last_state |> expand_left
@@ -436,6 +444,8 @@ module ProofOps =
     let left_src p = p |> left_state |> src
 
     let right_src p = p |> right_state |> src
+
+    let print_formula (p:Proof) = p.Theory.PrintFormula
 
     let last_conjuncts (p:Proof) = 
         match p.LastConjuncts with
