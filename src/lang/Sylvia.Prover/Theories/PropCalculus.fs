@@ -1,7 +1,5 @@
 ﻿namespace Sylvia
 
-open FSharp.Quotations
-
 /// Propositional calculus using the axioms and rules of S.
 module PropCalculus =
     let prop_calculus = Theory.S
@@ -130,15 +128,15 @@ module PropCalculus =
 
     let LeftAssoc = Tactics.LeftAssoc right_assoc
 
-    let LeftAssocL = Tactics.LeftAssocL right_assoc
+    let LeftAssocRecurseLeft = Tactics.LeftAssocRecurseLeft right_assoc
 
-    let LeftAssocR = Tactics.LeftAssocR right_assoc
+    let LeftAssocRecurseRight = Tactics.LeftAssocRecurseRight right_assoc
 
     let RightAssoc = Tactics.RightAssoc left_assoc
 
-    let RightAssocL = Tactics.RightAssocL left_assoc
+    let RightAssocRecurseLeft = Tactics.RightAssocRecurseLeft left_assoc
 
-    let RightAssocR = Tactics.RightAssocR left_assoc
+    let RightAssocRecurseRight = Tactics.RightAssocRecurseRight left_assoc
 
     (* Tactics for proofs *)
     
@@ -242,14 +240,14 @@ module PropCalculus =
 
     /// p ||| true = true
     let zero_or p = ident prop_calculus ((p + T) == T) [
-        def_true p |> ApplyRight |> NextLeft
+        def_true p |> ApplyRight |> RecurseLeft
         distrib |> ApplyLeft
         commute |> Apply
     ]
 
     /// p ||| false = p
     let ident_or (p:Prop) = ident prop_calculus ((p + F) == p) [
-        def_false p |> ApplyRight |> NextLeft
+        def_false p |> ApplyRight |> RecurseLeft
         ApplyLeft distrib
         Apply right_assoc
         idemp_or p |> ApplyRight

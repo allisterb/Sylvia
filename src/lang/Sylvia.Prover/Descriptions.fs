@@ -10,7 +10,7 @@ module Descriptions =
     let pattern_desc name example  = PatternDescription(name, example |> src)
 
     /// Create a pattern description from a name only.
-    let pattern_desc' name = PatternDescription(name, "")
+    let pattern_name name = PatternDescription(name, "")
 
     /// Text description of an axiom based on a theory name and formula pattern.
     type AxiomDescription = AxiomDescription of string * PatternDescription with
@@ -18,12 +18,12 @@ module Descriptions =
         member x.Name = let (AxiomDescription(n, d)) = x in d.Name
         member x.Description = let (AxiomDescription(n, d)) = x in d.Description
            
-    /// Create a axiom description for a theory using a pattern description with an example.
+    /// Create a axiom description for a theory from a name and an example.
     let axiom_desc theoryName (patternDesc:PatternDescription)  = 
         AxiomDescription(theoryName, PatternDescription(patternDesc.Name, patternDesc.Description))
 
-    /// Create a axiom description for a theory using a pattern description without an example.
-    let axiom_desc' theoryName  axiomName = 
+    /// Create a axiom description for a theory from a name only.
+    let axiom_name theoryName axiomName = 
         AxiomDescription(theoryName, PatternDescription(axiomName, ""))
 
     /// Set the theory name for an existing axiom description.

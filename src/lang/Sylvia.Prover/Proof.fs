@@ -306,26 +306,26 @@ and RuleApplication =
     | Apply of Rule
     | ApplyLeft  of Rule
     | ApplyRight of Rule    
-    | QR of Rule
-    | QB of Rule
-    | NextLeft of RuleApplication
-    | R' of RuleApplication
-    | LR' of RuleApplication
-    | QR' of RuleApplication
-    | QB' of RuleApplication
+    | QuantifierRange of Rule
+    | QuantifierBody of Rule
+    | RecurseLeft of RuleApplication
+    | RecurseRight of RuleApplication
+    | ApplyUnary of RuleApplication
+    | RecurseRange of RuleApplication
+    | RecurseBody of RuleApplication
 with
     member x.Rule = 
         match x with
         | Apply rule
         | ApplyLeft rule
         | ApplyRight rule
-        | QR rule
-        | QB rule -> rule
-        | NextLeft ra 
-        | R' ra 
-        | LR' ra 
-        | QR' ra
-        | QB' ra -> ra.Rule
+        | QuantifierRange rule
+        | QuantifierBody rule -> rule
+        | RecurseLeft ra 
+        | RecurseRight ra 
+        | ApplyUnary ra 
+        | RecurseRange ra
+        | RecurseBody ra -> ra.Rule
     member x.RuleName = x.Rule.Name
     member x.ApplyRule(expr:Expr) =
         let print_formula = Proof.Logic.PrintFormula
@@ -339,31 +339,31 @@ with
             match expr with
             | Patterns.Call(o, m, l::r::[]) -> let s = rule.Apply r in binary_call(o, m, l, s)
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
-        | QR rule ->
+        | QuantifierRange rule ->
             match expr with
             | Quantifier(op, x, range, body) -> let s = rule.Apply range in let v = vars_to_tuple x in call op (v::s::body::[])
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
-        | QB rule ->
+        | QuantifierBody rule ->
             match expr with
             | Quantifier(op, x, range, body) -> let s = rule.Apply body in let v = vars_to_tuple x in call op (v::range::s::[])
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
-        | NextLeft ra ->
+        | RecurseLeft ra ->
             match expr with
             | Patterns.Call(o, m, l::r::[]) -> let s = ra.ApplyRule l in binary_call(o, m, s, r)
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
-        | R' ra ->
+        | RecurseRight ra ->
             match expr with
             | Patterns.Call(o, m, l::r::[]) -> let s = ra.ApplyRule r in binary_call(o, m, l, s)
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
-        | LR' ra ->
+        | ApplyUnary ra ->
             match expr with
             | Patterns.Call(o, m, l::[]) -> let s = ra.ApplyRule l in unary_call(o, m, s)
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
-        | QR' ra ->
+        | RecurseRange ra ->
             match expr with
             | Quantifier(op, x, range, body) -> let s = ra.ApplyRule range in let v = vars_to_tuple x in call op (v::s::body::[])
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
-        | QB' ra ->
+        | RecurseBody ra ->
             match expr with
             | Quantifier(op, x, range, body) -> let s = ra.ApplyRule body in let v = vars_to_tuple x in call op (v::range::s::[])
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
@@ -372,13 +372,13 @@ with
         | Apply _ -> "expression"
         | ApplyLeft _ -> "left of expression"
         | ApplyRight _ -> "right of expression"
-        | QR _ -> "quantifier range"
-        | QB _ -> "quantifier body"
-        | NextLeft ra -> sprintf "left>%s of expression" (ra.Pos.Replace(" of expression", ""))
-        | R' ra -> sprintf "right>%s of expression" (ra.Pos.Replace(" of expression", ""))
-        | LR' ra -> sprintf "left-right>%s of expression" (ra.Pos.Replace(" of expression", ""))
-        | QR' ra -> sprintf "quantifier-range>%s of expression" (ra.Pos.Replace(" of expression", ""))
-        | QB' ra -> sprintf "quantifier-body>%s of expression" (ra.Pos.Replace(" of expression", ""))
+        | QuantifierRange _ -> "quantifier range"
+        | QuantifierBody _ -> "quantifier body"
+        | RecurseLeft ra -> sprintf "left>%s of expression" (ra.Pos.Replace(" of expression", ""))
+        | RecurseRight ra -> sprintf "right>%s of expression" (ra.Pos.Replace(" of expression", ""))
+        | ApplyUnary ra -> sprintf "left-right>%s of expression" (ra.Pos.Replace(" of expression", ""))
+        | RecurseRange ra -> sprintf "quantifier-range>%s of expression" (ra.Pos.Replace(" of expression", ""))
+        | RecurseBody ra -> sprintf "quantifier-body>%s of expression" (ra.Pos.Replace(" of expression", ""))
 
     member x.LeftApplication = 
         x.Pos = "left of expression" || System.Text.RegularExpressions.Regex.IsMatch(x.Pos, "left>(\\S)+\\s+of expression")
@@ -403,37 +403,35 @@ and Theorem (expr: Expr, proof:Proof) =
 
 [<AutoOpen>]
 module ProofOps =
-    //type Apply = RuleApplication
-    
     let apply_left = ApplyLeft
     
     let apply_right = ApplyRight
         
     let apply = RuleApplication.Apply
 
-    let apply_body = RuleApplication.QB
+    let apply_body = RuleApplication.QuantifierBody
 
-    let apply_range = RuleApplication.QR
+    let apply_range = RuleApplication.QuantifierRange
 
-    let after_left = NextLeft
+    let recurse_left = RecurseLeft
 
-    let after_right = RuleApplication.R'
+    let recurse_right = RecurseRight
     
-    let rec apply_left_after n x = 
+    let rec apply_left_recurse n x = 
         let mutable x' = x |> apply_left
-        for i in 1 .. n do x' <- after_left x'
+        for i in 0 .. n do x' <- recurse_left x'
         x'
 
-    let rec apply_right_after n x = 
+    let rec apply_right_recurse n x = 
         let mutable x' = x |> apply_right
-        for i in 1 .. n do x' <- after_right x'
+        for i in 0 .. n do x' <- recurse_right x'
         x'
 
-    let after_both = RuleApplication.LR'
+    let apply_unary = RuleApplication.ApplyUnary
 
-    let after_body = RuleApplication.QB'
+    let recurse_body = RuleApplication.RecurseBody
 
-    let after_range = RuleApplication.QR'
+    let recurse_range = RuleApplication.RecurseRange
 
     let last_state (p:Proof) = p.LastState
 
@@ -454,6 +452,7 @@ module ProofOps =
 
 [<AutoOpen>]
 module LogicalRules =     
+
     /// Leibniz's rule : A behaves equivalently in a formula if we substitute a part of A: a with x when x = a.
     let Subst (p:Proof) = 
         let rec subst (p:Proof) = 
@@ -531,7 +530,7 @@ module LogicalRules =
 
 [<AutoOpen>]
 module Proof = 
-    let proof<'t> (theory:Theory) (e:Prop) steps =         
+    let proof (theory:Theory) (e:Prop) steps =         
         let f = e.Expr |> expand in Proof(f, theory, steps)
     
     let theorem (theory:Theory) (e:Prop) steps  = 
@@ -543,6 +542,8 @@ module Proof =
     let axiom (theory:Theory) (e:Prop) = lemma theory e []
 
     (* Identities *)
+
+    /// An identity thar us true in a theory
     let ident (theory:Theory) (e:Prop) steps =
         let f = e.Expr |> expand in
         match f with
@@ -551,6 +552,7 @@ module Proof =
     
     let logical_ident steps (e:Prop) = ident Proof.Logic e steps
     
+    /// An identity that is axiomatically true in a theory
     let id_ax theory (e:Prop) = ident theory e []
     
     let log_id_ax (e:Prop) = id_ax Proof.Logic e

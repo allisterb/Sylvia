@@ -3,7 +3,9 @@
 open FSharp.Quotations
 open Patterns
 
+/// Tactics are functions that transform a theorem using valid logical rules into another theorem.
 module Tactics = 
+    
     /// The constant true is a theorem.
     let Truth commute rule = 
         let proof = match rule with | Derive(_,p,_) -> p | _ ->  failwith "This rule is not a derived rule."
@@ -115,7 +117,8 @@ module Tactics =
          let p = Proof(stmt, proof.Theory, Apply rassoc :: proof.Steps, true) in 
          Theorem(stmt, p) |> Ident
 
-    let RightAssocL lassoc rule =
+    /// If ((A1 = A2) = A3) = A4 is a theorem then so is (A1 = (A2 = A3)) = A4
+    let RightAssocRecurseLeft lassoc rule =
          let proof = match rule with | Derive(_,p,_) -> p | _ ->  failwith "This rule is not a derived rule."
          let (l, r) = 
              match proof.Stmt with 
@@ -128,7 +131,8 @@ module Tactics =
          let p = Proof(stmt, proof.Theory, ApplyLeft lassoc :: proof.Steps, true) in 
          Theorem(stmt, p) |> Ident
 
-    let RightAssocR lassoc rule =
+     /// If A1 = ((A2 = A3) = A4) is a theorem then so is A1 = (A2 = (A3 = A4))
+    let RightAssocRecurseRight lassoc rule =
          let proof = match rule with | Derive(_,p,_) -> p | _ ->  failwith "This rule is not a derived rule."
          let (l, r) = 
              match proof.Stmt with 
@@ -141,7 +145,8 @@ module Tactics =
          let p = Proof(stmt, proof.Theory, ApplyRight lassoc :: proof.Steps, true) in 
          Theorem(stmt, p) |> Ident
 
-    let LeftAssocL rassoc rule =
+    /// If (A1 = (A2 = A3)) = A4 is a theorem then so is ((A1 = A2) = A3) = A4
+    let LeftAssocRecurseLeft rassoc rule =
          let proof = match rule with | Derive(_,p,_) -> p | _ ->  failwith "This rule is not a derived rule."
          let (l, r) = 
              match proof.Stmt with 
@@ -154,7 +159,8 @@ module Tactics =
          let p = Proof(stmt, proof.Theory, ApplyLeft rassoc :: proof.Steps, true) in 
          Theorem(stmt, p) |> Ident
 
-    let LeftAssocR rassoc rule =
+    /// If A1 = (A2 = (A3 = A4)) is a theorem then so is A1 = ((A2 = A3) = A4)
+    let LeftAssocRecurseRight rassoc rule =
          let proof = match rule with | Derive(_,p,_) -> p | _ ->  failwith "This rule is not a derived rule."
          let (l, r) = 
              match proof.Stmt with 
