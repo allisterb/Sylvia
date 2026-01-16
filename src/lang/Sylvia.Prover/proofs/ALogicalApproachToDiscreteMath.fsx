@@ -24,3 +24,32 @@ let ``3.31`` = proof prop_calculus ((p + (q + r)) == ((p + q) + (p + r))) [
     right_assoc_or q p r |> apply_left
     apply_left left_assoc
 ]
+
+
+
+let ``3.76c`` = theorem prop_calculus ((p * q) ==> (p + q)) [
+    def_implies |> apply
+    commute |> apply_left |> recurse_left
+    distrib |> apply_left |> recurse_left
+    commute |> apply
+    idemp_or p |> apply
+    distrib |> apply_left |> recurse_right
+    idemp_and p |> apply
+    
+    distrib |> apply
+    distrib |> apply_right |> recurse_left
+    distrib |> apply_left
+    idemp_or p |> apply_left
+    distrib |> apply_left
+    
+    commute_or q p |> apply_left
+    idemp_and (p + q) |> apply_left
+    commute |> apply_left |> recurse_left
+    distrib |> apply_left |> recurse_left
+    idemp_and q |> apply_left
+
+    absorb_or q p |> CommuteL |> apply_left
+    commute |> apply_right |> recurse_left
+    left_assoc |> apply_left
+    idemp_or q |> apply_left
+] 

@@ -212,16 +212,16 @@ module PropCalculus =
         left_assoc_eq p r q |> ApplyLeft
     ]
 
-    /// p ||| q = q ||| p
+    /// p ∨ q = q ∨ p
     let commute_or (p:Prop) (q:Prop) = id_ax prop_calculus ((p + q) == (q + p))
  
-    /// p ||| (q ||| r) = p ||| q ||| r
+    /// p ∨ (q ∨ r) = p ∨ q ∨ r
     let left_assoc_or (p:Prop) (q:Prop) (r:Prop) = ident prop_calculus ( (p + (q + r)) == ((p + q) + r) ) [Apply left_assoc; Apply commute]
 
-    /// (p ||| q) ||| r = p ||| (q ||| r)
+    /// (p ∨ q) ∨ r = p ∨ (q ∨ r)
     let right_assoc_or p q r = left_assoc_or p q r |> Commute
 
-    /// ((p ||| q) ||| (r ||| s)) = ((p ||| r) ||| (q ||| s))
+    /// ((p ∨ q) ∨ (r ∨ s)) = ((p ∨ r) ∨ (q ∨ s))
     let commute_or_or (p:Prop) (q:Prop) (r:Prop) (s:Prop) = ident prop_calculus (((p + q) + (r + s)) == ((p + r) + (q + s))) [
         left_assoc_or (p + q) r s |> ApplyLeft
         right_assoc_or p q r |> ApplyLeft
@@ -229,23 +229,31 @@ module PropCalculus =
         left_assoc_or p r q |> ApplyLeft
     ]
 
-    /// p ||| (q = r) = (p ||| q) = (p ||| r)
+    /// p ∨ (q = r) = (p ∨ q) = (p ∨ r)
     let distrib_or_eq (p:Prop) (q:Prop) (r:Prop) = id_ax prop_calculus ((p + (q == r)) == ((p + q) == (p + r)))
 
-    /// (p ||| q) = (p ||| r) = p ||| (q ||| r)
+    /// (p ∨ q) = (p ∨ r) = p ∨ (q ∨ r)
     let collect_or_eq p q r = distrib_or_eq p q r |> Commute
 
-    /// (p ||| p) = p
-    let idemp_or p =  id_ax prop_calculus ((p + p) == p) 
+    /// (p ∨ p) = p
+    let idemp_or p =  id_ax prop_calculus (p + p == p) 
 
-    /// p ||| true = true
+    /// (p and p) = p
+    let idemp_and p = ident prop_calculus ((p * p) == p) [
+        ApplyLeft golden_rule
+        Apply right_assoc
+        idemp_or p |> Taut' |> ApplyRight
+        Apply commute 
+    ] 
+
+    /// p ∨ true = true
     let zero_or p = ident prop_calculus ((p + T) == T) [
         def_true p |> ApplyRight |> RecurseLeft
         distrib |> ApplyLeft
         commute |> Apply
     ]
 
-    /// p ||| false = p
+    /// p ∨ false = p
     let ident_or (p:Prop) = ident prop_calculus ((p + F) == p) [
         def_false p |> ApplyRight |> RecurseLeft
         ApplyLeft distrib
@@ -254,7 +262,7 @@ module PropCalculus =
         ApplyLeft excluded_middle
     ]
 
-    /// (p ||| q) = (p ||| not q = p)
+    /// (p ∨ q) = (p ∨ not q = p)
     let ident_or_or_not (p:Prop) q = ident prop_calculus ((p + q) == ((p + !!q) == p)) [
         Apply left_assoc
         collect_or_eq p q !!q  |> ApplyLeft
@@ -263,7 +271,7 @@ module PropCalculus =
         ident_or p  |> ApplyLeft      
     ]
 
-    /// (p ||| not q) = (p = (p or q))
+    /// (p ∨ not q) = (p = (p or q))
     let ident_or_not_or (p:Prop) (q:Prop) = ident prop_calculus ((p + !!q) == (p == (p + q))) [
         commute |> ApplyRight
         Apply left_assoc
@@ -273,7 +281,7 @@ module PropCalculus =
     ]
 
     
-    /// p ||| (q ||| r) = ((p ||| q) ||| (p ||| r))
+    /// p ∨ (q ∨ r) = ((p ∨ q) ∨ (p ∨ r))
     let distrib_or_or (p:Prop) (q:Prop) (r:Prop) =  ident prop_calculus ((p + (q + r)) == ((p + q) + (p + r))) [
         idemp_or p |> Commute |> ApplyLeft
         right_assoc |> ApplyLeft
@@ -283,7 +291,7 @@ module PropCalculus =
         left_assoc |> ApplyLeft
     ]
 
-    /// (p ||| q) = (p ||| r) = p ||| (q ||| r)
+    /// (p ∨ q) = (p ∨ r) = p ∨ (q ∨ r)
     let collect_or_or p q r = distrib_or_or p q r |> Commute
 
     /// not (p = q) = not p = q
@@ -321,86 +329,96 @@ module PropCalculus =
     let left_assoc_not_eq p q r = right_assoc_not_eq p q r |> Commute
 
     
-    /// p ||| not p = true
+    /// p ∨ not p = true
     let excluded_middle' (p:Prop) = ident prop_calculus ((p + (!!p)) == T) [ident_eq (p + (!!p)) |> Apply]
     
-    /// p |&| q = ((p = q) = (p ||| q))
+    /// p ∧ q = ((p = q) = (p ∨ q))
     let golden_rule' (p:Prop) (q:Prop) = id_ax prop_calculus ((p * q) == (p == q == (p + q)))
+
+    /// (p ||| (p |&| q)) = p
+    let absorb_or (p:Prop) (q:Prop) = ident prop_calculus (p + (p * q) == p)  [
+        golden_rule |> ApplyRight |> RecurseLeft
+        distrib |> ApplyLeft
+        left_assoc_or p p q |> ApplyLeft
+        idemp_or p |> ApplyLeft
+        distrib_or_eq p p q |> ApplyLeft
+        idemp_or p |> ApplyLeft
+    ]
     (*
-    /// p |&| q = q |&| p
-    let commute_and p q = ident prop_calculus <@ (%p |&| %q) = (%q |&| %p) @> [
+    /// p ∧ q = q ∧ p
+    let commute_and p q = ident prop_calculus <@ (%p ∧ %q) = (%q ∧ %p) @> [
         golden_rule' p q |> ApplyLeft
         golden_rule' q p |> R
         commute_or q p |> R
         commute_eq q p |> R 
     ]
 
-    /// p |&| q |&| r = (p = q = r = (p ||| q) = (q ||| r) = (r ||| p) = (p ||| q ||| r))
-    let ident_and_eq_all p q r = ident prop_calculus <@ (%p |&| %q |&| %r) = (%p = %q = %r = (%p ||| %q) = (%q ||| %r) = (%r ||| %p) = (%p ||| %q ||| %r)) @> [
+    /// p ∧ q ∧ r = (p = q = r = (p ∨ q) = (q ∨ r) = (r ∨ p) = (p ∨ q ∨ r))
+    let ident_and_eq_all p q r = ident prop_calculus <@ (%p ∧ %q ∧ %r) = (%p = %q = %r = (%p ∨ %q) = (%q ∨ %r) = (%r ∨ %p) = (%p ∨ %q ∨ %r)) @> [
         golden_rule' p q |> ApplyLeft
-        golden_rule' <@ (%p = %q) = (%p ||| %q) @> r |> ApplyLeft 
-        commute_or <@ ((%p = %q) = (%p ||| %q)) @> r |> ApplyLeft
-        distrib_or_eq r <@ %p = %q @> <@ %p ||| %q @> |> ApplyLeft
+        golden_rule' <@ (%p = %q) = (%p ∨ %q) @> r |> ApplyLeft 
+        commute_or <@ ((%p = %q) = (%p ∨ %q)) @> r |> ApplyLeft
+        distrib_or_eq r <@ %p = %q @> <@ %p ∨ %q @> |> ApplyLeft
         distrib_or_eq r p q |> ApplyLeft
-        right_assoc_eq <@ %p = %q @> <@ %p ||| %q @> r |> ApplyLeft
-        commute_eq <@ %p ||| %q @> r |> ApplyLeft
+        right_assoc_eq <@ %p = %q @> <@ %p ∨ %q @> r |> ApplyLeft
+        commute_eq <@ %p ∨ %q @> r |> ApplyLeft
         commute_or r q |> ApplyLeft
-        commute_eq <@ %r ||| %p @> <@ %q ||| %r @> |> ApplyLeft
-        commute_or r <@ %p ||| %q @> |> ApplyLeft
-        left_assoc_eq <@ %p = %q @> r <@ %p ||| %q @> |> ApplyLeft
+        commute_eq <@ %r ∨ %p @> <@ %q ∨ %r @> |> ApplyLeft
+        commute_or r <@ %p ∨ %q @> |> ApplyLeft
+        left_assoc_eq <@ %p = %q @> r <@ %p ∨ %q @> |> ApplyLeft
         left_assoc |> ApplyLeft
-        left_assoc_eq <@ %p = %q = %r = (%p ||| %q) @> <@ %q ||| %r @> <@ %r ||| %p @> |> ApplyLeft
+        left_assoc_eq <@ %p = %q = %r = (%p ∨ %q) @> <@ %q ∨ %r @> <@ %r ∨ %p @> |> ApplyLeft
     ]
     
-    /// p |&| q |&| r = p |&| (q |&| r)
-    let right_assoc_and p q r = ident prop_calculus <@ (%p |&| %q |&| %r) = (%p |&| (%q |&| %r)) @> [
+    /// p ∧ q ∧ r = p ∧ (q ∧ r)
+    let right_assoc_and p q r = ident prop_calculus <@ (%p ∧ %q ∧ %r) = (%p ∧ (%q ∧ %r)) @> [
         ident_and_eq_all p q r |> ApplyLeft
-        commute_and p <@ %q |&| %r @> |> R
+        commute_and p <@ %q ∧ %r @> |> R
         ident_and_eq_all q r p |> R
         commute_eq <@ %q = %r @> p |> R
-        left_assoc_eq <@ %p = %q = %r = (%p ||| %q) @> <@ %q ||| %r @> <@ %r ||| %p @> |> ApplyLeft
+        left_assoc_eq <@ %p = %q = %r = (%p ∨ %q) @> <@ %q ∨ %r @> <@ %r ∨ %p @> |> ApplyLeft
         left_assoc_eq p q r |> R
-        commute_or <@ %q ||| %r @> p |> R
+        commute_or <@ %q ∨ %r @> p |> R
         left_assoc_or p q r |> R
-        right_assoc_eq <@ %p = %q = %r @> <@ %q ||| %r @> <@ %r ||| %p @> |> R
-        left_assoc_eq <@ %p = %q = %r @>  <@ %q ||| %r @> <@ %r ||| %p @> |> R
-        right_assoc_eq <@ %p = %q = %r = (%q ||| %r) @> <@ %r ||| %p @> <@ %p ||| %q @> |> R
-        commute_eq <@ (%r ||| %p) @> <@ %p ||| %q @> |> R
+        right_assoc_eq <@ %p = %q = %r @> <@ %q ∨ %r @> <@ %r ∨ %p @> |> R
+        left_assoc_eq <@ %p = %q = %r @>  <@ %q ∨ %r @> <@ %r ∨ %p @> |> R
+        right_assoc_eq <@ %p = %q = %r = (%q ∨ %r) @> <@ %r ∨ %p @> <@ %p ∨ %q @> |> R
+        commute_eq <@ (%r ∨ %p) @> <@ %p ∨ %q @> |> R
         left_assoc |> R
-        left_assoc_eq <@ %p = %q = %r = (%q ||| %r) @> <@ %p ||| %q  @> <@ %r ||| %p @> |> R
-        right_assoc_eq <@ %p = %q = %r @>  <@ %q ||| %r @> <@ %p ||| %q @> |> R
-        commute_eq <@ %q ||| %r @> <@ %p ||| %q @> |> R
-        left_assoc_eq <@ %p = %q = %r @> <@ %p ||| %q @>  <@ (%q ||| %r) @> |> R
+        left_assoc_eq <@ %p = %q = %r = (%q ∨ %r) @> <@ %p ∨ %q  @> <@ %r ∨ %p @> |> R
+        right_assoc_eq <@ %p = %q = %r @>  <@ %q ∨ %r @> <@ %p ∨ %q @> |> R
+        commute_eq <@ %q ∨ %r @> <@ %p ∨ %q @> |> R
+        left_assoc_eq <@ %p = %q = %r @> <@ %p ∨ %q @>  <@ (%q ∨ %r) @> |> R
     ]
 
-    /// p |&| (q |&| r) = p |&| q |&| r
+    /// p ∧ (q ∧ r) = p ∧ q ∧ r
     let left_assoc_and p q r = right_assoc_and p q r |> Commute
 
-    /// p |&| p = p
-    let idemp_and p = ident prop_calculus <@ (%p |&| %p) = %p @> [
+    /// p ∧ p = p
+    let idemp_and p = ident prop_calculus <@ (%p ∧ %p) = %p @> [
         L golden_rule
         right_assoc |> Apply
         idemp_or p |> Taut' |> R
         Apply commute 
     ] 
     
-    /// p |&| true = p
-    let ident_and p = ident prop_calculus <@ (%p |&| true) = %p @> [
+    /// p ∧ true = p
+    let ident_and p = ident prop_calculus <@ (%p ∧ true) = %p @> [
         L golden_rule
         Apply right_assoc
         zero_or p |> R
         R commute
     ]
 
-    /// p |&| false = false
-    let zero_and p = ident prop_calculus <@ (%p |&| false) = false @> [
+    /// p ∧ false = false
+    let zero_and p = ident prop_calculus <@ (%p ∧ false) = false @> [
       golden_rule' p <@ false @> |> ApplyLeft
       ident_or p |> ApplyLeft
       Apply right_assoc
     ]
 
-    /// p |&| (q |&| r) = (p |&| q) |&| (p |&| r)
-    let distrib_and p q r = ident prop_calculus <@ (%p |&| (%q |&| %r)) = ((%p |&| %q) |&| (%p |&| %r)) @> [
+    /// p ∧ (q ∧ r) = (p ∧ q) ∧ (p ∧ r)
+    let distrib_and p q r = ident prop_calculus <@ (%p ∧ (%q ∧ %r)) = ((%p ∧ %q) ∧ (%p ∧ %r)) @> [
         idemp_and p |> Commute |> ApplyLeft |> ApplyLeft'
         right_assoc |> ApplyLeft
         left_assoc_and p q r |> R |> ApplyLeft'
@@ -409,8 +427,8 @@ module PropCalculus =
         left_assoc |> ApplyLeft
     ]
 
-    /// p |&| not p = false
-    let contr p = ident prop_calculus <@ %p |&| not %p = false@> [
+    /// p ∧ not p = false
+    let contr p = ident prop_calculus <@ %p ∧ not %p = false@> [
         golden_rule |> ApplyLeft
         excluded_middle |> R |> ApplyLeft'
         commute_eq p <@ not %p @> |> ApplyLeft
@@ -419,15 +437,15 @@ module PropCalculus =
         right_assoc |> Apply
     ]
 
-    /// (p |&| (p ||| q)) = p
-    let absorb_and p q = ident prop_calculus <@ (%p |&| (%p ||| %q)) = %p @> [
+    /// (p ∧ (p ∨ q)) = p
+    let absorb_and p q = ident prop_calculus <@ (%p ∧ (%p ∨ %q)) = %p @> [
         L golden_rule
         left_assoc_or p  p  q |> ApplyLeft
         idemp_or p |> ApplyLeft
     ]
 
-    /// (p ||| (p |&| q)) = p
-    let absorb_or p q = ident prop_calculus <@ (%p ||| (%p |&| %q)) = %p @> [
+    /// (p ∨ (p ∧ q)) = p
+    let absorb_or p q = ident prop_calculus <@ (%p ∨ (%p ∧ %q)) = %p @> [
         golden_rule |> R |> ApplyLeft'
         distrib |> ApplyLeft
         left_assoc_or p p q |> ApplyLeft
@@ -436,13 +454,13 @@ module PropCalculus =
         idemp_or p |> ApplyLeft
     ]
 
-    /// p |&| (not p ||| q) = (p |&| q)
-    let absorb_and_not p q = ident prop_calculus <@ %p |&| (not %p ||| %q) = (%p |&| %q) @> [
+    /// p ∧ (not p ∨ q) = (p ∧ q)
+    let absorb_and_not p q = ident prop_calculus <@ %p ∧ (not %p ∨ %q) = (%p ∧ %q) @> [
         golden_rule |> ApplyLeft
         left_assoc_or p <@ not %p @> q |> ApplyLeft
         excluded_middle' p |> ApplyLeft
         zero_or q |> CommuteL |> ApplyLeft
-        ident_eq <@ %p = (not %p ||| %q) @> |> ApplyLeft
+        ident_eq <@ %p = (not %p ∨ %q) @> |> ApplyLeft
         commute_or <@ not %p @> q |> ApplyLeft
         ident_or_not_or q p |> ApplyLeft
         left_assoc |> ApplyLeft
@@ -450,35 +468,35 @@ module PropCalculus =
         golden_rule' p q |> Commute |> ApplyLeft
     ]
 
-    /// p ||| (not p |&| q) = (p ||| q)
-    let absorb_or_not p q = ident prop_calculus <@ %p ||| (not %p |&| %q) = (%p ||| %q) @> [
+    /// p ∨ (not p ∧ q) = (p ∨ q)
+    let absorb_or_not p q = ident prop_calculus <@ %p ∨ (not %p ∧ %q) = (%p ∨ %q) @> [
         golden_rule |> ApplyLeft
         commute_or <@ not %p @> q  |> ApplyLeft
-        right_assoc_eq <@ not %p @> q  <@ %q ||| not %p @> |> ApplyLeft
+        right_assoc_eq <@ not %p @> q  <@ %q ∨ not %p @> |> ApplyLeft
         ident_or_or_not q  p |> Commute |> CommuteL |> ApplyLeft
         distrib |> ApplyLeft 
         commute_or q p |> ApplyLeft
         left_assoc_or p p q |> ApplyLeft
         idemp_or p |> ApplyLeft
         excluded_middle |> ApplyLeft
-        ident_eq <@ %p ||| %q @> |> CommuteL |> ApplyLeft
+        ident_eq <@ %p ∨ %q @> |> CommuteL |> ApplyLeft
     ]
     
-    /// p ||| (q |&| r) = ((p ||| q) |&| (p ||| r))
-    let distrib_or_and p q r = ident prop_calculus <@ %p ||| (%q |&| %r) = ((%p ||| %q) |&| (%p ||| %r)) @> [
+    /// p ∨ (q ∧ r) = ((p ∨ q) ∧ (p ∨ r))
+    let distrib_or_and p q r = ident prop_calculus <@ %p ∨ (%q ∧ %r) = ((%p ∨ %q) ∧ (%p ∨ %r)) @> [
         golden_rule |> R |> ApplyLeft'
         distrib |> ApplyLeft
         distrib |> ApplyLeft |> ApplyLeft'
         distrib_or_or p q r |> ApplyLeft
-        golden_rule' <@ %p ||| %q @> <@ %p ||| %r @> |> Commute |> ApplyLeft
+        golden_rule' <@ %p ∨ %q @> <@ %p ∨ %r @> |> Commute |> ApplyLeft
     ]
 
-    /// ((p ||| q) |&| (p ||| r)) = p ||| (q |&| r)
+    /// ((p ∨ q) ∧ (p ∨ r)) = p ∨ (q ∧ r)
     let collect_or_and p q r = distrib_or_and p q r |> Commute
 
-    /// p |&| (q ||| r) = ((p |&| q) ||| (p |&| r))
-    let distrib_and_or p q r =  ident prop_calculus <@ %p |&| (%q ||| %r) = ((%p |&| %q) ||| (%p |&| %r)) @> [
-        distrib_or_and <@ %p |&| %q @> p r|> R
+    /// p ∧ (q ∨ r) = ((p ∧ q) ∨ (p ∧ r))
+    let distrib_and_or p q r =  ident prop_calculus <@ %p ∧ (%q ∨ %r) = ((%p ∧ %q) ∨ (%p ∧ %r)) @> [
+        distrib_or_and <@ %p ∧ %q @> p r|> R
         absorb_or p q |> CommuteL |> R
         distrib_or_and r p q |> CommuteL |> R
         left_assoc |> R
@@ -486,8 +504,8 @@ module PropCalculus =
         absorb_and p r |> R
         commute |> R |> R'
     ]
-    /// not (p |&| q) = not p ||| not q
-    let distrib_not_and p q = ident prop_calculus <@ not (%p |&| %q) = (not %p ||| not %q) @> [
+    /// not (p ∧ q) = not p ∨ not q
+    let distrib_not_and p q = ident prop_calculus <@ not (%p ∧ %q) = (not %p ∨ not %q) @> [
         golden_rule |> Apply |> Apply' |> ApplyLeft'
         distrib |> ApplyLeft
         distrib |> ApplyLeft |> ApplyLeft' 
@@ -498,11 +516,11 @@ module PropCalculus =
         commute_or q p |> R
     ]
 
-    /// not p ||| not q = not (p |&| q) 
+    /// not p ∨ not q = not (p ∧ q) 
     let collect_not_and p q = distrib_not_and p q |> Commute
 
-    /// not (p ||| q) = not p |&| not q
-    let distrib_not_or p q = ident prop_calculus <@ not (%p ||| %q) = (not %p |&| not %q) @> [
+    /// not (p ∨ q) = not p ∧ not q
+    let distrib_not_or p q = ident prop_calculus <@ not (%p ∨ %q) = (not %p ∧ not %q) @> [
         golden_rule' p q |> Commute |> CommuteL |> RightAssoc |> ApplyLeft
         commute |> Apply |> Apply' |> ApplyLeft'
         distrib |> ApplyLeft
@@ -512,11 +530,11 @@ module PropCalculus =
         commute |> R
     ]
 
-    /// not p |&| not q = not (p ||| q)
+    /// not p ∧ not q = not (p ∨ q)
     let collect_not_or p q = distrib_not_or p q |> Commute
     
-    /// p ||| q = (p ||| not q = p)
-    let ident_or_or_not_eq p q = ident prop_calculus <@ (%p ||| %q) = (%p ||| not %q = %p) @> [
+    /// p ∨ q = (p ∨ not q = p)
+    let ident_or_or_not_eq p q = ident prop_calculus <@ (%p ∨ %q) = (%p ∨ not %q = %p) @> [
         left_assoc |> Apply
         collect_or_eq p q <@ not %q @> |> Apply
         commute_eq q <@ not %q @> |> ApplyLeft
@@ -524,9 +542,9 @@ module PropCalculus =
         ident_or p |> ApplyLeft
     ]
 
-    /// p = q = ((p |&| q) ||| (not p |&| not q))
-    let ident_eq_and_or_not p q = ident prop_calculus <@ %p = %q = ((%p |&| %q) ||| (not %p |&| not %q))@> [
-        ident_or_or_not <@ %p |&| %q @> <@ not %p |&| not %q @> |> R
+    /// p = q = ((p ∧ q) ∨ (not p ∧ not q))
+    let ident_eq_and_or_not p q = ident prop_calculus <@ %p = %q = ((%p ∧ %q) ∨ (not %p ∧ not %q))@> [
+        ident_or_or_not <@ %p ∧ %q @> <@ not %p ∧ not %q @> |> R
         distrib_not_and <@ not %p @> <@ not %q @> |> R
         double_negation p |> R
         double_negation q |> R
@@ -539,8 +557,8 @@ module PropCalculus =
         commute |> Apply
     ]
 
-    /// p |&| q = (p |&| not q = not p)
-    let ident_and_and_not p q = ident prop_calculus <@ (%p |&| %q) = (%p |&| not %q = not %p) @> [
+    /// p ∧ q = (p ∧ not q = not p)
+    let ident_and_and_not p q = ident prop_calculus <@ (%p ∧ %q) = (%p ∧ not %q = not %p) @> [
         left_assoc |> Apply
         golden_rule |> ApplyLeft |> ApplyLeft'
         golden_rule' p <@ not %q @> |> ApplyLeft
@@ -549,7 +567,7 @@ module PropCalculus =
         ident_or_or_not_eq p q |> Commute |> ApplyLeft
         left_assoc |> ApplyLeft
         right_assoc |> ApplyLeft |> ApplyLeft'
-        def_true <@ %p ||| %q @> |> Commute |> ApplyLeft
+        def_true <@ %p ∨ %q @> |> Commute |> ApplyLeft
         commute |> ApplyLeft |> ApplyLeft'
         right_assoc |> Apply
         commute |> R
@@ -557,22 +575,22 @@ module PropCalculus =
         symm_eq_not_eq p q |> R
     ]
 
-    /// p |&| (q = r) = ((p |&| q) = (p |&| r) = p)
-    let distrib_and_eq p q r = ident prop_calculus <@ %p |&| (%q = %r) = ((%p |&| %q) = (%p |&| %r) = %p) @> [
+    /// p ∧ (q = r) = ((p ∧ q) = (p ∧ r) = p)
+    let distrib_and_eq p q r = ident prop_calculus <@ %p ∧ (%q = %r) = ((%p ∧ %q) = (%p ∧ %r) = %p) @> [
         golden_rule |> ApplyLeft
         distrib |> R |> ApplyLeft'
         left_assoc |> ApplyLeft |> ApplyLeft'
         left_assoc |> ApplyLeft
         right_assoc |> ApplyLeft
-        commute_eq_eq <@ %p = %q @> r <@ %p ||| %q @> <@ %p ||| %r @> |> ApplyLeft
+        commute_eq_eq <@ %p = %q @> r <@ %p ∨ %q @> <@ %p ∨ %r @> |> ApplyLeft
         golden_rule' p q |> LeftAssoc |> ApplyLeft
         golden_rule' p r |> LeftAssoc |> LeftAssocL |> RightAssoc |> Commute |> ApplyLeft 
         golden_rule' p q |> Commute |> ApplyLeft
         left_assoc |> ApplyLeft
     ]
 
-    /// p |&| (q = p) = (p |&| q)
-    let ident_and_eq p q  = ident prop_calculus <@ %p |&| (%q = %p) = (%p |&| %q) @> [
+    /// p ∧ (q = p) = (p ∧ q)
+    let ident_and_eq p q  = ident prop_calculus <@ %p ∧ (%q = %p) = (%p ∧ %q) @> [
         golden_rule |> ApplyLeft
         distrib |> R |> ApplyLeft'
         left_assoc |> ApplyLeft |> ApplyLeft'
@@ -587,28 +605,28 @@ module PropCalculus =
         golden_rule' p q |> Commute |> CommuteL |> LeftAssocL |> ApplyLeft
     ]
 
-    /// p |&| q |&| (r |&| s) = p |&| r |&| (q |&| s) 
-    let commute_and_and p q r s =  ident prop_calculus <@ ((%p |&| %q) |&| (%r |&| %s)) = ((%p |&| %r) |&| (%q |&| %s)) @> [
-        right_assoc_and p q <@ %r |&| %s @> |> ApplyLeft
+    /// p ∧ q ∧ (r ∧ s) = p ∧ r ∧ (q ∧ s) 
+    let commute_and_and p q r s =  ident prop_calculus <@ ((%p ∧ %q) ∧ (%r ∧ %s)) = ((%p ∧ %r) ∧ (%q ∧ %s)) @> [
+        right_assoc_and p q <@ %r ∧ %s @> |> ApplyLeft
         left_assoc_and q r s |>  L
         commute_and q r |> ApplyLeft
         right_assoc_and r q s |> ApplyLeft
-        left_assoc_and p r <@ %q |&| %s @> |> ApplyLeft
+        left_assoc_and p r <@ %q ∧ %s @> |> ApplyLeft
     ]
 
-    /// p ==> q = (p ||| q = q)
-    let def_implies' p q = id_ax prop_calculus <@ (%p ==> %q) = (%p ||| %q = %q) @>
+    /// p ==> q = (p ∨ q = q)
+    let def_implies' p q = id_ax prop_calculus <@ (%p ==> %q) = (%p ∨ %q = %q) @>
 
-    /// p ==> q = (not p ||| q)
-    let ident_implies_not_or p q = ident prop_calculus <@ %p ==> %q = (not %p ||| %q) @> [
+    /// p ==> q = (not p ∨ q)
+    let ident_implies_not_or p q = ident prop_calculus <@ %p ==> %q = (not %p ∨ %q) @> [
         def_implies |> ApplyLeft
         ident_or_not_or q p |> CommuteL |> R
         commute |> R
         commute |> ApplyLeft |> R'
     ]
 
-    /// p ==> q = ((p |&| q) = p)
-    let ident_implies_eq_and_eq p q = ident prop_calculus <@ %p ==> %q = ((%p |&| %q) = %p) @> [
+    /// p ==> q = ((p ∧ q) = p)
+    let ident_implies_eq_and_eq p q = ident prop_calculus <@ %p ==> %q = ((%p ∧ %q) = %p) @> [
         def_implies |> ApplyLeft
         commute |> Apply
         right_assoc |> Apply
@@ -616,16 +634,16 @@ module PropCalculus =
         left_assoc |> R 
     ]
 
-    /// p |&| (p ==> q) = (p |&| q)
-    let ident_and_implies p q = ident prop_calculus <@ %p |&| (%p ==> %q) = (%p |&| %q) @> [
+    /// p ∧ (p ==> q) = (p ∧ q)
+    let ident_and_implies p q = ident prop_calculus <@ %p ∧ (%p ==> %q) = (%p ∧ %q) @> [
         ident_implies_eq_and_eq p q |> ApplyLeft
-        distrib_and_eq p <@ %p |&| %q @> p |> ApplyLeft
+        distrib_and_eq p <@ %p ∧ %q @> p |> ApplyLeft
         left_assoc |> ApplyLeft |> ApplyLeft' |> ApplyLeft'
         idemp_and p |> ApplyLeft
     ]
 
-    /// p ||| (q ==> p) = (q ==> p)
-    let ident_or_conseq p q = ident prop_calculus <@ %p ||| (%q ==> %p) = (%q ==> %p) @> [
+    /// p ∨ (q ==> p) = (q ==> p)
+    let ident_or_conseq p q = ident prop_calculus <@ %p ∨ (%q ==> %p) = (%q ==> %p) @> [
         def_implies |> R |> ApplyLeft'
         distrib |> ApplyLeft
         commute_or q p |> ApplyLeft
@@ -641,14 +659,14 @@ module PropCalculus =
         commute |> R
         commute |> R |> R'
         distrib_not_and p q |> Commute |> R |> R'
-        symm_eq_not_eq p <@ %p |&| %q @> |> Commute |> R 
+        symm_eq_not_eq p <@ %p ∧ %q @> |> Commute |> R 
         commute |> R
         ident_implies_eq_and_eq p q |> Lemma'
     ]
 
-    /// p ==> (q = r) = ((p |&| q) = (p |&| r))
+    /// p ==> (q = r) = ((p ∧ q) = (p ∧ r))
     let distrib_implies_eq_and p q r =
-        ident prop_calculus <@ %p ==> (%q = %r) = ((%p |&| %q) = (%p |&| %r))@> [
+        ident prop_calculus <@ %p ==> (%q = %r) = ((%p ∧ %q) = (%p ∧ %r))@> [
             ident_implies_eq_and_eq p <@ %q = %r @> |> ApplyLeft
             distrib_and_eq p q r |> ApplyLeft
     ]
@@ -662,16 +680,16 @@ module PropCalculus =
         left_assoc |> R 
         right_assoc |> ApplyLeft |> R'
         def_true p |> Commute |> R
-        ident_eq <@ %p |&| %q @> |> ApplyLeft |> R'
+        ident_eq <@ %p ∧ %q @> |> ApplyLeft |> R'
     ]
 
-    /// p ||| (p ==> q)
-    let or_implies p q = theorem prop_calculus <@ (%p ||| (%p ==> %q)) = true @> [
+    /// p ∨ (p ==> q)
+    let or_implies p q = theorem prop_calculus <@ (%p ∨ (%p ==> %q)) = true @> [
         def_implies |> R |> ApplyLeft'
         distrib |> ApplyLeft
         left_assoc |> ApplyLeft |> ApplyLeft'
         idemp_or p |> ApplyLeft
-        ident_eq <@ (%p ||| %q) = (%p ||| %q) @> |> Apply
+        ident_eq <@ (%p ∨ %q) = (%p ∨ %q) @> |> Apply
     ]
 
     /// p ==> p
@@ -709,12 +727,12 @@ module PropCalculus =
         def_false p |> Apply
     ]
     
-    /// p |&| q ==> r = (p ==> (q ==> r))
-    let shunt' p q r = ident prop_calculus <@ %p |&| %q ==> %r = (%p ==> (%q ==> %r)) @> [
-        ident_implies_eq_and_eq <@ %p |&| %q @> r |> ApplyLeft
+    /// p ∧ q ==> r = (p ==> (q ==> r))
+    let shunt' p q r = ident prop_calculus <@ %p ∧ %q ==> %r = (%p ==> (%q ==> %r)) @> [
+        ident_implies_eq_and_eq <@ %p ∧ %q @> r |> ApplyLeft
         ident_implies_eq_and_eq q r |> R
-        ident_implies_eq_and_eq p <@ %q |&| %r = %q @> |> R
-        distrib_and_eq p <@ %q |&| %r @> q |> R
+        ident_implies_eq_and_eq p <@ %q ∧ %r = %q @> |> R
+        distrib_and_eq p <@ %q ∧ %r @> q |> R
         left_assoc_and p q r |> R
         right_assoc |> R
         def_true p |> Commute |> R
@@ -722,24 +740,24 @@ module PropCalculus =
         commute |> Apply
     ]
 
-    /// (p |&| q) ==> p
-    let strengthen_and p q = theorem prop_calculus <@ (%p |&| %q ) ==> %p @> [
-        ident_eq <@ ((%p |&| %q ) ==> %p) @> |> Apply
+    /// (p ∧ q) ==> p
+    let strengthen_and p q = theorem prop_calculus <@ (%p ∧ %q ) ==> %p @> [
+        ident_eq <@ ((%p ∧ %q ) ==> %p) @> |> Apply
         def_implies |> Apply
         commute |> ApplyLeft
         absorb_or p q |> Lemma'
     ]
     
-    /// p ==> p ||| q 
-    let weaken_or p q = theorem prop_calculus <@ %p ==> (%p ||| %q) @> [
-        ident_eq <@ (%p ==> (%p ||| %q)) @> |> Apply
+    /// p ==> p ∨ q 
+    let weaken_or p q = theorem prop_calculus <@ %p ==> (%p ∨ %q) @> [
+        ident_eq <@ (%p ==> (%p ∨ %q)) @> |> Apply
         def_implies |> Apply
         left_assoc |> ApplyLeft
         idemp_or p |> ApplyLeft
     ]
 
-    /// p |&| q ==> p ||| q
-    let weaken_and_or p q = theorem prop_calculus <@ %p |&| %q ==> %p ||| %q @> [
+    /// p ∧ q ==> p ∨ q
+    let weaken_and_or p q = theorem prop_calculus <@ %p ∧ %q ==> %p ∨ %q @> [
         def_implies |> ApplyLeft
         commute |> ApplyLeft |> ApplyLeft'
         distrib |> ApplyLeft |> ApplyLeft'
@@ -753,7 +771,7 @@ module PropCalculus =
         idemp_or p |> ApplyLeft
         distrib |> ApplyLeft
         commute_or q p |> ApplyLeft
-        idemp_and <@ %p ||| %q @> |> ApplyLeft
+        idemp_and <@ %p ∨ %q @> |> ApplyLeft
         commute |> ApplyLeft |> ApplyLeft'
         distrib |> ApplyLeft |> ApplyLeft'
         idemp_and q |> ApplyLeft
@@ -763,28 +781,28 @@ module PropCalculus =
         idemp_or q |> ApplyLeft
     ]
 
-    /// (p ||| (q |&| r)) ==> (p ||| q)
-    let weaken_or_and p q r = theorem prop_calculus <@ (%p ||| (%q |&| %r)) ==> (%p ||| %q) @> [
+    /// (p ∨ (q ∧ r)) ==> (p ∨ q)
+    let weaken_or_and p q r = theorem prop_calculus <@ (%p ∨ (%q ∧ %r)) ==> (%p ∨ %q) @> [
         distrib |> ApplyLeft
-        strengthen_and <@ %p ||| %q @> <@ %p ||| %r @> |> Lemma
+        strengthen_and <@ %p ∨ %q @> <@ %p ∨ %r @> |> Lemma
     ]
 
-    /// (p |&| q) ==> (p |&| (q ||| r))
-    let weaken_and_and_or p q r = theorem prop_calculus <@ (%p |&| %q)  ==> (%p |&| (%q ||| %r)) @> [
+    /// (p ∧ q) ==> (p ∧ (q ∨ r))
+    let weaken_and_and_or p q r = theorem prop_calculus <@ (%p ∧ %q)  ==> (%p ∧ (%q ∨ %r)) @> [
         distrib |> R
-        weaken_or <@ %p |&| %q @> <@ %p |&| %r @> |> Lemma
+        weaken_or <@ %p ∧ %q @> <@ %p ∧ %r @> |> Lemma
     ]
 
-    /// p |&| (p ==> q) ==> q
-    let modus_ponens p q = theorem prop_calculus <@ %p |&| (%p ==> %q) ==> %q @> [
+    /// p ∧ (p ==> q) ==> q
+    let modus_ponens p q = theorem prop_calculus <@ %p ∧ (%p ==> %q) ==> %q @> [
         ident_and_implies p q |> ApplyLeft
         commute_and p q |> Apply
         strengthen_and q p |> Lemma
     ]
 
-    /// (p ==> r) |&| (q ==> r) = (p ||| q ==> r)
-    let case_analysis_1 p q r = ident prop_calculus <@( %p ==> %r) |&| (%q ==> %r) = (%p ||| %q  ==> %r) @> [
-        ident_implies_not_or <@ %p ||| %q @> r |> R
+    /// (p ==> r) ∧ (q ==> r) = (p ∨ q ==> r)
+    let case_analysis_1 p q r = ident prop_calculus <@( %p ==> %r) ∧ (%q ==> %r) = (%p ∨ %q  ==> %r) @> [
+        ident_implies_not_or <@ %p ∨ %q @> r |> R
         distrib|> ApplyLeft |> R'
         distrib_or_and r <@ not %p @> <@ not %q @> |> CommuteL |> R
         commute |> ApplyLeft |> R'
@@ -793,15 +811,15 @@ module PropCalculus =
         ident_implies_not_or q r |> Commute |> R
     ]
 
-    /// (p ==> r) |&| (not p ==> r) = r
-    let case_analysis_2 p r = ident prop_calculus <@ (%p ==> %r) |&| (not %p ==> %r) = %r @> [
+    /// (p ==> r) ∧ (not p ==> r) = r
+    let case_analysis_2 p r = ident prop_calculus <@ (%p ==> %r) ∧ (not %p ==> %r) = %r @> [
         case_analysis_1 p <@not %p @> r |> Apply
         excluded_middle |> ApplyLeft |> ApplyLeft'
         ident_conseq_true r |> Lemma'
     ]
 
-    /// (p ==> q) |&| (q ==> p) = (p = q)
-    let mutual_implication' p q = ident prop_calculus <@ ((%p ==> %q) |&| (%q ==> %p)) = (%p = %q) @> [
+    /// (p ==> q) ∧ (q ==> p) = (p = q)
+    let mutual_implication' p q = ident prop_calculus <@ ((%p ==> %q) ∧ (%q ==> %p)) = (%p = %q) @> [
         right_assoc |> Apply
         ident_implies_not_or p q |> ApplyLeft
         ident_implies_not_or q p |> ApplyLeft  
@@ -815,22 +833,22 @@ module PropCalculus =
         distrib |> ApplyLeft |> ApplyLeft'
         contr q |> CommuteL |> ApplyLeft
         contr p |> ApplyLeft
-        ident_or <@ %p |&| %q @> |> CommuteL |> ApplyLeft
-        ident_or <@ not %q |&| not %p @> |> CommuteL |> ApplyLeft
+        ident_or <@ %p ∧ %q @> |> CommuteL |> ApplyLeft
+        ident_or <@ not %q ∧ not %p @> |> CommuteL |> ApplyLeft
         commute |> ApplyLeft |> ApplyLeft'
         commute |> Apply
         commute |> R
         ident_eq_and_or_not p q |> ApplyLeft
     ]
 
-    /// (p ==> q) |&| (q ==> p) ==> (p = q)
-    let antisymm_implies p q = theorem prop_calculus <@ (%p ==> %q) |&| (%q ==> %p) ==> (%p = %q) @> [
+    /// (p ==> q) ∧ (q ==> p) ==> (p = q)
+    let antisymm_implies p q = theorem prop_calculus <@ (%p ==> %q) ∧ (%q ==> %p) ==> (%p = %q) @> [
         mutual_implication' p q |> ApplyLeft  
         reflex_implies <@ p = q @> |> Lemma
     ]
 
-    /// (p ==> q) |&| (q ==> r) ==> (p ==> r)
-    let trans_implies p q r = theorem prop_calculus <@ (%p ==> %q) |&| (%q ==> %r) ==> (%p ==> %r) @> [
+    /// (p ==> q) ∧ (q ==> r) ==> (p ==> r)
+    let trans_implies p q r = theorem prop_calculus <@ (%p ==> %q) ∧ (%q ==> %r) ==> (%p ==> %r) @> [
         rshunt |> Apply
         commute |> ApplyLeft
         left_assoc |> ApplyLeft
@@ -840,11 +858,11 @@ module PropCalculus =
         commute |> ApplyLeft
         commute |> ApplyLeft |> ApplyLeft'
         right_assoc |> ApplyLeft
-        strengthen_and r <@ %q |&| %p @> |> Lemma
+        strengthen_and r <@ %q ∧ %p @> |> Lemma
     ]
 
-    /// (p = q) |&| (q ==> r) ==> (p ==> r)
-    let trans_implies_eq p q r = theorem prop_calculus <@ (%p = %q) |&| (%q ==> %r) ==> (%p ==> %r) @> [
+    /// (p = q) ∧ (q ==> r) ==> (p ==> r)
+    let trans_implies_eq p q r = theorem prop_calculus <@ (%p = %q) ∧ (%q ==> %r) ==> (%p ==> %r) @> [
         mutual_implication' p q |> Commute |> ApplyLeft
         rshunt |> Apply
         commute |> ApplyLeft
@@ -860,7 +878,7 @@ module PropCalculus =
         ident_and_implies q r |> ApplyLeft
         left_assoc |> ApplyLeft
         commute |> ApplyLeft
-        strengthen_and r <@ %p |&| %q @> |> Lemma
+        strengthen_and r <@ %p ∧ %q @> |> Lemma
     ]
 
     /// p ==> (q ==> p)
@@ -875,14 +893,14 @@ module PropCalculus =
         idemp_or p |> R |> ApplyLeft'
     ]
 
-    /// (p ==> q) ==> ((p ||| r) ==> (q ||| r)
-    let mono_or p q r = theorem prop_calculus <@ (%p ==> %q) ==> ((%p ||| %r) ==> (%q ||| %r)) @> [
+    /// (p ==> q) ==> ((p ∨ r) ==> (q ∨ r)
+    let mono_or p q r = theorem prop_calculus <@ (%p ==> %q) ==> ((%p ∨ %r) ==> (%q ∨ %r)) @> [
         def_implies |> R
         commute_or_or p r q r |> ApplyLeft |> R'
         idemp_or r |> ApplyLeft |> R'
-        commute_or <@ %p ||| %q @> r |> ApplyLeft |> R'
+        commute_or <@ %p ∨ %q @> r |> ApplyLeft |> R'
         commute_or q r |> R |> R'
-        collect_or_eq r <@ %p ||| %q @> q |> R
+        collect_or_eq r <@ %p ∨ %q @> q |> R
         commute |> R
         def_implies' p q |> Commute |> R
         weaken_or <@ %p ==> %q @> r |> Lemma
