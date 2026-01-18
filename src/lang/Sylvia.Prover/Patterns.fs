@@ -30,7 +30,7 @@ module Patterns =
 
     let (|And|_|) =
         function
-        | SpecificCall <@@ (|&|) @@> (None,_,l::r::[]) 
+        | SpecificCall <@@ (&&&) @@> (None,_,l::r::[]) 
         | SpecificCall <@@ (&&) @@> (None,_,l::r::[]) -> Some (l, r)
         | _ -> None
 

@@ -356,9 +356,17 @@ and Prop (expr:Expr<bool>) =
     
     static member (!!) (l:#Prop) = Prop <@ not %l.Expr @>
 
-    static member (*) (l:Prop, r:Prop) = Prop <@ %l.Expr |&| %r.Expr @>
+    static member (~-) (l:#Prop) = Prop <@ not %l.Expr @>
+
+    static member (|&|) (l:Prop, r:Prop) = Prop <@ %l.Expr && %r.Expr @>
     
-    static member (+) (l:Prop, r:Prop) = Prop <@ %l.Expr ||| %r.Expr @>
+    static member (&&&) (l:Prop, r:Prop) = Prop <@ %l.Expr && %r.Expr @>
+
+    static member (*) (l:Prop, r:Prop) = Prop <@ %l.Expr && %r.Expr @>
+
+    static member (|||) (l:Prop, r:Prop) = Prop <@ %l.Expr || %r.Expr @>
+
+    static member (+) (l:Prop, r:Prop) = Prop <@ %l.Expr || %r.Expr @>
 
     static member (==) (l:Prop, r:Prop) = Prop <@ %l.Expr = %r.Expr @>
 

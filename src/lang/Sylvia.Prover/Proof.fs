@@ -5,6 +5,7 @@ open FSharp.Quotations
 open Descriptions
 open Patterns
 
+/// A theory is a set of axioms and a set of rules that transform one logical formula into another
 type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =
     member val Axioms = axioms
     member val Rules = rules
@@ -103,6 +104,7 @@ type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =
 
 and Axioms = (Expr -> AxiomDescription option)
 
+/// A rule specifies how a formula can be derived from another formula
 and Rule = 
     | Admit of string * (Expr -> Expr) 
     | Derive of string * Proof * (Proof -> Expr -> Expr)
@@ -302,6 +304,7 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
             failwith "Cannot add a step to a completed proof." 
         else Proof(l.Stmt, l.Theory, l.Steps @ r)
 
+/// Represents how a rule is to be applied to a theorem
 and RuleApplication =
     | Apply of Rule
     | ApplyLeft  of Rule

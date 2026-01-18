@@ -6,13 +6,8 @@ open FSharp.Quotations
 type Formula = ReflectedDefinitionAttribute
 
 [<AutoOpen>]
-module Formula =    
+module Formula =        
     (* Logical operators for formulas *)
-    [<Symbol"\u2227">]
-    let (|&|) l r = l && r
-    [<Symbol"\u2228">]
-    let (|||) l r = l || r
-    [<Symbol"\u21D2">]
     let (===>) l r = not l || r
     let (<===) l r = r ===> l
  

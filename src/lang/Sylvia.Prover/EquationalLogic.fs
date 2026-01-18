@@ -34,24 +34,24 @@ module EquationalLogic =
         | Equals(Not(Equals(a1, a2)), Equals(Not(b1), b2)) when sequal2 a1 a2 b1 b2 -> pattern_desc "Distributivity" <@fun x y -> not(x = y) = (not x = y) @> |> Some
         | _ -> None
 
-    /// p ||| not p
+    /// p || not p
     let (|ExcludedMiddle|_|) =
         function
-        | Or(a1, Not(a2)) when sequal a1 a2 -> pattern_desc "the Excluded Middle" <@fun x -> x ||| not x @> |> Some
+        | Or(a1, Not(a2)) when sequal a1 a2 -> pattern_desc "the Excluded Middle" <@fun x -> x || not x @> |> Some
         | _ -> None
 
-    /// p |&| q = p = q = p ||| q 
+    /// p && q = p = q = p || q 
     let (|GoldenRule|_|) =
         function
         | Equals(And(p1, q1), Equals(Equals(p2, q2), Or(p3, q3))) when sequal p1 p2 && sequal p2 p3 && sequal q1 q2 && sequal q2 q3 -> 
-                                                                pattern_desc "the Golden Rule" <@fun x y -> x |&| y = (x = y) = (x ||| y) @> |> Some
+                                                                pattern_desc "the Golden Rule" <@fun x y -> x && y = (x = y) = (x || y) @> |> Some
         | _ -> None
 
-    /// p ===> q = ((p ||| q) = q)
+    /// p ===> q = ((p || q) = q)
     let (|Implication|_|) =
         function
         | Equals(Implies(a1, a2), Equals(Or(a3, a4), a5)) when sequal a1 a3 && sequal a2 a4 && sequal a4 a5 -> 
-                                                                pattern_desc "Implication" <@fun x y-> (x ===> y) = ((x ||| y) = y)@> |> Some
+                                                                pattern_desc "Implication" <@fun x y-> (x ===> y) = ((x || y) = y)@> |> Some
         | Equals(Conseq(a1, a2), Implies(a3, a4)) when sequal2 a1 a2 a4 a3 -> 
                                                                 pattern_desc "Consequence" <@fun x y -> (x <=== y) = (y ===> x) @> |> Some
         
@@ -82,11 +82,11 @@ module EquationalLogic =
         function
         | Equals(And(ForAll(_, b1, R1, P), ForAll(_, b2, R2, Q)), ForAll(_, b3, R3, PQ)) 
             when 
-                vequal' b1 b2 && vequal' b2 b3 && sequal R1 R2 && sequal R2 R3 && sequal <@@ (%%P:bool) |&| (%%Q:bool) @@> PQ ->
+                vequal' b1 b2 && vequal' b2 b3 && sequal R1 R2 && sequal R2 R3 && sequal <@@ (%%P:bool) && (%%Q:bool) @@> PQ ->
                 pattern_desc "Distributivity of \u2200" <@ fun x -> not x @> |> Some
         | Equals(Or(Exists(_, b1, R1, P), Exists(_, b2, R2, Q)), Exists(_, b3, R3, PQ)) 
             when 
-                vequal' b1 b2 && vequal' b2 b3 && sequal R1 R2 && sequal R2 R3 && sequal <@@ (%%P:bool) ||| (%%Q:bool) @@> PQ ->
+                vequal' b1 b2 && vequal' b2 b3 && sequal R1 R2 && sequal R2 R3 && sequal <@@ (%%P:bool) || (%%Q:bool) @@> PQ ->
                 pattern_desc "Distributivity of \u2203" <@ fun x -> not x @> |> Some
         | _ -> None
 
@@ -142,15 +142,15 @@ module EquationalLogic =
         | BinaryOpDef <@ (=) @> <@ (<>) @> <@ (=) @> <@ not @> x // (3.10)
         
         | Assoc <@(=)@> <@ (=) @> x  // (3.1)
-        | Assoc <@(=)@> <@ (|||) @> x // (3.25)
+        | Assoc <@(=)@> <@ (||) @> x // (3.25)
         
         | Symm <@ (=) @> x // (3.2)
-        | Commute <@ (=) @> <@ (|||) @> x // (3.24)
+        | Commute <@ (=) @> <@ (||) @> x // (3.24)
 
-        | Distrib <@(=)@> <@ (|||) @> <@ (=) @> x  // (3.27)
+        | Distrib <@(=)@> <@ (||) @> <@ (=) @> x  // (3.27)
         | DistribNot x // (3.9) 
              
-        | Idempotency <@(=)@> <@ (|||) @> x // (3.26)
+        | Idempotency <@(=)@> <@ (||) @> x // (3.26)
         
         | ExcludedMiddle x // (3.28)
         | GoldenRule x // (3.35)
@@ -179,8 +179,8 @@ module EquationalLogic =
         | Equals(Bool l, Bool r) -> Expr.Value((l = r))
         | NotEquals(Bool l, Bool r) -> Expr.Value(l <> r)
         | Not(Bool l) -> Expr.Value(not l)
-        | Or(Bool l, Bool r) -> Expr.Value(l ||| r)                
-        | And(Bool l, Bool r) -> Expr.Value(l |&| r)
+        | Or(Bool l, Bool r) -> Expr.Value(l || r)                
+        | And(Bool l, Bool r) -> Expr.Value(l && r)
         | Implies(Bool l, Bool r) -> Expr.Value(l ===> r)
         | expr -> expr
     
@@ -188,51 +188,51 @@ module EquationalLogic =
     let _right_assoc =
         function
         | Equals(Equals(a1, a2), a3) -> <@@ (%%a1:bool) = ((%%a2:bool) = (%%a3:bool)) @@>
-        | Or(Or(a1, a2), a3) -> <@@ (%%a1:bool) ||| ((%%a2:bool)||| (%%a3:bool)) @@>
-        | And(And(a1, a2), a3) -> <@@ (%%a1:bool) |&| ((%%a2:bool) |&| (%%a3:bool)) @@>
+        | Or(Or(a1, a2), a3) -> <@@ (%%a1:bool) || ((%%a2:bool) || (%%a3:bool)) @@>
+        | And(And(a1, a2), a3) -> <@@ (%%a1:bool) && ((%%a2:bool) && (%%a3:bool)) @@>
         | expr -> expr 
     
     /// Binary logical operators are left associative.
     let _left_assoc =
         function
         | Equals(a1, Equals(a2, a3)) -> <@@ ((%%a1:bool) = (%%a2:bool)) = (%%a3:bool) @@>
-        | Or(a1, Or(a2, a3)) -> <@@ ((%%a1:bool) ||| (%%a2:bool)) ||| (%%a3:bool) @@>
-        | And(a1, And(a2, a3)) -> <@@ ((%%a1:bool) |&| (%%a2:bool)) |&| (%%a3:bool) @@>
+        | Or(a1, Or(a2, a3)) -> <@@ ((%%a1:bool) || (%%a2:bool)) || (%%a3:bool) @@>
+        | And(a1, And(a2, a3)) -> <@@ ((%%a1:bool) && (%%a2:bool)) && (%%a3:bool) @@>
         | expr -> expr 
     
     /// Binary logical operators commute.
     let _commute =
         function
         | Equals(a1, a2) -> <@@ (%%a2:bool) = (%%a1:bool) @@>
-        | Or(a1, a2) -> <@@ (%%a2:bool) ||| (%%a1:bool) @@>
-        | And(a1, a2) -> <@@ (%%a2:bool) |&| (%%a1:bool) @@>
+        | Or(a1, a2) -> <@@ (%%a2:bool) || (%%a1:bool) @@>
+        | And(a1, a2) -> <@@ (%%a2:bool) && (%%a1:bool) @@>
         | expr -> expr 
     
     /// Distribute logical terms.
     let _distrib =
         function
         | Not(Equals(a1, a2)) -> <@@ not (%%a1:bool) = (%%a2:bool) @@>
-        | Or(a1, Equals(a2, a3)) -> <@@ (((%%a1:bool))  ||| ((%%a2:bool))) = (((%%a1:bool)) ||| ((%%a3:bool))) @@>
-        | Or(p, And(q, r)) -> <@@ ((%%p:bool) ||| (%%q:bool)) |&| ((%%p:bool) ||| (%%r:bool)) @@>
-        | Or(p, Or(q, r)) -> <@@ ((%%p:bool) ||| (%%q:bool)) ||| ((%%p:bool) ||| (%%r:bool)) @@>
-        | And(p, Or(q, r)) -> <@@ ((%%p:bool) |&| (%%q:bool)) ||| ((%%p:bool) |&| (%%r:bool)) @@>
-        | Not(Or(a1, a2)) -> <@@ (not (%%a1:bool)) |&| (not (%%a2:bool)) @@>
-        | Not(And(a1, a2)) -> <@@ (not (%%a1:bool)) ||| (not (%%a2:bool)) @@>
+        | Or(a1, Equals(a2, a3)) -> <@@ (((%%a1:bool))  || ((%%a2:bool))) = (((%%a1:bool)) || ((%%a3:bool))) @@>
+        | Or(p, And(q, r)) -> <@@ ((%%p:bool) || (%%q:bool)) && ((%%p:bool) || (%%r:bool)) @@>
+        | Or(p, Or(q, r)) -> <@@ ((%%p:bool) || (%%q:bool)) || ((%%p:bool) || (%%r:bool)) @@>
+        | And(p, Or(q, r)) -> <@@ ((%%p:bool) && (%%q:bool)) || ((%%p:bool) && (%%r:bool)) @@>
+        | Not(Or(a1, a2)) -> <@@ (not (%%a1:bool)) && (not (%%a2:bool)) @@>
+        | Not(And(a1, a2)) -> <@@ (not (%%a1:bool)) || (not (%%a2:bool)) @@>
         | expr -> expr
     
     /// Collect distributed logical terms.
     let _collect =
         function
         | Equals(Not a1, a2)  -> <@@ not((%%a1:bool) = (%%a2:bool)) @@>
-        | Equals(Or(a1, a2), Or(a3, a4)) when sequal a1 a3 -> <@@ (%%a1:bool) ||| ((%%a2:bool) = (%%a4:bool)) @@>
-        | And(Or(a1, a2), Or(a3, a4)) when sequal a1 a3 -> <@@ (%%a1:bool) ||| ((%%a2:bool) |&| (%%a4:bool)) @@>
-        | Or(And(a1, a2), And(a3, a4)) when sequal a1 a3 -> <@@ (%%a1:bool) |&| ((%%a2:bool) ||| (%%a4:bool)) @@>
-        | Or(Or(a1, a2), Or(a3, a4)) when sequal a1 a3 -> <@@ (%%a1:bool) ||| ((%%a2:bool) ||| (%%a4:bool)) @@>
-        | Or(Not p , Not q) -> <@@ not ((%%p:bool) |&| (%%q:bool)) @@>
-        | And(Not p , Not q) -> <@@ not ((%%p:bool) ||| (%%q:bool)) @@>
+        | Equals(Or(a1, a2), Or(a3, a4)) when sequal a1 a3 -> <@@ (%%a1:bool) || ((%%a2:bool) = (%%a4:bool)) @@>
+        | And(Or(a1, a2), Or(a3, a4)) when sequal a1 a3 -> <@@ (%%a1:bool) || ((%%a2:bool) && (%%a4:bool)) @@>
+        | Or(And(a1, a2), And(a3, a4)) when sequal a1 a3 -> <@@ (%%a1:bool) && ((%%a2:bool) || (%%a4:bool)) @@>
+        | Or(Or(a1, a2), Or(a3, a4)) when sequal a1 a3 -> <@@ (%%a1:bool) || ((%%a2:bool) || (%%a4:bool)) @@>
+        | Or(Not p , Not q) -> <@@ not ((%%p:bool) && (%%q:bool)) @@>
+        | And(Not p , Not q) -> <@@ not ((%%p:bool) || (%%q:bool)) @@>
         | expr -> expr
     
-    /// ||| operator is idempotent.    
+    /// || operator is idempotent.    
     let _idemp =
         function
         | Or(a1, a2) when sequal a1 a2 -> <@@ (%%a2:bool) @@>
@@ -247,12 +247,12 @@ module EquationalLogic =
 
     let _golden_rule =
         function
-        | And(p, q) -> <@@ (%%p:bool) = (%%q:bool) = ((%%p:bool) ||| (%%q:bool)) @@>
+        | And(p, q) -> <@@ (%%p:bool) = (%%q:bool) = ((%%p:bool) || (%%q:bool)) @@>
         | expr -> expr
 
     let _def_implies = 
         function
-        | Implies(p, q) -> <@@ ((%%p:bool) ||| (%%q:bool)) = (%%q:bool) @@>
+        | Implies(p, q) -> <@@ ((%%p:bool) || (%%q:bool)) = (%%q:bool) @@>
         | expr -> expr
 
     let _shunt =
@@ -262,12 +262,12 @@ module EquationalLogic =
 
     let _rshunt =
         function
-        | Implies(p, Implies(q, r)) -> <@@ ((%%p:bool) |&| (%%q:bool)) ===> (%%r:bool) @@>
+        | Implies(p, Implies(q, r)) -> <@@ ((%%p:bool) && (%%q:bool)) ===> (%%r:bool) @@>
         | expr -> expr
 
     let _mutual_implication = 
         function
-        | Equals(p, q) -> <@@ (%%p:bool) ===> (%%q:bool) |&| ((%%q:bool) ===> (%%p:bool)) @@>
+        | Equals(p, q) -> <@@ (%%p:bool) ===> (%%q:bool) && ((%%q:bool) ===> (%%p:bool)) @@>
         | expr -> expr
 
     let _subst_and =
@@ -276,7 +276,7 @@ module EquationalLogic =
             let E' = replace_var_var e f E  
             let e' = Expr.Var e
             let f' = Expr.Var f
-            <@@ ((%%e':bool) = (%%f':bool)) |&| %%E' @@>
+            <@@ ((%%e':bool) = (%%f':bool)) && %%E' @@>
         | expr -> expr
 
     let _subst_implies =
@@ -294,7 +294,7 @@ module EquationalLogic =
             let E' = replace_var_var e f E 
             let e' = Expr.Var e
             let f' = Expr.Var f
-            <@@ ((%%q:bool) |&| ((%%e':bool) = %%f':bool)) ===> %%E' @@>
+            <@@ ((%%q:bool) && ((%%e':bool) = %%f':bool)) ===> %%E' @@>
         | expr -> expr
 
     let _subst_true =
@@ -307,11 +307,11 @@ module EquationalLogic =
             let E' = replace_var_expr p <@ true @> E in 
             let p' = Expr.Var p
             let q' = Expr.Var q
-            <@@ ((%%q':bool) |&| (%%p':bool)) ===> %%E' @@>
+            <@@ ((%%q':bool) && (%%p':bool)) ===> %%E' @@>
         | And(Var p, E) when E |> occurs [p] -> 
             let E' = replace_var_expr p <@ true @> E in 
             let p' = Expr.Var p
-            <@@ (%%p':bool) |&| %%E' @@>
+            <@@ (%%p':bool) && %%E' @@>
         | expr -> expr
 
     let _subst_false =
@@ -324,11 +324,11 @@ module EquationalLogic =
             let E' = replace_var_expr p <@ false @> E in 
             let p' = Expr.Var p
             let q' = Expr.Var q
-            <@@ ((%%p':bool) ||| (%%q':bool)) ===> %%E' @@>
+            <@@ ((%%p':bool) || (%%q':bool)) ===> %%E' @@>
         | Or(Var p, E) when E |> occurs [p] -> 
             let E' = replace_var_expr p <@ false @> E in 
             let p' = Expr.Var p
-            <@@ (%%p':bool) ||| %%E' @@>
+            <@@ (%%p':bool) || %%E' @@>
         | expr -> expr
 
     let _subst_or_and = 
@@ -343,8 +343,8 @@ module EquationalLogic =
         | Bool true -> <@@ false @@>
         | Not p -> let _p = _dual p in <@@ not (%%_p:bool) @@>
         | And(p, q) -> 
-            let _p = _dual p in let _q = _dual q in <@@ (%%_p:bool) ||| (%%_q:bool) @@>
-        | Or(p, q) -> let _p = _dual p in let _q = _dual q in <@@ (%%_p:bool) |&| (%%_q:bool) @@>
+            let _p = _dual p in let _q = _dual q in <@@ (%%_p:bool) || (%%_q:bool) @@>
+        | Or(p, q) -> let _p = _dual p in let _q = _dual q in <@@ (%%_p:bool) && (%%_q:bool) @@>
         | Equals _
         | NotEquals _
         | Implies _
@@ -363,15 +363,15 @@ module EquationalLogic =
         | Not(Conseq(p, q)) -> let _p = _double_neg p in let _q = _double_neg q in <@@ (%%_p:bool) ===> (%%_q:bool) @@>
         | Conseq(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not ((%%_p:bool) ===> (%%_q:bool)) @@>
         | Not(Implies(p, q)) -> let _p = _double_neg p in let _q = _double_neg q in <@@ (%%_p:bool) <=== (%%_q:bool) @@>
-        | And(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not (not(%%_p:bool) ||| (not(%%_q:bool))) @@>
-        | Or(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not (not(%%_p:bool) |&| not (%%_q:bool)) @@>
+        | And(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not (not(%%_p:bool) || (not(%%_q:bool))) @@>
+        | Or(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not (not(%%_p:bool) && not (%%_q:bool)) @@>
         | ForAll(_, bound, range, body) -> let v = vars_to_tuple bound in let q = call <@ exists @> (v::range::(<@@ not (%%body:bool) @@>)::[]) in call <@ not @> (q::[])
         | Exists(_, bound, range, body) -> let v = vars_to_tuple bound in let q = call <@ forall @> (v::range::(<@@ not (%%body:bool) @@>)::[]) in call <@ not @> (q::[]) 
         | expr -> traverse expr _double_neg 
 
     let _distrib_implies =
         function
-        | And(p1, Implies(p2, q)) when sequal p1 p2 -> <@@ (%%p1:bool) |&| (%%q:bool) @@>
+        | And(p1, Implies(p2, q)) when sequal p1 p2 -> <@@ (%%p1:bool) && (%%q:bool) @@>
         | And(p1, Implies(_, p2)) when sequal p1 p2 -> <@@ (%%p1:bool) @@>
         | Or(p1, Implies(p2, q)) when sequal p1 p2 -> <@@ true @@>
         | Or(p1, Implies(q, p2)) when sequal p1 p2 -> <@@ (%%q:bool) ===> (%%p1:bool) @@>
@@ -387,24 +387,24 @@ module EquationalLogic =
     let _collect_forall_and =
         function
         | And(ForAll(_, b1, R, P), ForAll(_, b2, R', Q)) when vequal' b1 b2 && sequal R R' -> 
-            let t = vars_to_tuple b1 in call <@ forall @> (t::R::(<@@(%%P:bool) |&| (%%Q:bool)@@>)::[]) 
+            let t = vars_to_tuple b1 in call <@ forall @> (t::R::(<@@(%%P:bool) && (%%Q:bool)@@>)::[]) 
         | expr -> expr
 
     let _collect_exists_or =
         function
         | Or(Exists(_, b1, R, P), Exists(_, b2, R', Q)) when vequal' b1 b2 && sequal R R' -> 
-            let t = vars_to_tuple b1 in call <@ exists @> (t::R:: (<@@ (%%P:bool) ||| (%%Q:bool) @@>)::[]) 
+            let t = vars_to_tuple b1 in call <@ exists @> (t::R:: (<@@ (%%P:bool) || (%%Q:bool) @@>)::[]) 
         | expr -> expr
 
     let _trade_body = 
         function
         | ForAll(_, x, R, P) -> let v = vars_to_tuple x in call <@ forall @> (v::(<@@ true @@>)::(<@@ (%%R:bool) ===> (%%P:bool)@@>)::[])
-        | Exists(_, x, R, P) -> let v = vars_to_tuple x in call <@ exists @> (v::(<@@ true @@>)::(<@@ (%%R:bool) |&| (%%P:bool)@@>)::[])
+        | Exists(_, x, R, P) -> let v = vars_to_tuple x in call <@ exists @> (v::(<@@ true @@>)::(<@@ (%%R:bool) && (%%P:bool)@@>)::[])
         | expr -> expr
 
     let _distrib_or_forall =
         function
-        | Or(P, ForAll(_, x, N, Q)) when not_occurs_free x P -> let v = vars_to_tuple x in call <@ forall @> (v::N::(<@@ %%P ||| %%Q @@>)::[])
+        | Or(P, ForAll(_, x, N, Q)) when not_occurs_free x P -> let v = vars_to_tuple x in call <@ forall @> (v::N::(<@@ %%P || %%Q @@>)::[])
         | expr -> expr
 
     let _split_range_forall = 
@@ -412,7 +412,7 @@ module EquationalLogic =
         | ForAll(_, x, Or(R1, R2), P) ->  
             let c1 = let v = vars_to_tuple x in call <@ forall @> (v::R1::P::[])
             let c2 = let v = vars_to_tuple x in call <@ forall @> (v::R2::P::[])
-            <@@ (%%c1:bool) |&| (%%c2:bool) @@>
+            <@@ (%%c1:bool) && (%%c2:bool) @@>
         | expr -> expr
 
     let _split_range_exists = 
@@ -420,5 +420,5 @@ module EquationalLogic =
         | Exists(_, x, Or(R1, R2), P) ->  
             let c1 = let v = vars_to_tuple x in call <@ exists @> (v::R1::P::[])
             let c2 = let v = vars_to_tuple x in call <@ exists @> (v::R2::P::[])
-            <@@ (%%c1:bool) ||| (%%c2:bool) @@>
+            <@@ (%%c1:bool) || (%%c2:bool) @@>
         | expr -> expr    
