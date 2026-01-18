@@ -228,8 +228,8 @@ module Z3 =
         (* Quantifiers *)
         | Call(None, Op "forall", Var v::range::body::[]) -> solver.Ctx.MkForall([|(v |> Expr.Var |> create_expr solver)|], create_expr solver (<@@ (%%range:bool) ===> (%%body:bool) @@>)) :> BoolExpr
         | Call(None, Op "forall", PropertyGet (None, arr, [])::range::body::[]) when arr.PropertyType.IsArray -> solver.Ctx.MkForall([|solver.Ctx.MkArrayConst(arr.Name, solver.Ctx.MkIntSort(), (create_sort solver (arr.PropertyType.GetElementType())))|], create_expr solver (<@@ (%%range:bool) ===> (%%body:bool) @@>)) :> BoolExpr
-        | Call(None, Op "exists", Var v::range::body::[]) -> solver.Ctx.MkExists([|(v |> Expr.Var |> create_expr solver)|], create_expr solver (<@@ (%%range:bool) |&| (%%body:bool) @@>)) :> BoolExpr
-        | Call(None, Op "exists", PropertyGet (None, arr, [])::range::body::[]) when arr.PropertyType.IsArray -> solver.Ctx.MkExists([|solver.Ctx.MkArrayConst(arr.Name, solver.Ctx.MkIntSort(), (create_sort solver (arr.PropertyType.GetElementType())))|], create_expr solver (<@@ (%%range:bool) |&| (%%body:bool) @@>)) :> BoolExpr
+        | Call(None, Op "exists", Var v::range::body::[]) -> solver.Ctx.MkExists([|(v |> Expr.Var |> create_expr solver)|], create_expr solver (<@@ (%%range:bool) && (%%body:bool) @@>)) :> BoolExpr
+        | Call(None, Op "exists", PropertyGet (None, arr, [])::range::body::[]) when arr.PropertyType.IsArray -> solver.Ctx.MkExists([|solver.Ctx.MkArrayConst(arr.Name, solver.Ctx.MkIntSort(), (create_sort solver (arr.PropertyType.GetElementType())))|], create_expr solver (<@@ (%%range:bool) && (%%body:bool) @@>)) :> BoolExpr
         | _ -> failwithf "Cannot create Z3 constraint from %A." expr
 
     and internal create_expr (solver:Z3Solver) (expr:FSharp.Quotations.Expr) : Expr =

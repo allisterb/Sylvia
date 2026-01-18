@@ -4,10 +4,9 @@
 #r "C:\\Users\\Allister\\.nuget\\packages\\fparsec\\1.0.3\\lib\\netstandard1.6\FParsecCS.dll"
 #r "C:\\Users\\Allister\\.nuget\\packages\\mathnet.numerics\\4.15.0\\lib\\netstandard2.0\MathNet.Numerics.dll"
 #r "C:\\Users\\Allister\\.nuget\\packages\\mathnet.numerics.fsharp\\4.15.0\\lib\\netstandard2.0\\MathNet.Numerics.FSharp.dll"
-#r @"C:\\Users\\Allister\\.nuget\\packages\\microsoft.z3.x64\4.8.10\\lib\\netstandard1.4\\Microsoft.Z3.dll"
+#r "C:\\Users\\Allister\\.nuget\\packages\\microsoft.z3\\4.12.2\\lib\\netstandard2.0\\Microsoft.Z3.dll"
 #r "C:\\Users\\Allister\\.nuget\\packages\\fsharp.quotations.evaluator\\2.1.0\\lib\\netstandard2.0\\FSharp.Quotations.Evaluator.dll"
 #r "C:\\Users\\Allister\\.nuget\\packages\\csvhelper\\12.1.2\\lib\\netstandard2.0\\CsvHelper.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\fsharp.interop.dynamic\\4.0.3.130\\lib\\netstandard1.6\\FSharp.Interop.Dynamic.dll"
 
 #r "C:\\Users\\Allister\\.nuget\\packages\\unquote\\7.0.1\\lib\\netstandard2.0\\Unquote.dll"
 #r "C:\\Projects\\Sylvia\\src\\Lang\\Sylvia.Expressions\\bin\\Debug\\net10.0\\Expect.NETStandard.dll"
@@ -17,7 +16,6 @@
 #r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\extra\\FunScript.Bindings.JSXGraph\\bin\\Debug\\netstandard2.0\\FunScript.Bindings.Base.dll"
 #r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\extra\\FunScript.Bindings.JSXGraph\\bin\\Debug\\netstandard2.0\\FunScript.Bindings.JSXGraph.dll"
 
-#r "C:\\Projects\\Sylvia\\src\\providers\\Sylvia.Provider.Arithmetic\\src\\Sylvia.Provider.Arithmetic.Runtime\\bin\\Release\\netstandard2.0\\Sylvia.Provider.Arithmetic.Runtime.dll"
 #r "C:\\Projects\\Sylvia\\src\\base\\Sylvia.Collections\\bin\\Debug\\netstandard2.0\\Sylvia.Collections.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\Sylvia.Expressions\\bin\\Debug\\net10.0\\Sylvia.Expressions.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\Sylvia.Prover\\bin\\Debug\\net10.0\\Sylvia.Prover.dll"

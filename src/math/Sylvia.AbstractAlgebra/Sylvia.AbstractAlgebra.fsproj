@@ -25,6 +25,10 @@
     <Compile Include="Definitions\BooleanAlgebra.fs" />
     <Compile Include="Definitions\SetAlgebra.fs" />
     <Compile Include="Definitions\Combination.fs" />
+    <Compile Include="Theories\BooleanAlgebra.fs" />
+    <Compile Include="Theories\SetAlgebra.fs" />
+    <Compile Include="Theories\SetTheory.fs" />
+    <Compile Include="Theories\Integers.fs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -34,6 +38,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\base\Sylvia.Collections\Sylvia.Collections.fsproj" />
     <ProjectReference Include="..\..\lang\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
+    <ProjectReference Include="..\..\lang\Sylvia.Prover\Sylvia.Prover.fsproj" />
   </ItemGroup>
 
 </Project>
