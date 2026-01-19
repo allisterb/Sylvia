@@ -5,7 +5,7 @@ open FSharp.Quotations
 open Descriptions
 open Patterns
 
-/// A theory is a set of axioms and a set of rules that transform one logical formula into another
+/// A theory is a set of axioms and a set of rules that transform one formula into another
 type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =
     member val Axioms = axioms
     member val Rules = rules
@@ -104,11 +104,15 @@ type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =
 
 and Axioms = (Expr -> AxiomDescription option)
 
-/// A rule specifies how a formula can be derived from another formula
+/// A rule specifies how a formula can be transformed into another formula
 and Rule = 
+    /// An admitted rule in a theory
     | Admit of string * (Expr -> Expr) 
-    | Derive of string * Proof * (Proof -> Expr -> Expr)
-    | Deduce of string * Proof * (Proof -> Expr -> Expr) 
+    /// // A derived rule in a theory
+    | Derive of string * Proof * (Proof -> Expr -> Expr) 
+    /// A deduced rule in a theory
+    | Deduce of string * Proof * (Proof -> Expr -> Expr)
+    /// A defined rule in a theory
     | Define of string * (Expr -> Expr)
 with
     member x.Name = 
@@ -337,10 +341,14 @@ with
         | ApplyLeft rule -> 
             match expr with
             | Patterns.Call(o, m, l::r::[]) -> let s = rule.Apply l in binary_call(o, m, s, r)
+            | And(l,r) -> let s = rule.Apply l in Expr.IfThenElse(s, r, Expr.Value(false))
+            | Or(l,r) -> let s = rule.Apply l in Expr.IfThenElse(s, Expr.Value(true), r)
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
         | ApplyRight rule -> 
             match expr with
             | Patterns.Call(o, m, l::r::[]) -> let s = rule.Apply r in binary_call(o, m, l, s)
+            | And(l, r) -> let s = rule.Apply r in Expr.IfThenElse(l, s, Expr.Value(false))
+            | Or(l, r) -> let s = rule.Apply r in Expr.IfThenElse(l, Expr.Value(true), s)
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
         | QuantifierRange rule ->
             match expr with

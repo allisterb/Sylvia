@@ -30,14 +30,14 @@ module Patterns =
 
     let (|And|_|) =
         function
-        | SpecificCall <@@ (&&&) @@> (None,_,l::r::[]) 
         | SpecificCall <@@ (&&) @@> (None,_,l::r::[]) -> Some (l, r)
+        | IfThenElse(l, r, Value(f, _)) when f = false -> Some(l, r)
         | _ -> None
 
     let (|Or|_|) =
-        function
-        | SpecificCall <@@ (|||) @@> (None,_,l::r::[])
+        function        
         | SpecificCall <@@ (||) @@> (None,_,l::r::[]) -> Some (l, r)
+        | IfThenElse(l, Value(t, _), r) when t = true -> Some(l, r)
         | _ -> None
 
     let (|Implies|_|) =
@@ -62,6 +62,8 @@ module Patterns =
     let (|Binary|_|) (op:Expr<'t->'t->'u>) =
         function
         | SpecificCall op (None,_,l::r::[]) when l.Type = typeof<'t> && r.Type = typeof<'t> -> Some (l,r)
+        | And(l,r ) when (getFuncInfo op).Name = "op_BooleanAnd" -> Some(l, r)
+        | Or(l,r ) when (getFuncInfo op).Name = "op_BooleanOr" -> Some(l, r)
         | _ -> None
 
     let (|Binary'|_|) (op:Expr<'t->'u->'u>) =

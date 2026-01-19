@@ -237,7 +237,7 @@ module PropCalculus =
 
     /// (p ∨ p) = p
     let idemp_or p =  id_ax prop_calculus (p ||| p == p) 
-
+  
     /// (p and p) = p
     let idemp_and p = ident prop_calculus ((p &&& p) == p) [
         ApplyLeft golden_rule

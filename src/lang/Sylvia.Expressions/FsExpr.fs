@@ -537,6 +537,8 @@ module FsExpr =
             //| PropertyGet(None, p, []) -> rexpand vars (Expr.Var(Var(p.Name, p.PropertyType)))
             // If the variable has an assignment, then replace it with the expression
             | ExprShape.ShapeVar v when Map.containsKey v vars -> vars.[v]
+
+            //| IfThenElse(l,  r, Value(a, _)) when a = false -> Some(l,r)
             // Else apply rexpand recursively on all sub-expressions
             | _ -> traverse expr (rexpand vars)
           // After expanding, try reducing the expression - we can replace 'let' expressions and applications where the first argument is lambda.
