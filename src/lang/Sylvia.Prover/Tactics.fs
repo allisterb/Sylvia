@@ -74,7 +74,9 @@ module Tactics =
             | _ -> failwith "This theorem is not an identity."
         let l1 = 
             match l with 
-            | Patterns.Call(o, m, l::r::[]) -> binary_call(o, m, r, l)
+            | Patterns.Call(o, m, l::r::[]) -> binary_call(o, m, r, l)                        
+            | And(l,r) -> Expr.IfThenElse(r, l, Expr.Value(false))
+            | Or(l,r) -> Expr.IfThenElse(r, Expr.Value(true), l)
             | _ -> failwith "The LHS of this theorem is not an identity."
 
         let stmt = <@@ ((%%l1:bool)) = (%%r:bool) @@>
@@ -91,6 +93,8 @@ module Tactics =
         let r1 = 
             match r with 
             | Patterns.Call(o, m, l::r::[]) -> binary_call(o, m, r, l)
+            | And(l,r) -> Expr.IfThenElse(r, l, Expr.Value(false))
+            | Or(l,r) -> Expr.IfThenElse(r, Expr.Value(true), l)
             | _ -> failwith "The rHS of this theorem is not an identity."
 
         let stmt = <@@ ((%%l:bool)) = (%%r1:bool) @@>

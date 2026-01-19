@@ -5,7 +5,7 @@ open PropCalculus
 
 let p,q,r = boolvar3 "p" "q" "r"
 
-(q + (q * p)).Expr
+
 
 let ``3.76c`` = theorem prop_calculus ((p * q) ==> (p + q)) [
     def_implies |> apply
