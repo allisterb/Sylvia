@@ -554,7 +554,7 @@ module Proof =
 
     (* Identities *)
 
-    /// An identity thar us true in a theory
+    /// An identity that is true in a theory
     let ident (theory:Theory) (e:Prop) steps =
         let f = e.Expr |> expand in
         match f with
