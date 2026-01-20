@@ -16,15 +16,10 @@ module Formula =
 
     /// Result of symbolic truth-functional operation.
     let truth_value = formula<bool>
-
-    /// Represents a predicate
-    let pred<'t> = (fun (_:'t) -> truth_value)
-    
-    /// Create a predicate with a name
-    let pred'<'t> n = 
+        
+    /// A predicate expression
+    let pred_expr<'t> n = 
         let var = Expr.Var(Var(n, typeof<'t -> bool>)) in <@ %%var:'t->bool @>
-
-    let predi<'a, 't> (x:'a) = (box x) :? 't
 
     (* Quantifiers *)
 

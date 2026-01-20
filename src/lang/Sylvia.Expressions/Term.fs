@@ -399,6 +399,12 @@ and TermHistory =
 and IHistory = 
     abstract member History:TermHistory option
 
+type Pred<'t when 't: equality>(name:string) = 
+    member val Name = name
+    member val Func = pred_expr<'t> name
+
+    member x.Item(arg:Term<'t>) = Expr.Application(x.Func, arg.Expr) |> expand_as<bool> |> Prop
+
 [<RequireQualifiedAccess>]
 module NumericLiteralR = 
   let FromZero() = 0.0 |> real |> exprv |> Scalar

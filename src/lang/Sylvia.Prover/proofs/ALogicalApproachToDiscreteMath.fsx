@@ -5,9 +5,13 @@ open PropCalculus
 
 let p,q,r = boolvar3 "p" "q" "r"
 
+let x = intvar "x"
+let P = Pred<int> "P"
+
+P[x].Expr
 
 
-let ``3.76c`` = theorem prop_calculus ((p * q) ==> (p + q)) [
+let ddd = proof prop_calculus ((p * q) ==> (p + q)) [
     def_implies |> apply
     commute |> apply_left |> recurse_left
     distrib |> apply_left |> recurse_left
@@ -33,6 +37,7 @@ let ``3.76c`` = theorem prop_calculus ((p * q) ==> (p + q)) [
     left_assoc |> apply_left
     idemp_or q |> apply_left
 ]
+left_state ddd
 (*
 let ``ddd`` = ident prop_calculus (p + (q * r) == ((p + q) * (p + r)))  [
     golden_rule |> ApplyRight |> RecurseLeft
