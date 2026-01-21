@@ -399,39 +399,45 @@ and TermHistory =
 and IHistory = 
     abstract member History:TermHistory option
 
-type Pred<'t when 't: equality>(?name:string, ?func:Expr<'t -> bool>) = 
-    member val Name = name
-    member val Var = if name.IsSome then Some(PropVar name.Value) else None
+type Pred<'t when 't: equality>(?func:Expr<'t -> bool>, ?symbol:string) = 
     member val Func = 
-        match (name, func) with
+        match (symbol, func) with
         | Some n, None -> pred_expr<'t> n
-        | None, Some f -> f
-        | Some _, Some _
-        | None, None -> failwith "not supprted"
+        | None, Some f -> f 
+        | Some _, Some f -> f
+        | None, None -> failwith "Either a function expression or symbol or both must be specified for a predicate."
+    member val IsSymbolic = func.IsSome
+    member val Symbol = symbol
+    member val Var = if symbol.IsSome then Some(PropVar symbol.Value) else None
+
     member x.Item(arg:Term<'t>) = Expr.Application(x.Func, arg.Expr) |> expand_as<bool> |> Prop
     
     static member op_Explicit(x:Pred<'t>):Prop = if x.Var.IsSome then x.Var.Value else failwith "The predicate does not have a propositional symbol"
-    //static member (*) (l:Pred<'t>, r:Pred<'t>) = Pred(func= <@ (&&) )
-        
     
-    
-    (*
-    static member (&&&) (l:Prop, r:Prop) = Prop <@ %l.Expr && %r.Expr @>
+    static member (*) (l:Pred<'t>, r:Pred<'t>) =         
+       let func = <@ fun (x:'t) -> (%l.Func) x && (%r.Func) x @>
+       let s (p:Pred<'t>) = match p.Symbol with | Some s -> s | None -> src p.Func
+       let symbol = sprintf "(%s ∧ %s)" (s l) (s r)
+       Pred(func = func, symbol = symbol)
 
-    static member (*) (l:Prop, r:Prop) = Prop <@ %l.Expr && %r.Expr @>
+    static member (+) (l:Pred<'t>, r:Pred<'t>) = 
+       let func = <@ fun (x:'t) -> (%l.Func) x || (%r.Func) x @>
+       let s (p:Pred<'t>) = match p.Symbol with | Some s -> s | None -> src p.Func
+       let symbol = sprintf "(%s ∧ %s)" (s l) (s r)
+       Pred(func = func, symbol = symbol)
 
-    static member (|||) (l:Prop, r:Prop) = Prop <@ %l.Expr || %r.Expr @>
+    static member (==) (l:Pred<'t>, r:Pred<'t>) = 
+       let func = <@ fun (x:'t) -> (%l.Func) x = (%r.Func) x @>
+       let s (p:Pred<'t>) = match p.Symbol with | Some s -> s | None -> src p.Func
+       let symbol = sprintf "(%s = %s)" (s l) (s r)
+       Pred(func = func, symbol = symbol)
 
-    static member (+) (l:Prop, r:Prop) = Prop <@ %l.Expr || %r.Expr @>
+    static member (==>) (l:Pred<'t>, r:Pred<'t>) = 
+       let func = <@ fun (x:'t) -> (%l.Func) x ===> (%r.Func) x @>
+       let s (p:Pred<'t>) = match p.Symbol with | Some s -> s | None -> src p.Func
+       let symbol = sprintf "(%s ⇒ %s)" (s l) (s r)
+       Pred(func = func, symbol = symbol)
 
-    static member (==) (l:Prop, r:Prop) = Prop <@ %l.Expr = %r.Expr @>
-
-    static member (!=) (l:Prop, r:Prop) = Prop <@ %l.Expr <> %r.Expr @>
-
-    static member (==>) (l:Prop, r:Prop) = Prop <@ %l.Expr ===> %r.Expr @>
-
-    static member (<==) (l:Prop, r:Prop) = Prop <@ %r.Expr <=== %l.Expr @>
-    *)
 [<RequireQualifiedAccess>]
 module NumericLiteralR = 
   let FromZero() = 0.0 |> real |> exprv |> Scalar
