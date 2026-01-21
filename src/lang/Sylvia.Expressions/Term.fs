@@ -643,3 +643,6 @@ module Prop =
 
     let boolvar4 p q r s = boolvar p, boolvar q, boolvar r, boolvar s
   
+[<AutoOpen>]
+module Pred =
+    let forall<'t when 't: equality> (x:Term<'t>, R:Pred<'t>, B:Pred<'t>) = Prop <@Formula.forall_expr %(x.Expr) %(R[x].Expr) %(B[x].Expr) @>

@@ -150,12 +150,12 @@ module Patterns =
 
     let (|ForAll|_|) =
         function
-        | Call(None, mi, BoundVars(bound)::range::body::[]) when mi.Name = "forall" -> Some(<@@ forall @@>, bound, range, body)
+        | Call(None, mi, BoundVars(bound)::range::body::[]) when mi.Name = "forall" -> Some(<@@ forall_expr @@>, bound, range, body)
         | _ -> None
 
     let (|Exists|_|) =
         function
-        | Call(None, mi, BoundVars(bound)::range::body::[]) when mi.Name = "exists" -> Some(<@@ exists @@>, bound, range, body)
+        | Call(None, mi, BoundVars(bound)::range::body::[]) when mi.Name = "exists" -> Some(<@@ exists_expr @@>, bound, range, body)
         | _ -> None
 
     let (|Sum|_|) =
@@ -405,7 +405,7 @@ module Patterns =
     let (|OnePoint|_|) =
         function
         | Equals(Quantifier(_,[x], Equals(Var x', E), P), P') when not (occurs_free [x] E) && vequal x x' && sequal P' (subst_var_value x E P) -> 
-            pattern_desc "the One-Point Rule" <@ fun x E P -> (forall x (x = E) P) = P @> |> Some
+            pattern_desc "the One-Point Rule" <@ fun x E P -> (forall_expr x (x = E) P) = P @> |> Some
         | _ -> None
 
     let (|Nesting|_|) =

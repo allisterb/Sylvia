@@ -10,6 +10,8 @@ let P = Pred<int> (symbol="P")
 let Q = Pred<int> (<@ fun x -> x > 2 @>, symbol="Q")
 
 (P == Q).Func
+
+forall (x, P, Q + Q)
 let p1 = proof prop_calculus ((p * q) ==> (p + q)) [
     def_implies |> apply
     left_assoc_or (p * q) p q |> apply_left

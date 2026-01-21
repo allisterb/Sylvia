@@ -27,13 +27,13 @@ module Formula =
     let quantifier<'t,'u> (op:'t -> 't -> 't) (bound:'u) (range:bool) (body:'t) = formula<'t>
 
     [<Symbol "\u2200">]
-    let forall<'u> (bound:'u) (range:bool) (body:bool) = truth_value
+    let forall_expr<'u> (bound:'u) (range:bool) (body:bool) = truth_value
     [<ReflectedDefinition>]
-    let forall'<'u> (bound:'u) (body:bool) = forall bound true body
+    let forall_expr2<'u> (bound:'u) (body:bool) = forall_expr bound true body
     [<Symbol "\u2203">]
-    let exists<'u> (bound:'u) (range:bool) (body:bool) = truth_value
+    let exists_expr<'u> (bound:'u) (range:bool) (body:bool) = truth_value
     [<ReflectedDefinition>]
-    let exists'<'u> (bound:'u) (body:bool) = exists bound true body
+    let exists'<'u> (bound:'u) (body:bool) = exists_expr bound true body
 
     /// Generic quantifier with sum semantics.
     let sum<'t,'u> (op:'t -> 't -> 't) (symbol: string) (bound:'u) (range:bool) (body:'t) = formula<'t>

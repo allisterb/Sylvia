@@ -131,7 +131,7 @@ module EquationalLogic =
     let (|UniversalInstantiation|_|) =
         function
         | Implies(ForAll(_, [x], Bool true, P), P') when is_inst_expr x P P' && not_occurs_free [x] P -> 
-                pattern_desc "Universal Instantiation" <@ fun x P P' -> (forall x true P) = P' @> |> Some
+                pattern_desc "Universal Instantiation" <@ fun x P P' -> (forall_expr x true P) = P' @> |> Some
         | _ -> None
 
     let equational_logic_axioms = 
@@ -365,8 +365,8 @@ module EquationalLogic =
         | Not(Implies(p, q)) -> let _p = _double_neg p in let _q = _double_neg q in <@@ (%%_p:bool) <=== (%%_q:bool) @@>
         | And(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not (not(%%_p:bool) || (not(%%_q:bool))) @@>
         | Or(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not (not(%%_p:bool) && not (%%_q:bool)) @@>
-        | ForAll(_, bound, range, body) -> let v = vars_to_tuple bound in let q = call <@ exists @> (v::range::(<@@ not (%%body:bool) @@>)::[]) in call <@ not @> (q::[])
-        | Exists(_, bound, range, body) -> let v = vars_to_tuple bound in let q = call <@ forall @> (v::range::(<@@ not (%%body:bool) @@>)::[]) in call <@ not @> (q::[]) 
+        | ForAll(_, bound, range, body) -> let v = vars_to_tuple bound in let q = call <@ exists_expr @> (v::range::(<@@ not (%%body:bool) @@>)::[]) in call <@ not @> (q::[])
+        | Exists(_, bound, range, body) -> let v = vars_to_tuple bound in let q = call <@ forall_expr @> (v::range::(<@@ not (%%body:bool) @@>)::[]) in call <@ not @> (q::[]) 
         | expr -> traverse expr _double_neg 
 
     let _distrib_implies =
@@ -393,32 +393,32 @@ module EquationalLogic =
     let _collect_exists_or =
         function
         | Or(Exists(_, b1, R, P), Exists(_, b2, R', Q)) when vequal' b1 b2 && sequal R R' -> 
-            let t = vars_to_tuple b1 in call <@ exists @> (t::R:: (<@@ (%%P:bool) || (%%Q:bool) @@>)::[]) 
+            let t = vars_to_tuple b1 in call <@ exists_expr @> (t::R:: (<@@ (%%P:bool) || (%%Q:bool) @@>)::[]) 
         | expr -> expr
 
     let _trade_body = 
         function
-        | ForAll(_, x, R, P) -> let v = vars_to_tuple x in call <@ forall @> (v::(<@@ true @@>)::(<@@ (%%R:bool) ===> (%%P:bool)@@>)::[])
-        | Exists(_, x, R, P) -> let v = vars_to_tuple x in call <@ exists @> (v::(<@@ true @@>)::(<@@ (%%R:bool) && (%%P:bool)@@>)::[])
+        | ForAll(_, x, R, P) -> let v = vars_to_tuple x in call <@ forall_expr @> (v::(<@@ true @@>)::(<@@ (%%R:bool) ===> (%%P:bool)@@>)::[])
+        | Exists(_, x, R, P) -> let v = vars_to_tuple x in call <@ exists_expr @> (v::(<@@ true @@>)::(<@@ (%%R:bool) && (%%P:bool)@@>)::[])
         | expr -> expr
 
     let _distrib_or_forall =
         function
-        | Or(P, ForAll(_, x, N, Q)) when not_occurs_free x P -> let v = vars_to_tuple x in call <@ forall @> (v::N::(<@@ %%P || %%Q @@>)::[])
+        | Or(P, ForAll(_, x, N, Q)) when not_occurs_free x P -> let v = vars_to_tuple x in call <@ forall_expr @> (v::N::(<@@ %%P || %%Q @@>)::[])
         | expr -> expr
 
     let _split_range_forall = 
         function
         | ForAll(_, x, Or(R1, R2), P) ->  
-            let c1 = let v = vars_to_tuple x in call <@ forall @> (v::R1::P::[])
-            let c2 = let v = vars_to_tuple x in call <@ forall @> (v::R2::P::[])
+            let c1 = let v = vars_to_tuple x in call <@ forall_expr @> (v::R1::P::[])
+            let c2 = let v = vars_to_tuple x in call <@ forall_expr @> (v::R2::P::[])
             <@@ (%%c1:bool) && (%%c2:bool) @@>
         | expr -> expr
 
     let _split_range_exists = 
         function
         | Exists(_, x, Or(R1, R2), P) ->  
-            let c1 = let v = vars_to_tuple x in call <@ exists @> (v::R1::P::[])
-            let c2 = let v = vars_to_tuple x in call <@ exists @> (v::R2::P::[])
+            let c1 = let v = vars_to_tuple x in call <@ exists_expr @> (v::R1::P::[])
+            let c2 = let v = vars_to_tuple x in call <@ exists_expr @> (v::R2::P::[])
             <@@ (%%c1:bool) || (%%c2:bool) @@>
         | expr -> expr    
