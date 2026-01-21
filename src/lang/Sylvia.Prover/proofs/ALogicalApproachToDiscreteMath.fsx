@@ -6,12 +6,15 @@ open PropCalculus
 let p,q,r = boolvar3 "p" "q" "r"
 
 let x = intvar "x"
+
+let c = intconst "c"
+x + 3
 let P = Pred<int> (symbol="P")
 let Q = Pred<int> (<@ fun x -> x > 2 @>, symbol="Q")
 
 (P == Q).Func
 
-forall (x, P, Q + Q)
+forall (x, P)
 let p1 = proof prop_calculus ((p * q) ==> (p + q)) [
     def_implies |> apply
     left_assoc_or (p * q) p q |> apply_left

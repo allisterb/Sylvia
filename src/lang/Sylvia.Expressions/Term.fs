@@ -293,14 +293,28 @@ and Scalar<'t when 't: equality and 't :> ValueType and 't :> IEquatable<'t>> (e
     static member (+>) (l:ScalarVar<real>, r:real)  = ScalarVarRelation<real>(l, r |> exprv |> Scalar<real>, <@ (>) @>)
     
 and ScalarVar<'t when 't: equality and 't :> ValueType and 't :> IEquatable<'t>> (expr:Expr<'t>, ?label:string) = 
-    inherit Scalar<'t>(expr)
+    inherit TermVar<'t>(defaultArg label (src expr))
+    
     new(n:string, ?label:string) = ScalarVar<'t>(Expr.Var(Var(n, typeof<'t>)) |> expand_as<'t>, ?label=label)
+    
     member x.Name = src expr
+    
     member val Label = (defaultArg label (src expr)) with get,set 
+    
     member x.Var = match x.Expr with | Var v -> v | _ -> failwith ""
+    
     member x.Item(i:IndexVar) = ScalarIndexedVar<'t>(x, i)
+    
     member x.Item(i:int) = ScalarVar<'t>(x.Name + i.ToString())
+    
     member internal x.Item(e:Expr<int>) = Unchecked.defaultof<'t>
+    
+    static member op_Implicit(v:ScalarVar<'t>) : Scalar<'t> = Scalar<'t>(v.Expr)
+    
+    static member (+) (l:Scalar<'t>, r:ScalarVar<'t>) = call_add l.Expr r.Expr |> expand_as<'t> |> simplifye |> Scalar<'t>    
+    
+    static member (+) (l:ScalarVar<'t>, r:Scalar<'t>) = call_add l.Expr r.Expr |> expand_as<'t> |> simplifye |> Scalar<'t>
+
 
 and ScalarIndexedVar<'t when 't: equality and 't :> ValueType and 't :> IEquatable<'t>>(var:ScalarVar<'t>, index:IndexVar) =
     inherit ScalarVar<'t>(<@ var.[index.Expr] @>)
@@ -645,4 +659,8 @@ module Prop =
   
 [<AutoOpen>]
 module Pred =
-    let forall<'t when 't: equality> (x:Term<'t>, R:Pred<'t>, B:Pred<'t>) = Prop <@Formula.forall_expr %(x.Expr) %(R[x].Expr) %(B[x].Expr) @>
+    let symbolic_pred<'t when 't:equality> s = Pred<'t>(symbol=s)
+    
+    let forall<'t when 't: equality> (x:TermVar<'t>, B:Pred<'t>) = Prop <@Formula.forall_expr %(x.Expr) %(T.Expr) %(B[x].Expr) @>
+
+    let forall'<'t when 't: equality> (x:Term<'t>, R:Pred<'t>, B:Pred<'t>) = Prop <@Formula.forall_expr %(x.Expr) %(R[x].Expr) %(B[x].Expr) @>
