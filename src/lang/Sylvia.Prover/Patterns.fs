@@ -150,12 +150,12 @@ module Patterns =
 
     let (|ForAll|_|) =
         function
-        | Call(None, mi, BoundVars(bound)::range::body::[]) when mi.Name = "forall" -> Some(<@@ forall_expr @@>, bound, range, body)
+        | Call(None, mi, BoundVars(bound)::range::body::[]) when mi.Name = "forall_expr" -> Some(<@@ forall_expr @@>, bound, range, body)
         | _ -> None
 
     let (|Exists|_|) =
         function
-        | Call(None, mi, BoundVars(bound)::range::body::[]) when mi.Name = "exists" -> Some(<@@ exists_expr @@>, bound, range, body)
+        | Call(None, mi, BoundVars(bound)::range::body::[]) when mi.Name = "exists_expr" -> Some(<@@ exists_expr @@>, bound, range, body)
         | _ -> None
 
     let (|Sum|_|) =

@@ -2,6 +2,7 @@
 
 open Sylvia
 open PropCalculus
+open PredCalculus
 
 let p,q,r = boolvar3 "p" "q" "r"
 
@@ -10,21 +11,7 @@ let x = intvar "x"
 let c = intconst "c"
 x + 3
 let P = Pred<int> (symbol="P")
+let N = symbolic_pred<int> "N"
 let Q = Pred<int> (<@ fun x -> x > 2 @>, symbol="Q")
 
-P[c]
-(P == Q).Func
-
-forall (x, P)
-let p1 = proof prop_calculus ((p * q) ==> (p + q)) [
-    def_implies |> apply
-    left_assoc_or (p * q) p q |> apply_left
-    commute_or (p * q) p |> apply_left |> recurse_left
-    absorb_or p q |> apply_left |> recurse_left
-]
-
-let j = def prop_calculus (p == r)
-
-let p2 = proof prop_calculus (p == r) [
-    apply j
-]
+theorem pred_calculus (forall (x, N, P) == forall' (x, N ==> P)) []

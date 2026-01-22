@@ -37,8 +37,9 @@ module PredCalculus =
     (* Theorems *)
 
     /// forall x N P = (forall x true (N ==> P))
-    let trade_forall_implies (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) = id_ax pred_calculus (forall (x, N, P) == forall' (x, (N[x] ==> P[x])))
+    let trade_forall_implies (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) = id_ax pred_calculus (forall (x, N, P) == forall' (x, N ==> P))
         
+    (*
     /// forall x (Q |&| N) P = (forall x Q (N ==> P))
     let trade_forall_and_implies x Q N P = ident pred_calculus <@ forall %x (%Q |&| %N) %P = (forall %x %Q (%N ==> %P)) @> [
         trade_forall_implies x <@ %Q |&| %N @> P |> L
@@ -244,7 +245,7 @@ module PredCalculus =
         distrib_exists_or' x N P Q |> R 
         weaken_or <@ exists %x %N %P @> <@ exists %x %N %Q @> |> Lemma
     ]
-
+    *)
     (*
     /// exists' x (forall' y P) ==> (forall' y (exists' x P))
     let exists_forall_interchange' x y P= theorem pred_calculus <@ exists' %x (forall' %y %P) ==> (forall' %y (exists' %x %P)) @> [        
