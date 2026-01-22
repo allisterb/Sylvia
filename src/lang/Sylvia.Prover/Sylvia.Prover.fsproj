@@ -21,9 +21,6 @@
   </ItemGroup>
 
 
-  <ItemGroup />
-
-
   <ItemGroup>
     <ProjectReference Include="..\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
   </ItemGroup>

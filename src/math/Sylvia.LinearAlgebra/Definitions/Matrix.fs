@@ -128,6 +128,12 @@ type Matrix<'t when 't: equality and 't:> ValueType and 't : struct and 't: (new
     static member (*) (l: Matrix<'t>, r: Scalar<'t>) = 
         l.Rows |> Array.map (fun v -> v * r) |> Matrix<'t>
 
+    static member (*) (l: ScalarVar<'t>, r: Matrix<'t>) = 
+        r.Rows |> Array.map ((*) l) |> Matrix<'t> 
+
+    static member (*) (l: Matrix<'t>, r: ScalarVar<'t>) = 
+        l.Rows |> Array.map (fun v -> v * r) |> Matrix<'t>
+
     static member (*) (l:Matrix<'t>, r:Vector<'t>) =
         [| for i in 0..l.Dim0 - 1 -> l.Rows.[i] * r |] |> Array.map sexpr |> Vector<'t>
 

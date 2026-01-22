@@ -33,6 +33,6 @@
 #r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.RealAnalysis\\bin\\Debug\\net10.0\\Sylvia.RealAnalysis.dll"
 #r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.Statistics\\bin\\Debug\\net10.0\\Sylvia.Statistics.dll"
 
-
+#nowarn "3391"
 
 

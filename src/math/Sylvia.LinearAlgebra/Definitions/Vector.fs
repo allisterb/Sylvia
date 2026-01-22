@@ -99,10 +99,19 @@ type Vector<'t when 't: equality and 't:> ValueType and 't : struct and 't: (new
     static member (*) (l: Scalar<'t>, r: Vector<'t>) = 
         r.Expr |> Array.map(fun e -> call_mul (l.Expr) e  |> expand_as<'t> |> simplifye) |> Vector<'t>
 
+    static member (*) (l: ScalarVar<'t>, r: Vector<'t>) = 
+        r.Expr |> Array.map(fun e -> call_mul (l.Expr) e  |> expand_as<'t> |> simplifye) |> Vector<'t>
+
     static member (*) (l: Vector<'t>, r: Scalar<'t>) = 
         l.Expr |> Array.map(fun e -> call_mul e (r.Expr) |> expand_as<'t> |> simplifye) |> Vector<'t>
 
+    static member (*) (l: Vector<'t>, r: ScalarVar<'t>) = 
+        l.Expr |> Array.map(fun e -> call_mul e (r.Expr) |> expand_as<'t> |> simplifye) |> Vector<'t>
+
     static member (/) (l: Vector<'t>, r: Scalar<'t>) = 
+        l.Expr |> Array.map(fun e -> call_div e (r.Expr) |> expand_as<'t> |> simplifye) |> Vector<'t>
+
+    static member (/) (l: Vector<'t>, r: ScalarVar<'t>) = 
         l.Expr |> Array.map(fun e -> call_div e (r.Expr) |> expand_as<'t> |> simplifye) |> Vector<'t>
 
     static member (*) (l: Vector<'t>, r: 't) : Vector<'t> = let r' = Scalar<'t>(exprv r) in l * r' 
@@ -113,7 +122,6 @@ type Vector<'t when 't: equality and 't:> ValueType and 't : struct and 't: (new
         l.Expr |> Array.map(call_neg >> expand_as<'t> >> simplifye) |> Vector<'t>
 
 type Vec = Vector<real>
-
 
 module Vector =
     let vec (data:obj seq) = data |> Seq.toArray |> realterms |> Vec 
