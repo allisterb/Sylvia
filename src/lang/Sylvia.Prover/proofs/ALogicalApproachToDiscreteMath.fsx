@@ -12,6 +12,7 @@ x + 3
 let P = Pred<int> (symbol="P")
 let Q = Pred<int> (<@ fun x -> x > 2 @>, symbol="Q")
 
+P[c]
 (P == Q).Func
 
 forall (x, P)
