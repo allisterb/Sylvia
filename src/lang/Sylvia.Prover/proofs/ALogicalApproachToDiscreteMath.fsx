@@ -4,6 +4,7 @@ open Sylvia
 open PropCalculus
 open PredCalculus
 
+
 let p,q,r = boolvar3 "p" "q" "r"
 
 let x = intvar "x"
@@ -14,4 +15,6 @@ let P = Pred<int> (symbol="P")
 let N = symbolic_pred<int> "N"
 let Q = Pred<int> (<@ fun x -> x > 2 @>, symbol="Q")
 
+( N ==> P).Func
+//(P ==> Q).F
 theorem pred_calculus (forall (x, N, P) == forall' (x, N ==> P)) []

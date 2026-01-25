@@ -570,36 +570,39 @@ type Pred<'t when 't: equality>(?func:Expr<'t -> bool>, ?symbol:string) =
         | None, Some f -> f 
         | Some _, Some f -> f
         | None, None -> failwith "Either a function expression or symbol or both must be specified for a predicate."
-    member val IsSymbolic = func.IsSome
-    member val Symbol = symbol
-    member val Var = if symbol.IsSome then Some(PropVar symbol.Value) else None
+    member val IsSymbolic = not func.IsSome
+    member x.Symbol = match symbol with | Some s -> s | None -> src x.Func    
+    member x.Prop:Prop = 
+        match x.Func with
+        | Var v -> PropVar v.Name
+        | Lambda (v, b) -> b |> expand_as<bool> |> Prop
+        | _ -> failwith "Unknown predicate function expression"
+
+    override x.ToString() = x.Prop.ToString()
 
     member x.Item(arg:Term<'t>) = Expr.Application(x.Func, arg.Expr) |> expand_as<bool> |> Prop
     
-    static member op_Explicit(x:Pred<'t>):Prop = if x.Var.IsSome then x.Var.Value else failwith "The predicate does not have a propositional symbol"
+    static member op_Implicit(expr:Expr<'t -> bool>) :Pred<'t> = Pred<'t> expr
+    static member op_Explicit(x:Pred<'t>):Prop = x.Prop
     
     static member (*) (l:Pred<'t>, r:Pred<'t>) =         
-       let func = <@ fun (x:'t) -> (%l.Func) x && (%r.Func) x @>
-       let s (p:Pred<'t>) = match p.Symbol with | Some s -> s | None -> src p.Func
-       let symbol = sprintf "(%s ∧ %s)" (s l) (s r)
+       let func = <@ fun (x:'t) -> (%l.Prop.Expr) && (%r.Prop.Expr) @>
+       let symbol = sprintf "(%s ∧ %s)" l.Symbol r.Symbol
        Pred(func = func, symbol = symbol)
 
     static member (+) (l:Pred<'t>, r:Pred<'t>) = 
-       let func = <@ fun (x:'t) -> (%l.Func) x || (%r.Func) x @>
-       let s (p:Pred<'t>) = match p.Symbol with | Some s -> s | None -> src p.Func
-       let symbol = sprintf "(%s ∧ %s)" (s l) (s r)
+       let func = <@ fun (x:'t) -> (%l.Prop.Expr)  || (%r.Prop.Expr) @>
+       let symbol = sprintf "(%s ∨ %s)" l.Symbol r.Symbol
        Pred(func = func, symbol = symbol)
 
     static member (==) (l:Pred<'t>, r:Pred<'t>) = 
        let func = <@ fun (x:'t) -> (%l.Func) x = (%r.Func) x @>
-       let s (p:Pred<'t>) = match p.Symbol with | Some s -> s | None -> src p.Func
-       let symbol = sprintf "(%s = %s)" (s l) (s r)
+       let symbol = sprintf "(%s = %s)" l.Symbol r.Symbol
        Pred(func = func, symbol = symbol)
 
     static member (==>) (l:Pred<'t>, r:Pred<'t>) = 
        let func = <@ fun (x:'t) -> (%l.Func) x ===> (%r.Func) x @>
-       let s (p:Pred<'t>) = match p.Symbol with | Some s -> s | None -> src p.Func
-       let symbol = sprintf "(%s ⇒ %s)" (s l) (s r)
+       let symbol = sprintf "(%s ⇒ %s)" l.Symbol r.Symbol
        Pred(func = func, symbol = symbol)
 
 [<RequireQualifiedAccess>]
@@ -811,6 +814,6 @@ module Prop =
 module Pred =
     let symbolic_pred<'t when 't:equality> s = Pred<'t>(symbol=s)
     
-    let forall'<'t when 't: equality> (x:TermVar<'t>, B:Pred<'t>) = Prop <@Formula.forall_expr %(x.Expr) %(T.Expr) %(B[x].Expr) @>
+    let forall'<'t when 't: equality> (x:TermVar<'t>, B:Pred<'t>) = Prop <@ forall_expr %(x.Expr) %(T.Expr) %(B[x].Expr) @>
 
-    let forall<'t when 't: equality> (x:Term<'t>, R:Pred<'t>, B:Pred<'t>) = Prop <@Formula.forall_expr %(x.Expr) %(R[x].Expr) %(B[x].Expr) @>
+    let forall<'t when 't: equality> (x:Term<'t>, R:Pred<'t>, B:Pred<'t>) = Prop <@ forall_expr %(x.Expr) %(R[x].Expr) %(B[x].Expr) @>

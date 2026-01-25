@@ -148,9 +148,16 @@ module Patterns =
         | Call(Some h, mi,  BoundVars(bound)::[]) when mi.Name = "Item" -> Some(h, bound)
         | _ -> None
 
+    let (|Predicate|_|) =
+        function
+        | Value(_, t) as v when t = typeof<bool> -> Some v
+        | Var v as s when v.Type = typeof<_->bool> -> Some s
+        | Lambda(_, b) as l when b.Type = typeof<bool> -> Some l
+        | _ -> None
+
     let (|ForAll|_|) =
         function
-        | Call(None, mi, BoundVars(bound)::range::body::[]) when mi.Name = "forall_expr" -> Some(<@@ forall_expr @@>, bound, range, body)
+        | Call(None, mi, BoundVars(bound)::Predicate(range)::Predicate(body)::[]) when mi.Name = "forall_expr" -> Some(<@@ forall_expr @@>, bound, range, body)
         | _ -> None
 
     let (|Exists|_|) =
