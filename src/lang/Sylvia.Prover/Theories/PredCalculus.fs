@@ -39,14 +39,20 @@ module PredCalculus =
     /// forall x N P = (forall x true (N ==> P))
     let trade_forall_implies (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) = id_ax pred_calculus (forall (x, N, P) == forall' (x, N ==> P))
         
-    (*
     /// forall x (Q |&| N) P = (forall x Q (N ==> P))
-    let trade_forall_and_implies x Q N P = ident pred_calculus <@ forall %x (%Q |&| %N) %P = (forall %x %Q (%N ==> %P)) @> [
-        trade_forall_implies x <@ %Q |&| %N @> P |> L
-        shunt |> QB |> L'
-        trade_forall_implies x Q  <@ %N==> %P @> |> Commute |> L
+    let trade_forall_and_implies (x:TermVar<'t>) (Q:Pred<'t>) (N:Pred<'t>) (P:Pred<'t>) = ident pred_calculus (forall(x, Q * N, P) == (forall (x, Q, N ==> P))) [
+        trade_forall_implies x (Q * N) P |> apply_left
+        shunt |> apply_body |> branch_left
+        trade_forall_implies x Q  (N==>P) |> Commute |> apply_left
     ]
 
+    let trade_forall_or_not (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) = ident pred_calculus (forall (x, N, P) == (P[x] + forall'(x, -N))) [
+        distrib_or_forall |> apply_right
+        commute_or P[x] -N[x] |> apply_right
+        ident_implies_not_or N[x] P[x] |> Commute |> apply_right 
+    ]
+   
+       (*
     /// forall x N P = (P ||| forall x true (not N))
     let trade_forall_or_not x N P = ident pred_calculus <@ forall %x %N %P = (%P ||| forall' %x (not %N)) @> [
         distrib_or_forall |> R
