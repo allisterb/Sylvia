@@ -20,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\math\cas\Sylvia.CAS.Maxima\Sylvia.CAS.Maxima.fsproj" />
+    <ProjectReference Include="..\..\src\lang\cas\Sylvia.CAS.Maxima\Sylvia.CAS.Maxima.fsproj" />
   </ItemGroup>
 
 </Project>

@@ -23,8 +23,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\base\Sylvia.Collections\Sylvia.Collections.fsproj" />
     <ProjectReference Include="..\..\base\Sylvia.Runtime.Fs\Sylvia.Runtime.Fs.fsproj" />
-    <ProjectReference Include="..\..\visualization\Sylvia.Visualization.Html\Sylvia.Visualization.Html.fsproj" />
-    <ProjectReference Include="..\cas\Sylvia.CAS.Maxima\Sylvia.CAS.Maxima.fsproj" />
+    <ProjectReference Include="..\..\lang\cas\Sylvia.CAS.Maxima\Sylvia.CAS.Maxima.fsproj" />
+    <ProjectReference Include="..\..\lang\visualization\Sylvia.Visualization.Html\Sylvia.Visualization.Html.fsproj" />
     <ProjectReference Include="..\Sylvia.AbstractAlgebra\Sylvia.AbstractAlgebra.fsproj" />
   </ItemGroup>
 

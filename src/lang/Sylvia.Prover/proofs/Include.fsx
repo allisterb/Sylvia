@@ -19,11 +19,11 @@
 #r "C:\\Projects\\Sylvia\\src\\base\\Sylvia.Collections\\bin\\Debug\\netstandard2.0\\Sylvia.Collections.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\Sylvia.Expressions\\bin\\Debug\\net10.0\\Sylvia.Expressions.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\Sylvia.Prover\\bin\\Debug\\net10.0\\Sylvia.Prover.dll"
-#r "C:\\Projects\\Sylvia\\src\\math\\CAS\\Sylvia.CAS.Maxima\\bin\\Debug\\net10.0\\MathNet.Symbolics.dll"
-#r "C:\\Projects\\Sylvia\\src\\math\\CAS\\Sylvia.CAS.Maxima\\bin\\Debug\\net10.0\\Sylvia.CAS.Maxima.dll"
-#r "C:\\Projects\\Sylvia\\src\\math\\CAS\\Sylvia.CAS.Maxima\\bin\\Debug\\net10.0\\Sylvia.Runtime.dll"
+#r "C:\\Projects\\Sylvia\\src\\lang\\CAS\\Sylvia.CAS.Maxima\\bin\\Debug\\net10.0\\MathNet.Symbolics.dll"
+#r "C:\\Projects\\Sylvia\\src\\lang\\CAS\\Sylvia.CAS.Maxima\\bin\\Debug\\net10.0\\Sylvia.CAS.Maxima.dll"
+#r "C:\\Projects\\Sylvia\\src\\lang\\CAS\\Sylvia.CAS.Maxima\\bin\\Debug\\net10.0\\Sylvia.Runtime.dll"
 #r "C:\\Projects\\Sylvia\\src\\data\\Sylvia.Data\\bin\\Debug\\netstandard2.0\\Sylvia.Data.dll"
-#r "C:\\Projects\\Sylvia\\src\\visualization\\Sylvia.Visualization.Html\\bin\\Debug\\net10.0\\Sylvia.Visualization.Html.dll"
+#r "C:\\Projects\\Sylvia\\src\\lang\\visualization\\Sylvia.Visualization.Html\\bin\\Debug\\net10.0\\Sylvia.Visualization.Html.dll"
 
 
 #r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.AbstractAlgebra\\bin\\Debug\\net10.0\\Sylvia.AbstractAlgebra.dll"
