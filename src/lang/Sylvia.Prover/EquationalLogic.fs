@@ -16,16 +16,17 @@ module EquationalLogic =
     
     (* Axioms *)
 
+
     /// true = p = p
-    let (|True|_|) =
+    let (|DefTrue|_|) =
         function
-        | Equals(Bool true, Equals(a1, a2)) when sequal a1 a2 -> pattern_desc "Definition of true" <@fun x -> x = x = true @> |> Some
+        | Equals(True, Equals(a1, a2)) when sequal a1 a2 -> pattern_desc "Definition of true" <@fun x -> x = x = true @> |> Some
         | _ -> None
 
     /// false = not true
-    let (|False|_|) =
+    let (|DefFalse|_|) =
         function
-        | Equals(Bool false, Not(Bool true)) -> pattern_desc "Definition of false" <@ false = not true @> |> Some
+        | Equals(Bool false, Not(True)) -> pattern_desc "Definition of false" <@ false = not true @> |> Some
         | _ -> None
 
     /// not (p = q) = not p = q
@@ -38,6 +39,12 @@ module EquationalLogic =
     let (|ExcludedMiddle|_|) =
         function
         | Or(a1, Not(a2)) when sequal a1 a2 -> pattern_desc "the Excluded Middle" <@fun x -> x || not x @> |> Some
+        | _ -> None
+
+    
+    let (|IdempotencyOr|_|) =
+        function
+        | Equals(Or(a1,a2), a3) when sequal a1 a2 && sequal a1 a3 -> pattern_name "Idempotency" |> Some  
         | _ -> None
 
     /// p && q = p = q = p || q 
@@ -57,7 +64,7 @@ module EquationalLogic =
         
         // The following two axioms aren't in the original axioms for E but are included in S for convenience
         /// p ===> true
-        | Implies(_, Bool true) -> pattern_desc "Implication" <@fun x -> x ===> true @> |> Some
+        | Implies(_, True) -> pattern_desc "Implication" <@fun x -> x ===> true @> |> Some
         /// p ===> p
         | Implies(E, E') when sequal E E' -> pattern_desc "Implication" <@fun x -> x ===> x @> |> Some
         | _ -> None
@@ -74,8 +81,8 @@ module EquationalLogic =
     
     let (|EmptyRange|_|) =
         function
-        | ForAll(_,_,Bool false,_) -> pattern_desc "Empty Range" <@ fun x -> not x @> |> Some
-        | Equals(Exists(_,_,Bool false,_), Bool false) -> pattern_desc "Empty Range" <@ fun x -> not x @> |> Some
+        | ForAll(_,_,False,_) -> pattern_desc "Empty Range" <@ fun x -> not x @> |> Some
+        | Equals(Exists(_,_,False,_), False) -> pattern_desc "Empty Range" <@ fun x -> not x @> |> Some
         | _ -> None
     
     let (|QuantifierCollect|_|) =
@@ -114,7 +121,7 @@ module EquationalLogic =
 
     let (|Trading|_|) =
         function
-        | Equals(ForAll(_, x, R, P), ForAll(_, x', Bool true, Implies(R', P'))) when vequal' x x' && sequal2 R P R' P'-> pattern_desc "Trading" <@ fun x -> not x @> |> Some
+        | Equals(ForAll(_, x, R, P), ForAll(_, x', True, Implies(R', P'))) when vequal' x x' && sequal2 R P R' P'-> pattern_desc "Trading" <@ fun x -> not x @> |> Some
         | _ -> None
               
     let (|ForAllDistribOr|_|) =
@@ -130,15 +137,15 @@ module EquationalLogic =
     
     let (|UniversalInstantiation|_|) =
         function
-        | Implies(ForAll(_, [x], Bool true, P), P') when is_inst_expr x P P' && not_occurs_free [x] P -> 
+        | Implies(ForAll(_, [x], True, P), P') when is_inst_expr x P P' && not_occurs_free [x] P -> 
                 pattern_desc "Universal Instantiation" <@ fun x P P' -> (forall_expr x true P) = P' @> |> Some
         | _ -> None
 
     let equational_logic_axioms = 
         function
         | SEqual x
-        | True x // (3.3)
-        | False x //(3.8)
+        | DefTrue x // (3.3)
+        | DefFalse x //(3.8)
         | BinaryOpDef <@ (=) @> <@ (<>) @> <@ (=) @> <@ not @> x // (3.10)
         
         | Assoc <@(=)@> <@ (=) @> x  // (3.1)
@@ -150,7 +157,7 @@ module EquationalLogic =
         | Distrib <@(=)@> <@ (||) @> <@ (=) @> x  // (3.27)
         | DistribNot x // (3.9) 
              
-        | Idempotency <@(=)@> <@ (||) @> x // (3.26)
+        | IdempotencyOr x // (3.26)
         
         | ExcludedMiddle x // (3.28)
         | GoldenRule x // (3.35)
@@ -339,8 +346,8 @@ module EquationalLogic =
 
     let rec _dual = 
         function
-        | Bool false -> <@@ true @@>
-        | Bool true -> <@@ false @@>
+        | False -> <@@ true @@>
+        | True -> <@@ false @@>
         | Not p -> let _p = _dual p in <@@ not (%%_p:bool) @@>
         | And(p, q) -> 
             let _p = _dual p in let _q = _dual q in <@@ (%%_p:bool) || (%%_q:bool) @@>
@@ -355,8 +362,8 @@ module EquationalLogic =
 
     let rec _double_neg = 
         function
-        | Bool true -> <@@ not false @@>
-        | Bool false -> <@@ not true @@>
+        | True -> <@@ not false @@>
+        | False -> <@@ not true @@>
         | Equals(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not ((%%_p:bool) <> (%%_q:bool)) @@>
         | Not(NotEquals(p, q)) -> let _p = _double_neg p in let _q = _double_neg q in <@@ (%%_p:bool) = (%%_q:bool) @@>
         | Implies(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not ((%%_p:bool) <=== (%%_q:bool)) @@>
@@ -380,8 +387,8 @@ module EquationalLogic =
         
     let _empty_range = 
         function
-        | ForAll(_,_,Bool false,_) -> <@@ true @@>
-        | Exists(_,_,Bool false,_) -> <@@ false @@>
+        | ForAll(_,_,False,_) -> <@@ true @@>
+        | Exists(_,_,False,_) -> <@@ false @@>
         | expr -> expr
 
     let _collect_forall_and =

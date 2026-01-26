@@ -145,16 +145,16 @@ module PropCalculus =
     (* Theorems *)
     
     /// true = (p = p)
-    let def_true (p:Prop) = id_ax prop_calculus (true == (p == p))  
+    let def_true (p:Prop) = id_ax prop_calculus (T == (p == p))  
         
     /// false = (-p = p)
-    let def_false (p:Prop) = ident prop_calculus (false == (!!p == p)) [
+    let def_false (p:Prop) = ident prop_calculus (F == (!!p == p)) [
         apply_right collect
         def_true p |> Commute |> apply_right
     ] 
 
     /// (p = true) = p
-    let ident_eq (p:Prop) = ident prop_calculus ((p == true) == p)  [
+    let ident_eq (p:Prop) = ident prop_calculus ((p == T) == p)  [
         apply_left commute
         apply right_assoc
     ]
@@ -236,10 +236,10 @@ module PropCalculus =
     let collect_or_eq p q r = distrib_or_eq p q r |> Commute
 
     /// (p ∨ p) = p
-    let idemp_or p =  id_ax prop_calculus (p ||| p == p) 
+    let idemp_or p =  id_ax prop_calculus ((p + p) == p) 
   
     /// (p and p) = p
-    let idemp_and p = ident prop_calculus ((p &&& p) == p) [
+    let idemp_and p = ident prop_calculus ((p * p) == p) [
         apply_left golden_rule
         apply right_assoc
         idemp_or p |> Taut' |> apply_right

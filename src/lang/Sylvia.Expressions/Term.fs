@@ -530,6 +530,7 @@ and Prop (expr:Expr<bool>) =
 
     static member (|||) (l:Prop, r:Prop) = Prop <@ %l.Expr || %r.Expr @>
 
+    [<Symbol "∨">]
     static member (+) (l:Prop, r:Prop) = Prop <@ %l.Expr || %r.Expr @>
 
     static member (==) (l:Prop, r:Prop) = Prop <@ %l.Expr = %r.Expr @>
@@ -806,9 +807,9 @@ module RealNumbers =
 module Prop =
     let prop e = Prop e
 
-    let T = Prop <@ true @>
+    let T = Expr.ValueWithName(true, "T") |> expand_as<bool> |> Prop
 
-    let F = Prop <@ false @>
+    let F = Expr.ValueWithName(false, "F") |> expand_as<bool> |> Prop
 
     let boolvar2 p q = boolvar p, boolvar q
 
