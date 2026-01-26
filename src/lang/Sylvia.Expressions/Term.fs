@@ -583,20 +583,21 @@ type Pred<'t when 't: equality>(?func:Expr<'t -> bool>, ?symbol:string) =
     member x.Item(arg:Term<'t>) = Expr.Application(x.Func, arg.Expr) |> expand_as<bool> |> Prop
     
     static member op_Implicit(expr:Expr<'t -> bool>) :Pred<'t> = Pred<'t> expr
+    
     static member op_Explicit(x:Pred<'t>):Prop = x.Prop
     
     static member (~-) (l:Pred<'t>) = 
-       let func = <@ fun (x:'t) -> not (%l.Prop.Expr) @>
+       let func = <@ fun (x:'t) -> not ((%l.Func) x) @>
        let symbol = sprintf "~%s" l.Symbol
        Pred(func = func, symbol = symbol)
 
     static member (*) (l:Pred<'t>, r:Pred<'t>) =         
-       let func = <@ fun (x:'t) -> (%l.Prop.Expr) && (%r.Prop.Expr) @>
+       let func = <@ fun (x:'t) -> (%l.Func) x && (%r.Func) x @>
        let symbol = sprintf "(%s ∧ %s)" l.Symbol r.Symbol
        Pred(func = func, symbol = symbol)
 
     static member (+) (l:Pred<'t>, r:Pred<'t>) = 
-       let func = <@ fun (x:'t) -> (%l.Prop.Expr)  || (%r.Prop.Expr) @>
+       let func = <@ fun (x:'t) -> (%l.Func) x  || (%r.Func) x @>
        let symbol = sprintf "(%s ∨ %s)" l.Symbol r.Symbol
        Pred(func = func, symbol = symbol)
 

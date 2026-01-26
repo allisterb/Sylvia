@@ -15,6 +15,6 @@ let P = Pred<int> (symbol="P")
 let N = symbolic_pred<int> "N"
 let Q = Pred<int> (<@ fun x -> x > 2 @>, symbol="Q")
 
-( N ==> P).Func
+N.Prop.Expr
 //(P ==> Q).F
 theorem pred_calculus (forall (x, N, P) == forall' (x, N ==> P)) []

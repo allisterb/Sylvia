@@ -157,7 +157,7 @@ module Patterns =
 
     let (|ForAll|_|) =
         function
-        | Call(None, mi, BoundVars(bound)::Predicate(range)::Predicate(body)::[]) when mi.Name = "forall_expr" -> Some(<@@ forall_expr @@>, bound, range, body)
+        | Call(None, mi, BoundVars(bound)::range::body::[]) when mi.Name = "forall_expr" -> Some(<@@ forall_expr @@>, bound, range, body)
         | _ -> None
 
     let (|Exists|_|) =
