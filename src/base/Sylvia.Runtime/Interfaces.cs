@@ -1,13 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace Sylvia;
 
-namespace Sylvia
+public interface IHtmlDisplay
 {
-    public interface IHtmlDisplay
-    {
-        string Html();
-    }
+    string Html();
 }
+
+public interface IPlugin
+{
+    string Name { get; }
+
+    Dictionary<string, Dictionary<string, object>> SharedState { get; set; }
+}
+
