@@ -18,6 +18,11 @@ using Microsoft.SemanticKernel.Connectors.InMemory;
 using Microsoft.SemanticKernel.Embeddings;
 using Google.GenAI;
 
+public record ModelIds
+{
+    public const string Gemma3 = "gemini-3-pro-preview";
+}
+
 public class ModelConversation : Runtime
 {
     public ModelConversation(string modelId, string? embeddingModelId = null, string[]? systemPrompts = null, params IPlugin[]? plugins) : base()
@@ -31,13 +36,8 @@ public class ModelConversation : Runtime
                 .AddProvider(loggerProvider)
             );
         var apiKey = config?["Model:ApiKey"] ?? throw new Exception();
-        chat = new GoogleAIGeminiChatCompletionService(this.modelId, apiKey, loggerFactory: loggerFactory);
-        chatClient = chat.AsChatClient();
-        // Source - https://stackoverflow.com/a
-        // Posted by Suriya, modified by community. See post 'Timeline' for change history
-        // Retrieved 2026-01-27, License - CC BY-SA 3.0
-        client = (Client?) typeof(GoogleAIGeminiChatCompletionService).GetField("client", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(chatClient) ?? throw new Exception();
-
+        chat = new GoogleAIGeminiChatCompletionService(this.modelId, apiKey, loggerFactory: loggerFactory);        
+        chatClient = chat.AsChatClient();      
         if (this.embeddingModelId is not null)
         {
             builder.AddGoogleAIEmbeddingGenerator(this.embeddingModelId, apiKey);
@@ -126,13 +126,15 @@ public class ModelConversation : Runtime
         messages.AddAssistantMessage(sb.ToString());
     }
     #endregion
+
+    #region Fields
     public readonly string modelId;
 
     public readonly string? embeddingModelId;
 
     public readonly Kernel kernel = new Kernel();
 
-    public readonly Client client;
+    //public readonly Client client;
 
     public readonly IChatClient chatClient;
 
@@ -143,4 +145,5 @@ public class ModelConversation : Runtime
     public readonly GeminiPromptExecutionSettings promptExecutionSettings;
 
     public static IConfigurationRoot? config = null;
+    #endregion
 }
