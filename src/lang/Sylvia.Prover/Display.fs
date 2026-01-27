@@ -42,6 +42,7 @@ module Display =
         
         (* Unary terms *)
         | Not (Var(VarDisplay v)) -> sprintf "\u00ac%s" v
+        | Not(Atom a) -> sprintf "\u00ac%s" (print_formula a)
         | Not r -> sprintf "\u00ac(%s)" (print_formula r)
         
         | UnaryTerm(SymbolDisplay symbol , r) -> 
@@ -52,6 +53,8 @@ module Display =
                         
         (* Binary terms *)
         | Equals(l, r) -> sprintf "%s = %s" (print_formula l) (print_formula r)
+        | And(l,r) -> sprintf "%s and %s" (print_formula l) (print_formula r)
+        | Or(l,r) -> sprintf "%s or %s" (print_formula l) (print_formula r)
         | BinaryTerm(SymbolDisplay symbol, l, r) -> 
             match l, r with
             | PrimitiveTerm _, PrimitiveTerm _ 

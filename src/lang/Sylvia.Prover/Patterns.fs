@@ -11,8 +11,20 @@ open Descriptions
 /// Patterns used in formulae and axioms
 module Patterns =   
     
-    (* Formula patterns *)  
+    (* Formula patterns *)          
+    let (|True|_|) =
+        function
+        | Bool true
+        | ValueWithName(_, _, "T") -> Some()
+        | _ -> None
+
     
+    let (|False|_|) =
+        function
+        | Bool false
+        | ValueWithName(_, _, "F") -> Some()
+        | _ -> None
+
     let (|Equals|_|) = 
          function
          | SpecificCall <@@ (=) @@> (None,_,l::r::[]) when l.Type = r.Type -> Some(l, r)
@@ -31,7 +43,7 @@ module Patterns =
     let (|And|_|) =
         function
         | SpecificCall <@@ (&&) @@> (None,_,l::r::[]) -> Some (l, r)
-        | IfThenElse(l, r, Value(f, _)) when f = false -> Some(l, r)
+        | IfThenElse(l, r, Not(ValueWithName(_, _, "F")) & Value(f, _)) when f = false -> Some(l, r)
         | _ -> None
 
     let (|Or|_|) =
@@ -157,7 +169,7 @@ module Patterns =
 
     let (|ForAll|_|) =
         function
-        | Call(None, mi, BoundVars(bound)::Predicate(range)::Predicate(body)::[]) when mi.Name = "forall_expr" -> Some(<@@ forall_expr @@>, bound, range, body)
+        | Call(None, mi, BoundVars(bound)::range::body::[]) when mi.Name = "forall_expr" -> Some(<@@ forall_expr @@>, bound, range, body)
         | _ -> None
 
     let (|Exists|_|) =
@@ -221,6 +233,8 @@ module Patterns =
         
     (* Formula display patterns *)
 
+    let andmi = getFuncInfo <@ (&&) @>
+    let ormi = getFuncInfo <@ (||) @>
     let (|Const|_|) =
         function
         | ValueWithName(_, _, x) -> box x |> Some
@@ -237,6 +251,8 @@ module Patterns =
     let (|BinaryTerm|_|) =
         function
         | Call(_, mi,l::r::[]) when l.Type = r.Type -> Some (mi, l, r)
+        | And(l, r) -> Some (andmi, l, r)
+        | Or(l, r) -> Some (ormi, l, r)
         | _ -> None
 
     let (|SumTerm|_|) =
@@ -358,7 +374,7 @@ module Patterns =
     /// x + x = x
     let (|Idempotency|_|) (eq:Expr<'t->'t->bool>)  (op: Expr<'t->'t->'t>) = 
         function
-        | Binary eq (Binary op (a1, a2), a3) when sequal a1 a2 && sequal a1 a3 -> pattern_name "Idempotency" |> Some
+        | Binary eq (Binary op (a1, a2), a3) when sequal a1 a2 && sequal a1 a3 -> pattern_name "Idempotency" |> Some        
         | _ -> None
 
     /// not (x = y) = not(x) <> not(y)
