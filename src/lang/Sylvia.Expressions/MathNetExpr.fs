@@ -290,7 +290,6 @@ module MathNetExpr =
         convertExpr expr
 
     let toQuotation<'t> (vars: Var list) (expr: Expression) =
-        expr.
         match _toQuotation<'t> vars expr with
         | Some e -> e |> expand_as<'t>
         | None -> failwithf "Failed to convert expression %s to quotation" (Infix.format expr)
@@ -431,5 +430,5 @@ module MathNetExprParser =
         | ParserResult.Success (result,_,_) -> Result.Ok result
         | ParserResult.Failure (error,_,_) -> Result.Error error
 
-    let parse_to_expr<'t> (vars: Var list) text = 
-        text |> MathNet.Symbolics.Infix.parse |> Result.map(MathNetExpr.toQuotation<'t> vars)
+    let parse_to_expr<'t> (vars: Var seq) text = 
+        text |> MathNet.Symbolics.Infix.parse |> Result.map(MathNetExpr.toQuotation<'t> (Seq.toList vars))
