@@ -2,6 +2,7 @@
 
 /// Propositional calculus using the axioms and rules of S.
 module PropCalculus =
+
     let prop_calculus = Theory.S
 
     (* Expression functions for admissible rules *)
@@ -888,3 +889,8 @@ module PropCalculus =
         weaken_or ( p ==> q ) r |> Lemma
     ]
     
+    (* Module information members *)
+
+    type private IModuleTypeLocator = interface end
+    
+    let Type = match typeof<IModuleTypeLocator>.DeclaringType with | NonNull m -> m | _ -> failwith "Failed to locate module type."

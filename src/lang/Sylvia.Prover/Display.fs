@@ -13,7 +13,7 @@ module Display =
    
     let (|SymbolDisplay|_|):obj -> string option = 
         function
-        | :? MethodInfo as info when info.GetCustomAttributes(typeof<SymbolAttribute>, true) <> null && (Seq.length (info.GetCustomAttributes(typeof<SymbolAttribute>, true))) > 0 ->
+        | :? MethodInfo as info when (Seq.length (info.GetCustomAttributes(typeof<SymbolAttribute>, true))) > 0 ->
             let a =  info.GetCustomAttributes(typeof<SymbolAttribute>, true) in
             let u = (a.[0] :?> SymbolAttribute) in u.Symbol |> Some 
         | :? MethodInfo as info when Symbols.BulitIn.ContainsKey info.Name -> Symbols.BulitIn.[info.Name] |> Some
@@ -35,7 +35,7 @@ module Display =
     let rec print_formula = 
         function
         (* Primitive terms *)
-        | Const(SymbolDisplay symbol) -> symbol
+        | Const(NonNull(SymbolDisplay symbol)) -> symbol
         | Var(VarDisplay v) -> v 
 
         | Index(l, r) -> sprintf "here"

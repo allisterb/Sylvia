@@ -29,7 +29,7 @@ type GiantPlugin(name:string, ?id:string) =
             | Ok expr -> expr
             | Error error -> failwithf "Could not parse expression %s: %s." expression error
         
-    member internal x.DeclareVar(name:string, variableType:VariableType) = 
+    member internal x.IntroduceVar(name:string, variableType:VariableType) = 
         let t = 
             match variableType with
             | VariableType.Bool -> typeof<bool>
@@ -37,18 +37,24 @@ type GiantPlugin(name:string, ?id:string) =
             | VariableType.Real -> typeof<real>
             | _ -> failwithf "Variable type %A is not supported." variableType
         x.Variables.Add(Var(name, t))
-        sprintf "Variable %s declared." name
+        sprintf "%s variable %s introduced." t.Name name
 
-    member internal x.GetVar(n:string) : Var =  
-        let var = x.Variables.Find(fun v -> v.Name = n) in
-        match var with
+    member internal x.GetVar(n:string) : Var =          
+        match x.Variables.Find(fun v -> v.Name = n) with
         | NonNull v -> v
-        | Null _ -> failwithf "Variable %s not declared." n
-
+        | Null _ -> failwithf "The variable %s is not declared. You must declare this variable and its type first before you use it." n
     
     [<KernelFunction("boolvar")>]
-    [<Description("Declare a boolean variable")>]
-    member  x.BoolVar(name:string) = x.DeclareVar(name, VariableType.Bool)
+    [<Description("Introduce a boolean variable")>]
+    member x.BoolVar(name:string) = x.IntroduceVar(name, VariableType.Bool)
+    
+    [<KernelFunction("intvar")>]
+    [<Description("Introduce an integer variable")>]
+    member x.IntVar(name:string) = x.IntroduceVar(name, VariableType.Int)
+
+    [<KernelFunction("realvar")>]
+    [<Description("Introduce a real variable")>]
+    member x.RealVar(name:string) = x.IntroduceVar(name, VariableType.Real)
 
     interface IPlugin with
         member x.Name with get () = name

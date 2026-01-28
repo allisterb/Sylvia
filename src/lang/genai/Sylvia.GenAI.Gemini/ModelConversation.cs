@@ -2,21 +2,15 @@
 
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Text;
 
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.VectorData;
-using Microsoft.KernelMemory;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.Google;
-using Microsoft.SemanticKernel.Connectors.InMemory;
-using Microsoft.SemanticKernel.Embeddings;
-using Google.GenAI;
 
 public record ModelIds
 {

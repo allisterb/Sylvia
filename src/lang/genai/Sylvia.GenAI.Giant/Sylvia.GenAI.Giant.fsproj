@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="Session.fs" />
     <Compile Include="Plugins.fs" />
   </ItemGroup>
 
@@ -14,6 +15,10 @@
     <ProjectReference Include="..\..\cas\Sylvia.CAS.Maxima\Sylvia.CAS.Maxima.fsproj" />
     <ProjectReference Include="..\..\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
     <ProjectReference Include="..\Sylvia.GenAI.Gemini\Sylvia.GenAI.Gemini.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.70.0" />
   </ItemGroup>
 
 </Project>

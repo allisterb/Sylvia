@@ -643,7 +643,7 @@ module FsExpr =
     let expand_list'(expr: Expr<'t list>) =
         let expr' = expand expr
         match expr' with
-        | Patterns.Value(o, _) -> let l = o :?> 't list in l |> List.map(fun ee -> <@ ee @>) 
+        | Patterns.Value(NonNull o, _) -> let l = o :?> 't list in l |> List.map(fun ee -> <@ ee @>) 
         | List l -> l |> List.map expand |> List.map(fun ee -> <@ %%ee:'t @>)
         | ue -> failwithf "Unknown list expression %A." ue
 
