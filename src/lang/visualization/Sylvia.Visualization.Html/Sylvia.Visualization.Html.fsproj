@@ -23,7 +23,7 @@
     <ProjectReference Include="..\..\..\..\ext\FunScript\src\extra\FunScript.Bindings.JSXGraph\FunScript.Bindings.JSXGraph.fsproj" />
     <ProjectReference Include="..\..\..\..\ext\FunScript\src\main\FunScript\FunScript.NETStandard.fsproj" />
     <ProjectReference Include="..\..\..\base\Sylvia.Runtime\Sylvia.Runtime.csproj" />
-    <ProjectReference Include="..\..\..\lang\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
+    <ProjectReference Include="..\..\core\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
   </ItemGroup>
 
 </Project>

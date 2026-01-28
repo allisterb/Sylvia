@@ -38,8 +38,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\base\Sylvia.Collections\Sylvia.Collections.fsproj" />
-    <ProjectReference Include="..\..\lang\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
-    <ProjectReference Include="..\..\lang\Sylvia.Prover\Sylvia.Prover.fsproj" />
+    <ProjectReference Include="..\..\lang\core\Sylvia.Prover\Sylvia.Prover.fsproj" />
   </ItemGroup>
 
 </Project>

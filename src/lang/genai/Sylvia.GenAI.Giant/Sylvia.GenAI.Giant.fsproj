@@ -13,7 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\base\Sylvia.Runtime\Sylvia.Runtime.csproj" />
     <ProjectReference Include="..\..\cas\Sylvia.CAS.Maxima\Sylvia.CAS.Maxima.fsproj" />
-    <ProjectReference Include="..\..\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
+    <ProjectReference Include="..\..\core\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
     <ProjectReference Include="..\Sylvia.GenAI.Gemini\Sylvia.GenAI.Gemini.csproj" />
   </ItemGroup>
 

@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\lang\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
+    <ProjectReference Include="..\..\src\lang\core\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
   </ItemGroup>
 
 </Project>

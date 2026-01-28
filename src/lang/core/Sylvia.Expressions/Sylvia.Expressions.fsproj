@@ -22,9 +22,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\ext\mathnet-symbolics\src\Symbolics\Symbolics.fsproj" />
-    <ProjectReference Include="..\..\..\ext\TPTPParser\TPTPParser.csproj" />
-    <ProjectReference Include="..\..\base\Sylvia.Runtime\Sylvia.Runtime.csproj" />
+    <ProjectReference Include="..\..\..\..\ext\mathnet-symbolics\src\Symbolics\Symbolics.fsproj" />
+    <ProjectReference Include="..\..\..\..\ext\TPTPParser\TPTPParser.csproj" />
+    <ProjectReference Include="..\..\..\base\Sylvia.Runtime\Sylvia.Runtime.csproj" />
   </ItemGroup>
 
 </Project>

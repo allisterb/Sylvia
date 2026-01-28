@@ -16,7 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\base\Sylvia.Runtime.Fs\Sylvia.Runtime.Fs.fsproj" />
     <ProjectReference Include="..\..\..\base\Sylvia.Runtime\Sylvia.Runtime.csproj" />
-    <ProjectReference Include="..\..\..\lang\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
+    <ProjectReference Include="..\..\core\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
   </ItemGroup>
 
 </Project>

@@ -11,7 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\data\Sylva.DataFrame\Sylvia.DataFrame.csproj" />
-    <ProjectReference Include="..\..\lang\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
+    <ProjectReference Include="..\..\lang\core\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
     <ProjectReference Include="..\..\lang\visualization\Sylvia.Visualization.Html\Sylvia.Visualization.Html.fsproj" />
     <ProjectReference Include="..\Sylvia.RealAnalysis\Sylvia.RealAnalysis.fsproj" />
   </ItemGroup>
