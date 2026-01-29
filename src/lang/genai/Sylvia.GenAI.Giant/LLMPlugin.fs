@@ -22,10 +22,10 @@ type LLMPlugin(name:string, ?id:string) =
     
     member val SharedState = new Dictionary<string, Dictionary<string, obj>>() with get, set
     
-    member val Variables: List<Var> = new List<Var>()
+    member val Vars: List<Var> = new List<Var>()
 
     member internal x.Parse<'t>(expression: string) : Expr<'t> =
-        match MathNetExprParser.parse_to_expr<'t> x.Variables expression with
+        match MathNetExprParser.parse_to_expr<'t> x.Vars expression with
             | Ok expr -> expr
             | Error error -> failwithf "Could not parse expression %s: %s." expression error
         
@@ -36,11 +36,11 @@ type LLMPlugin(name:string, ?id:string) =
             | VariableType.Int -> typeof<int>
             | VariableType.Real -> typeof<real>
             | _ -> failwithf "Variable type %A is not supported." variableType
-        x.Variables.Add(Var(name, t))
+        x.Vars.Add(Var(name, t))
         sprintf "%s variable %s introduced." t.Name name
 
     member internal x.GetVar(n:string) : Var =          
-        match x.Variables.Find(fun v -> v.Name = n) with
+        match x.Vars.Find(fun v -> v.Name = n) with
         | NonNull v -> v
         | Null _ -> failwithf "The variable %s is not declared. You must declare this variable and its type first before you use it." n
     

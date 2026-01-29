@@ -7,9 +7,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Include="testappsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Compile Include="TestsRuntime.fs" />
     <Compile Include="Tests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
+
+  <ItemGroup />
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.2" />
@@ -20,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\lang\genai\Sylvia.GenAI.Giant\Sylvia.GenAI.Giant.fsproj" />
+    <ProjectReference Include="..\..\src\base\Sylvia.Runtime\Sylvia.Runtime.csproj" />
   </ItemGroup>
 
 </Project>

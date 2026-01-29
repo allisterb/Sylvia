@@ -3,11 +3,13 @@
 open System
 open Xunit
 
-open Sylvia.GenAI
-module PluginTests =
+open Sylvia.GenAI.Giant
+
+type PluginTests() =
+    inherit TestsRuntime()
 
     [<Fact>]
-    let ``Can create Plugin`` () =
+    member this.``Can create Plugin`` () =
         let p = new CASPlugin()
         let desc = p.BoolVar "X"
         Assert.NotNull(desc)

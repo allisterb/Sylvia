@@ -27,5 +27,7 @@ theorem pred_calculus (forall (x, N, P) == (P[x] + forall'(x, -N))) [
 ]
 
 theorem pred_calculus (forall (x, (N1 + N2), P) == (forall (x, N1, P)) * (forall (x, N2, P))) []
-
+ 
 split_range_forall' x N1 N2 P
+
+id_ax pred_calculus (P[x] + forall(x, N, Q) == (forall(x, N, (P + Q))))

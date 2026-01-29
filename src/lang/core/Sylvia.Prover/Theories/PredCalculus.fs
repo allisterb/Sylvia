@@ -51,15 +51,15 @@ module PredCalculus =
         commute_or P[x] -N[x] |> apply_right
         ident_implies_not_or N[x] P[x] |> Commute |> apply_right 
     ]
+
+    /// P ||| forall x N Q = (forall x N (P ||| Q))
+    let distrib_or_forall' (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) = id_ax pred_calculus (P[x] + forall(x, N, Q) == (forall(x, N, (P + Q))))
    
+    /// forall x (N1 ||| N2) P = ((forall x N1 P) |&| (forall x N2 P))
     let split_range_forall' (x:TermVar<'t>) (N1:Pred<'t>) (N2:Pred<'t>) (P:Pred<'t>) = id_ax pred_calculus (forall (x, (N1 + N2), P) == ((forall(x, N1, P) * (forall (x, N2, P)))))
     (*
-    /// forall x (N1 ||| N2) P = ((forall x N1 P) |&| (forall x N2 P))
-    let split_range_forall' x N1 N2 P = id_ax pred_calculus <@ forall %x (%N1 ||| %N2) P = ((forall %x %N1 P) |&| (forall %x %N2 P)) @>
-    
-    /// P ||| forall x N Q = (forall x N (P ||| Q))
-    let distrib_or_forall' x N P Q = id_ax pred_calculus <@ %P ||| forall %x %N %Q = (forall %x %N (%P ||| %Q)) @>
-
+  
+   
     /// ((forall x N P) |&| (forall x N Q)) = (forall x N (P |&| Q)) 
     let collect_forall_and' x N P Q = id_ax pred_calculus <@ ((forall %x %N %P) |&| (forall %x %N %Q)) = (forall %x %N (%P |&| %Q)) @>
 
