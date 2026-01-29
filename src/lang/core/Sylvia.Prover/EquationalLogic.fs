@@ -100,11 +100,9 @@ module EquationalLogic =
     let (|RangeSplit|_|) =
         function
         | Equals(ForAll(_, b1, Or(R1, S1), P1), And(ForAll(_,b2, R, P2), ForAll(_,b3, S, P3))) 
-            when 
-                vequal' b1 b2 && vequal' b2 b3 && sequal2 R1 S1 R S && sequal P1 P2 && sequal P2 P3 -> pattern_desc "the Range Split" <@ fun x -> not x @> |> Some
+            when vequal' b1 b2 && vequal' b2 b3 && sequal2 R1 S1 R S && sequal P1 P2 && sequal P2 P3 -> pattern_name "Range Split"  |> Some
         | Equals(Exists(_,b1, Or(R1, S1), P1), Or(Exists(_,b2, R, P2), Exists(_,b3, S, P3))) 
-            when 
-                vequal' b1 b2 && vequal' b2 b3 && sequal2 R1 S1 R S && sequal P1 P2 && sequal P2 P3 -> pattern_desc "the Range Split" <@ fun x -> not x @> |> Some
+            when vequal' b1 b2 && vequal' b2 b3 && sequal2 R1 S1 R S && sequal P1 P2 && sequal P2 P3 -> pattern_name "Range Split" |> Some
         | _ -> None
 
     let (|Interchange|_|) =

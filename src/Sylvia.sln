@@ -61,6 +61,10 @@ EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.LinearAlgebra", "math\Sylvia.LinearAlgebra\Sylvia.LinearAlgebra.fsproj", "{1ED4EADD-46C8-44CF-A8B6-75372B20AC7B}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{B91F432D-4004-4FCC-BDFC-FDC1A3689347}"
+	ProjectSection(SolutionItems) = preProject
+		..\.gitignore = ..\.gitignore
+		..\GEMINI.md = ..\GEMINI.md
+	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Examples", "{90231D93-09C2-4A7B-9235-F2F38FB7505F}"
 EndProject
@@ -115,6 +119,8 @@ EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Expressions", "lang\core\Sylvia.Expressions\Sylvia.Expressions.fsproj", "{ADD86AC6-D388-6CAB-0C7E-29D36EF90816}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Prover", "lang\core\Sylvia.Prover\Sylvia.Prover.fsproj", "{DB20564E-3300-D2D5-33A5-64DBB5B265DB}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "GenAI", "GenAI", "{82E919D2-5E75-4897-8C1B-8F65ECBDB973}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -288,6 +294,7 @@ Global
 		{4DB4CB28-2B40-4665-B482-FFED64D7E894} = {0A5DF3B9-699A-4E9C-BB68-B6249A99F8EC}
 		{ADD86AC6-D388-6CAB-0C7E-29D36EF90816} = {304C0F4E-92D1-471C-8952-7C5E88C9AB55}
 		{DB20564E-3300-D2D5-33A5-64DBB5B265DB} = {304C0F4E-92D1-471C-8952-7C5E88C9AB55}
+		{82E919D2-5E75-4897-8C1B-8F65ECBDB973} = {B91F432D-4004-4FCC-BDFC-FDC1A3689347}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E40D909F-6B62-4714-AD1E-DE15A95FCFA3}

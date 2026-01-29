@@ -420,3 +420,5 @@ FodyWeavers.xsd
 # Project
 */**/appsettings.json
 */**/testappsettings.json
+
+src/lang/genai/Sylvia.GenAI.Giant/docs/**

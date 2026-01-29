@@ -9,7 +9,7 @@
 #r "C:\\Users\\Allister\\.nuget\\packages\\csvhelper\\12.1.2\\lib\\netstandard2.0\\CsvHelper.dll"
 
 #r "C:\\Users\\Allister\\.nuget\\packages\\unquote\\7.0.1\\lib\\netstandard2.0\\Unquote.dll"
-#r "C:\\Projects\\Sylvia\\src\\Lang\\Sylvia.Expressions\\bin\\Debug\\net10.0\\Expect.NETStandard.dll"
+#r "C:\\Projects\\Sylvia\\src\\lang\\core\\Sylvia.Expressions\\bin\\Debug\\net10.0\\Expect.NETStandard.dll"
 #r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\main\\FunScript\\bin\\Debug\\netstandard2.0\\FunScript.dll"
 #r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\main\\FunScript\\bin\\Debug\\netstandard2.0\\FunScript.Interop.NETStandard.dll"
 #r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\main\\FunScript\\bin\\Debug\\netstandard2.0\\FunScript.Util.dll"
@@ -17,8 +17,8 @@
 #r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\extra\\FunScript.Bindings.JSXGraph\\bin\\Debug\\netstandard2.0\\FunScript.Bindings.JSXGraph.dll"
 
 #r "C:\\Projects\\Sylvia\\src\\base\\Sylvia.Collections\\bin\\Debug\\netstandard2.0\\Sylvia.Collections.dll"
-#r "C:\\Projects\\Sylvia\\src\\lang\\Sylvia.Expressions\\bin\\Debug\\net10.0\\Sylvia.Expressions.dll"
-#r "C:\\Projects\\Sylvia\\src\\lang\\Sylvia.Prover\\bin\\Debug\\net10.0\\Sylvia.Prover.dll"
+#r "C:\\Projects\\Sylvia\\src\\lang\\core\\Sylvia.Expressions\\bin\\Debug\\net10.0\\Sylvia.Expressions.dll"
+#r "C:\\Projects\\Sylvia\\src\\lang\\core\\Sylvia.Prover\\bin\\Debug\\net10.0\\Sylvia.Prover.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\CAS\\Sylvia.CAS.Maxima\\bin\\Debug\\net10.0\\MathNet.Symbolics.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\CAS\\Sylvia.CAS.Maxima\\bin\\Debug\\net10.0\\Sylvia.CAS.Maxima.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\CAS\\Sylvia.CAS.Maxima\\bin\\Debug\\net10.0\\Sylvia.Runtime.dll"

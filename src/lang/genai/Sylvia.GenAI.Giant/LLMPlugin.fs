@@ -1,4 +1,4 @@
-﻿namespace Sylvia.GenAI
+﻿namespace Sylvia.GenAI.Giant
 
 open System.Collections.Generic
 open System.ComponentModel
@@ -15,7 +15,7 @@ type VariableType =
     | Int = 1
     | Real = 2
 
-type GiantPlugin(name:string, ?id:string) =
+type LLMPlugin(name:string, ?id:string) =
     member val Name = name
     
     member val Id = defaultArg id (System.Guid.NewGuid().ToString())   
@@ -61,7 +61,7 @@ type GiantPlugin(name:string, ?id:string) =
         member x.SharedState with get() = x.SharedState and set(value) = x.SharedState <- value
         
 type CASPlugin(?id:string) =
-    inherit GiantPlugin("CAS", ?id=id)
+    inherit LLMPlugin("CAS", ?id=id)
     
     [<KernelFunction("diff")>]
     [<Description("Differentiate an expression wrt a variable")>]

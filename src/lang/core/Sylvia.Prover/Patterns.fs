@@ -43,13 +43,21 @@ module Patterns =
     let (|And|_|) =
         function
         | SpecificCall <@@ (&&) @@> (None,_,l::r::[]) -> Some (l, r)
-        | IfThenElse(l, r, Not(ValueWithName(_, _, "F")) & Value(f, _)) when f = false -> Some(l, r)
+        | IfThenElse(l, r, elseBranch) ->
+            match elseBranch with 
+            | ValueWithName(_, _, "F") -> None
+            | Bool false -> Some(l, r)
+            | _ -> None
         | _ -> None
-
+    
     let (|Or|_|) =
         function        
         | SpecificCall <@@ (||) @@> (None,_,l::r::[]) -> Some (l, r)
-        | IfThenElse(l, Value(t, _), r) when t = true -> Some(l, r)
+        | IfThenElse(l, thenBranch, r) ->
+            match thenBranch with
+            | ValueWithName(_, _, "T") -> None
+            | Bool true -> Some(l, r)
+            | _ -> None
         | _ -> None
 
     let (|Implies|_|) =

@@ -52,14 +52,8 @@ module PredCalculus =
         ident_implies_not_or N[x] P[x] |> Commute |> apply_right 
     ]
    
-       (*
-    /// forall x N P = (P ||| forall x true (not N))
-    let trade_forall_or_not x N P = ident pred_calculus <@ forall %x %N %P = (%P ||| forall' %x (not %N)) @> [
-        distrib_or_forall |> R
-        commute_or P <@ not %N @> |> R
-        ident_implies_not_or N P |> Commute |> R 
-    ]
-
+    let split_range_forall' (x:TermVar<'t>) (N1:Pred<'t>) (N2:Pred<'t>) (P:Pred<'t>) = id_ax pred_calculus (forall (x, (N1 + N2), P) == ((forall(x, N1, P) * (forall (x, N2, P)))))
+    (*
     /// forall x (N1 ||| N2) P = ((forall x N1 P) |&| (forall x N2 P))
     let split_range_forall' x N1 N2 P = id_ax pred_calculus <@ forall %x (%N1 ||| %N2) P = ((forall %x %N1 P) |&| (forall %x %N2 P)) @>
     

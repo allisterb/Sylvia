@@ -6,14 +6,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="Session.fs" />
-    <Compile Include="Plugins.fs" />
+    <Compile Include="LLMPlugin.fs" />
+    <Compile Include="LLMSession.fs" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\base\Sylvia.Runtime\Sylvia.Runtime.csproj" />
     <ProjectReference Include="..\..\cas\Sylvia.CAS.Maxima\Sylvia.CAS.Maxima.fsproj" />
     <ProjectReference Include="..\..\core\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
+    <ProjectReference Include="..\..\core\Sylvia.Prover\Sylvia.Prover.fsproj" />
     <ProjectReference Include="..\Sylvia.GenAI.Gemini\Sylvia.GenAI.Gemini.csproj" />
   </ItemGroup>
 

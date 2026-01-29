@@ -8,9 +8,9 @@
 
 
   <ItemGroup>
+    <None Include="proofs\PredCalculus.fsx" />
     <None Include="proofs\IntegerAlgebra.fsx" />
     <None Include="proofs\Include.fsx" />
-    <None Include="proofs\ALogicalApproachToDiscreteMath.fsx" />
     <Compile Include="Descriptions.fs" />
     <Compile Include="Patterns.fs" />
     <Compile Include="Display.fs" />
