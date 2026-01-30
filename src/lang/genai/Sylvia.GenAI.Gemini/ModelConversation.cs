@@ -3,7 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-
+using System.Threading.Tasks;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -82,7 +82,7 @@ public class ModelConversation : Runtime
         return this;
     }
 
-    public async IAsyncEnumerable<StreamingChatMessageContent> Prompt(string prompt, params object[] args)
+    public async IAsyncEnumerable<StreamingChatMessageContent> PromptAsync(string prompt, params object[] args)
     {
         var messageItems = new ChatMessageContentItemCollection()
         {
@@ -101,7 +101,7 @@ public class ModelConversation : Runtime
         messages.AddAssistantMessage(sb.ToString());
     }
 
-    public async IAsyncEnumerable<StreamingChatMessageContent> Prompt(string prompt, byte[]? imageData, string imageMimeType = "image/png")
+    public async IAsyncEnumerable<StreamingChatMessageContent> PromptAsync(string prompt, byte[]? imageData, string imageMimeType = "image/png")
     {
         messages.AddUserMessage([
             new Microsoft.SemanticKernel.TextContent(prompt),
@@ -119,6 +119,24 @@ public class ModelConversation : Runtime
         }
         messages.AddAssistantMessage(sb.ToString());
     }
+
+    public async Task<List<ChatMessageContent>> Prompt(string prompt, params object[] args)
+    {
+        var messageItems = new ChatMessageContentItemCollection()
+        {
+            new Microsoft.SemanticKernel.TextContent(string.Format(prompt, args))
+        };
+        messages.AddUserMessage(messageItems);
+        List<ChatMessageContent> response = new List<ChatMessageContent>();
+                
+        foreach(var m in await chat.GetChatMessageContentsAsync(messages, promptExecutionSettings, kernel))
+        {
+            response.Add(m);
+            messages.Add(m);
+        }
+        return response;
+    }
+
     #endregion
 
     #region Fields

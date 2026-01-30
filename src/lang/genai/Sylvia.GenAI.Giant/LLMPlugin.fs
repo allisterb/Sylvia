@@ -59,6 +59,7 @@ type LLMPlugin(name:string, ?id:string) =
     interface IPlugin with
         member x.Name with get () = name
         member x.SharedState with get() = x.SharedState and set(value) = x.SharedState <- value
+
         
 type CASPlugin(?id:string) =
     inherit LLMPlugin("CAS", ?id=id)

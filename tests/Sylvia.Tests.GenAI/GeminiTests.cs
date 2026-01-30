@@ -12,7 +12,7 @@ public class GeminiTests : TestsRuntime
     public async Task CanStartGemma3ProConversation()
     {
         var mc = new ModelConversation(ModelIds.Gemma3);
-        var m = mc.Prompt("Hello who are you");
+        var m = mc.PromptAsync("Hello who are you");
         await foreach (var message in m)
         {
             Console.WriteLine(message);
