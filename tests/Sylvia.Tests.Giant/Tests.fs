@@ -4,7 +4,6 @@ open System
 open System.Collections.Generic
 open System.Threading.Tasks
 
-open Microsoft.SemanticKernel
 open Xunit
 
 open Sylvia.GenAI.Gemini
