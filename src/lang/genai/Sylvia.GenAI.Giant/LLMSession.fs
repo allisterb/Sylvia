@@ -5,18 +5,19 @@ open System.Collections.Generic
 open Sylvia
 open Sylvia.GenAI.Gemini
 
-type LLMSession(sharedState: Dictionary<string, Dictionary<string, obj>>,[<ParamArray>] plugins: IPlugin array) =
+type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj>>) =
     inherit ModelConversation(ModelIds.Gemma3, systemPrompts=LLMSession.SystemPrompts, plugins=[|
         new SymbolsPlugin(sharedState)
         new CASPlugin(sharedState) 
     |]) 
     
     do sharedState.Add("Common", new Dictionary<string, obj>())
-
+    
     new() = LLMSession(new Dictionary<string, Dictionary<string, obj>>())
             
-    member val PluginState = sharedState
-        
+    member val SharedState = sharedState
+    
+    
     static member SystemPrompts = [|
         """You are Giant, a Neurosymbolic Transition System (NSTS) that integrates Gemini's natural language intuition with the formal symbolic power of the Sylvia F# DSL.
 Your objective is to provide bi-directional integration between informal reasoning and formal logic to construct verifiable proofs and solutions.
@@ -39,6 +40,7 @@ You operate on two parallel tracks:
 *   Never assert a mathematical truth without backing it up via a tool call or logical axiom.
 *   Treat tool outputs as the ground truth.
 *   When a proof is complete, summarize the formal steps aligned with the intuitive explanation.
+*   **Expression Syntax:** When calling tools, ALL mathematical expressions must be formatted in standard infix notation. specifically, use the caret symbol `^` for exponentiation (e.g., write `x^2` for x squared, NOT `x**2` or `pow(x, 2)`).
 
 You have access to Computer Algebra System (CAS) and Theorem Prover tools via Sylvia. Use them extensively.
         """

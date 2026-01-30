@@ -15,12 +15,14 @@ type PluginTests() =
 
     [<Fact>]
     member this.``Can create LLM session`` ()  =
-        let llm = new LLMSession()                
+        let llm = new LLMSession()  
         async {
-            let! r = llm.Prompt("Introduce the bool variable x") |> Async.AwaitTask
-            Assert.NotNull r
+            let! r1 = llm.Prompt("Introduce the real variable x") |> Async.AwaitTask
+            Assert.NotNull r1
+            let! r2 = llm.Prompt("diffrentiate x^2 wrt x") |> Async.AwaitTask
+            Assert.NotNull r2
         } |> Async.RunSynchronously
-        Assert.NotEmpty llm.PluginState
+        Assert.NotEmpty llm.SharedState
         
         
         
