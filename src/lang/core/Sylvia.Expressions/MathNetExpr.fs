@@ -431,4 +431,7 @@ module MathNetExprParser =
         | ParserResult.Failure (error,_,_) -> Result.Error error
 
     let parse_to_expr<'t> (vars: Var seq) text = 
-        text |> MathNet.Symbolics.Infix.parse |> Result.map(MathNetExpr.toQuotation<'t> (Seq.toList vars))
+        try
+            text |> MathNet.Symbolics.Infix.parse |> Result.map(MathNetExpr.toQuotation<'t> (Seq.toList vars))
+        with 
+            | ex -> Result.Error(ex.Message)

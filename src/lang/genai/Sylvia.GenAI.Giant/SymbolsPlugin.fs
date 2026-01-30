@@ -38,10 +38,12 @@ type SymbolsPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id
         | NonNull v -> (sprintf "Variable %s with type %s has already been introduced." name v.Type.Name)
             
     member internal x.DefineFunc<'t>(name:string, expression:string) = 
-        let expr = x.Parse<'t> expression
-        let v = get_var expr
-        x.Functions[name] <- expr
-        sprintf "Defined function %s(%s) = %A" name (v.Name) (sprinte expr)
+        match x.Parse<'t> expression with
+        | Ok expr ->
+            let v = get_var expr
+            x.Functions[name] <- expr
+            sprintf "Defined function %s(%s) = %A" name (v.Name) (sprinte expr)
+        | Error error -> sprintf "Could not parse expression %s: %s. Make sure all variables have been introduced." expression error 
 
     [<KernelFunction("boolvar")>]
     [<Description("Introduce a boolean variable")>]

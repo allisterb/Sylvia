@@ -20,7 +20,9 @@ type CASPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:str
     [<Description("Differentiate an expression wrt a variable")>]
     member x.Diff(variable: string, expression:string, ?logger:ILogger) =
         let v = variable |> x.GetVar |> Expr.Var
-        let expr = x.Parse<real> expression
-        let deriv = Maxima.sprint <| Analysis.diff v expr in 
-        sprintf "The derivative of %s wrt %s is %s." expression variable deriv |> log_kernel_func_ret logger
+        match x.Parse<real> expression with
+        | Ok expr -> 
+            let deriv = Maxima.sprint <| Analysis.diff v expr in 
+            sprintf "The derivative of %s wrt %s is %s." expression variable deriv |> log_kernel_func_ret logger
+        | Error error -> sprintf "Could not parse expression %s: %s. Make sure all variables have been introduced." expression error 
         

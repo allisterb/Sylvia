@@ -17,6 +17,8 @@ type SymbolException(message:string) =
 module private GiantUtils =
     let log_kernel_func_info (logger: ILogger option) m = if logger.IsSome then logger.Value.LogInformation m
 
+    let log_kernel_func_error (logger: ILogger option) m = if logger.IsSome then logger.Value.LogError m
+
     let log_kernel_func_ret (logger: ILogger option) m = 
         do if logger.IsSome then logger.Value.LogInformation m
         m
@@ -51,11 +53,8 @@ type LLMPlugin(name:string, sharedState: Dictionary<string, Dictionary<string, o
         | NonNull v -> v
         | Null _ -> sprintf "The variable %s is not declared. You must declare this variable and its type first before you use it." n |> symbol_failure
     
-    member internal x.Parse<'t>(expression: string) : Expr<'t> =
-        match MathNetExprParser.parse_to_expr<'t> x.Vars expression with
-            | Ok expr -> expr
-            | Error error -> sprintf "Could not parse expression %s: %s." expression error |> symbol_failure
-            
+    member internal x.Parse<'t>(expression: string) = MathNetExprParser.parse_to_expr<'t> x.Vars expression
+                        
     interface IPlugin with
         member x.Name with get() = name
         member x.SharedState with get() = x.SharedState
