@@ -60,11 +60,16 @@ public class ModelConversation : Runtime
         if (plugins is not null)
         {
             foreach (var plugin in plugins)
-            {
+            {                
                 kernel.Plugins.AddFromObject(plugin, plugin.Name);
+                this.plugins.Add(plugin);
             }
         }
     }
+
+    #region Properties
+    public IReadOnlyList<IPlugin> Plugins => plugins;
+    #endregion
 
     #region Methods
 
@@ -155,6 +160,8 @@ public class ModelConversation : Runtime
     public readonly ChatHistory messages = new ChatHistory();
 
     public readonly GeminiPromptExecutionSettings promptExecutionSettings;
+
+    protected List<IPlugin> plugins = new List<IPlugin>();
 
     public static IConfigurationRoot? config = null;
     #endregion

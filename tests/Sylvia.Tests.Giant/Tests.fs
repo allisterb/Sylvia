@@ -20,7 +20,7 @@ type PluginTests() =
             let! r = llm.Prompt("Introduce the bool variable x") |> Async.AwaitTask
             Assert.NotNull r
         } |> Async.RunSynchronously
-        //Assert.NotEmpty llm.v
+        Assert.NotEmpty llm.PluginState
         
         
         
