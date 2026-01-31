@@ -48,6 +48,7 @@ module PropCalculus =
     (* Admissible rules *)
 
     /// Reduce logical constants in expression. 
+    [<AdmittedRule "Reduce logical constants in expression.">]
     let reduce = Theory.S.Rules.[0]
 
     /// Logical expression is left associative.

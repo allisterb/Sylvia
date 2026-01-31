@@ -617,22 +617,30 @@ type ModuleRules = {
 }
 module ProofModules =
 
-    let private getModuleMethods (moduleType: Type) (methodType: Type) = moduleType.GetMethods() |> Array.filter(fun m -> m.IsPublic && m.IsStatic &&  not (m.Name.StartsWith("get_")) && m.ReturnType = methodType)
+    let getModuleMethods (moduleType: Type) (methodType: Type) = 
+        moduleType.GetMethods() |> Array.filter(fun m -> m.IsPublic && m.IsStatic &&  not (m.Name.StartsWith("get_")) && m.ReturnType = methodType)
 
-    let private getModuleFields (moduleType: Type) (fieldType: Type) = moduleType.GetMethods() |> Array.filter(fun m -> m.IsPublic && m.IsStatic &&  (m.Name.StartsWith("get_")) && m.ReturnType = fieldType)
+    let getModuleFields (moduleType: Type) (fieldType: Type) = 
+        moduleType.GetMethods() |> Array.filter(fun m -> m.IsPublic && m.IsStatic &&  (m.Name.StartsWith("get_")) && m.ReturnType = fieldType)
+
+    let getModuleProperties (moduleType: Type) (propertyType: Type) = 
+        moduleType.GetProperties() |> Array.filter(fun p -> 
+            p.GetMethod <> null && p.GetMethod.IsPublic && p.GetMethod.IsStatic && p.PropertyType = propertyType)
+
+    let getModuleAdmittedRules(moduleType:Type) =
+        getModuleProperties moduleType typeof<Rule> |> Array.map(fun p -> 
+        {
+            Name= p.Name
+            Description = match p.GetCustomAttribute(typeof<AdmittedRuleAttribute>, true) with | NonNull a -> (a :?> AdmittedRuleAttribute).Description | Null -> ""            
+        }) 
 
     let getModuleTheorems(moduleType:Type) =
         getModuleMethods moduleType typeof<Rule> |> Array.map(fun m -> 
         {
             Name= m.Name
-            Description = ""
+            Description = match m.GetCustomAttribute(typeof<DerivedRuleAttribute>, true) with | NonNull a -> (a :?> DerivedRuleAttribute).Description | Null -> "" 
             Parameters = m.GetParameters()
         }) 
 
-    let getModuleRules(moduleType:Type) =
-        getModuleFields moduleType typeof<Rule> |> Array.map(fun m -> 
-        {
-            Name= m.Name.Replace("get_", "")
-            Description = ""
-        }) 
+    
         
