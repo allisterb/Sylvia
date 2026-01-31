@@ -1,5 +1,8 @@
 ﻿namespace Sylvia
 
+open System
+open System.Reflection
+
 open FSharp.Quotations
 
 open Descriptions
@@ -601,4 +604,35 @@ module Proof =
         match f with
         | Equals(_, _) -> Define theory f
         | _ -> failwithf "The expression %s is not an identity." (theory.PrintFormula f)
+
+type ModuleTheorems = {
+    Name:string
+    Description:string
+    Parameters: ParameterInfo array
+}
+
+type ModuleRules = {
+    Name:string
+    Description:string
+}
+module ProofModules =
+
+    let private getModuleMethods (moduleType: Type) (methodType: Type) = moduleType.GetMethods() |> Array.filter(fun m -> m.IsPublic && m.IsStatic &&  not (m.Name.StartsWith("get_")) && m.ReturnType = methodType)
+
+    let private getModuleFields (moduleType: Type) (fieldType: Type) = moduleType.GetMethods() |> Array.filter(fun m -> m.IsPublic && m.IsStatic &&  (m.Name.StartsWith("get_")) && m.ReturnType = fieldType)
+
+    let getModuleTheorems(moduleType:Type) =
+        getModuleMethods moduleType typeof<Rule> |> Array.map(fun m -> 
+        {
+            Name= m.Name
+            Description = ""
+            Parameters = m.GetParameters()
+        }) 
+
+    let getModuleRules(moduleType:Type) =
+        getModuleFields moduleType typeof<Rule> |> Array.map(fun m -> 
+        {
+            Name= m.Name.Replace("get_", "")
+            Description = ""
+        }) 
         

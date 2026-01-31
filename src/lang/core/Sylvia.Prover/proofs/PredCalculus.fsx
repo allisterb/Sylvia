@@ -5,8 +5,9 @@ open Sylvia
 open PropCalculus
 open PredCalculus
 
+open ProofModules
 
-PropCalculus.Type
+getModuleTheorems PropCalculus.Type
 
 let p,q,r = boolvar3 "p" "q" "r"
 
