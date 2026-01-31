@@ -10,6 +10,11 @@ open Microsoft.SemanticKernel
 
 open Sylvia
 
+type VariableType =
+    | Bool = 0
+    | Int = 1
+    | Real = 2
+
 type SymbolsPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:string) as this =
     inherit LLMPlugin("Symbols", sharedState, ?id=id)            
 
@@ -22,15 +27,10 @@ type SymbolsPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id
         | VariableType.Bool -> typeof<bool>
         | VariableType.Int -> typeof<int>
         | VariableType.Real -> typeof<real>
-        | t -> sprintf "Variable type %A is not supported." t |> symbol_failure
+        | t -> failwithf "Variable type %A is not supported." t 
 
     member internal x.IntroduceVar(name:string, variableType:VariableType) = 
-        let t = 
-            match variableType with
-            | VariableType.Bool -> typeof<bool>
-            | VariableType.Int -> typeof<int>
-            | VariableType.Real -> typeof<real>
-            | _ -> failwithf "Variable type %A is not supported." variableType        
+        let t = x.GetVarType variableType    
         match x.Vars.Find(fun _v -> _v.Name = name) with
         | Null ->
             x.Vars.Add(Var(name, t))
@@ -43,7 +43,7 @@ type SymbolsPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id
             let v = get_var expr
             x.Functions[name] <- expr
             sprintf "Defined function %s(%s) = %A" name (v.Name) (sprinte expr)
-        | Error error -> sprintf "Could not parse expression %s: %s. Make sure all variables have been introduced." expression error 
+        | Error error -> sprintf "Could not parse expression %s: %s. Make sure all variables in the expression have been introduced." expression error 
 
     [<KernelFunction("boolvar")>]
     [<Description("Introduce a boolean variable")>]

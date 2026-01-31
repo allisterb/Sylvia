@@ -6,6 +6,7 @@ open System.Threading.Tasks
 
 open Xunit
 
+open Sylvia
 open Sylvia.GenAI.Gemini
 open Sylvia.GenAI.Giant
 

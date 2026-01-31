@@ -10,7 +10,7 @@ open FParsec
 open Antlr4.Runtime
 open TPTPParser
 
-module Parsers =
+module TermParsers =
     
     type ParseResult =
         | ParsedExpression of Expr
@@ -59,36 +59,7 @@ module Parsers =
         opp.AddOperator(InfixOperator("and", ws, 2, Associativity.Left, _and))
         opp.AddOperator(InfixOperator("or", ws, 2, Associativity.Left, _or))
         ws >>. expr .>> eof
-
-    let intExprParser : Expr parser =
-        let number = 
-            let options =
-                NumberLiteralOptions.AllowFraction
-                |||| NumberLiteralOptions.AllowFractionWOIntegerPart
-                |||| NumberLiteralOptions.AllowInfinity
-                |||| NumberLiteralOptions.AllowExponent
-            numberLiteral options "number" .>> ws|>> fun num -> Expr.Value(float num.String)
-
-        let integerIdentifier : Expr parser = many1Satisfy2L isIdentifierFirstChar isIdentifierChar "identifier" .>> ws |>> (fun id -> Expr.Var(Var(id, typeof<int>)))
-        let opp = OperatorPrecedenceParser<Expr,unit,unit>()
-        let expr = opp.ExpressionParser
-        let parensTerm = parens expr
-        let term = parensTerm <|> number <|> integerIdentifier
-
-        let _equal l r =  call <@ (=) @> (l::r::[])
-        let _implies l r = call <@ Ops.(==>) @> (l::r::[])
-        let _not l =  call <@ Ops.(|&|) @> (l::[])  
-        let _and l r =  call <@ Ops.(|&|) @> (l::r::[])
-        let _or l r = call <@ Ops.(|||) @> (l::r::[])
-      
-        opp.TermParser <- term
-        opp.AddOperator(InfixOperator("=", ws, 1, Associativity.Left, _equal))
-        opp.AddOperator(PrefixOperator("implies", ws, 3, true, _not))
-        opp.AddOperator(PrefixOperator("not", ws, 3, true, _not))
-        opp.AddOperator(InfixOperator("and", ws, 2, Associativity.Left, _and))
-        opp.AddOperator(InfixOperator("or", ws, 2, Associativity.Left, _or))
-        ws >>. expr .>> eof
-
+    
     let parse<'t> text =
         let parser = 
             match typeof<'t>.Name with
@@ -99,7 +70,7 @@ module Parsers =
         | ParserResult.Success (result,_,_) -> result
         | ParserResult.Failure (error,_,_) -> failwithf "Failed to parse the expression %A as an F# expression." error
 
-module TPTP =
+module TPTPParser =
     type Parser(text:string) = 
         inherit tptp_v7_0_0_0Parser(new CommonTokenStream(new tptp_v7_0_0_0Lexer(new AntlrInputStream(text), new StringWriter(new StringBuilder()), new StringWriter(new StringBuilder()))))
         member x.GetOutput() = let sw = x.Output :?> StringWriter in sw.GetStringBuilder().ToString()

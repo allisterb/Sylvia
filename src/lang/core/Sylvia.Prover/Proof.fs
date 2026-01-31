@@ -605,15 +605,17 @@ module Proof =
         | Equals(_, _) -> Define theory f
         | _ -> failwithf "The expression %s is not an identity." (theory.PrintFormula f)
 
-type ModuleTheorems = {
+type ModuleDerivedRule = {
     Name:string
     Description:string
     Parameters: ParameterInfo array
+    Method: MethodInfo
 }
 
-type ModuleRules = {
+type ModuleAdmissibleRule = {
     Name:string
     Description:string
+    Property:PropertyInfo
 }
 module ProofModules =
 
@@ -634,7 +636,8 @@ module ProofModules =
         getModuleProperties moduleType typeof<Rule> |> Array.map(fun p -> 
         {
             Name= p.Name
-            Description = match p.GetCustomAttribute(typeof<AdmissibleRuleAttribute>, true) with | NonNull a -> (a :?> AdmissibleRuleAttribute).Description | Null -> ""            
+            Description = match p.GetCustomAttribute(typeof<AdmissibleRuleAttribute>, true) with | NonNull a -> (a :?> AdmissibleRuleAttribute).Description | Null -> ""  
+            Property=p
         }) 
 
     let getModuleDerivedRules(moduleType:Type) =
@@ -643,6 +646,7 @@ module ProofModules =
             Name= m.Name
             Description = match m.GetCustomAttribute(typeof<DerivedRuleAttribute>, true) with | NonNull a -> (a :?> DerivedRuleAttribute).Description | Null -> "" 
             Parameters = m.GetParameters()
+            Method = m
         }) 
 
     

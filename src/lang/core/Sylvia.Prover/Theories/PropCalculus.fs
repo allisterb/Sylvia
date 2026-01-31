@@ -924,7 +924,7 @@ module PropCalculus =
 
     /// (p ⇒ q) ∧ (q ⇒ r) ⇒ (p ⇒ r)
     [<DerivedRule "(p ⇒ q) ∧ (q ⇒ r) ⇒ (p ⇒ r)">]
-    let trans_implies p q r = theorem prop_calculus ((p ==> q) &&& (q ==> r) ==> (p ==> r)) [
+    let trans_implies p q r = theorem prop_calculus ((p ==> q) * (q ==> r) ==> (p ==> r)) [
         rshunt |> apply
         commute |> apply_left
         left_assoc |> apply_left
@@ -939,7 +939,7 @@ module PropCalculus =
 
     /// (p == q) ∧ (q ⇒ r) ⇒ (p ⇒ r)
     [<DerivedRule "(p == q) ∧ (q ⇒ r) ⇒ (p ⇒ r)">]
-    let trans_implies_eq (p:Prop) (q:Prop) (r:Prop) = theorem prop_calculus ((p == q) &&& (q ==> r) ==> (p ==> r)) [
+    let trans_implies_eq (p:Prop) (q:Prop) (r:Prop) = theorem prop_calculus ((p == q) * (q ==> r) ==> (p ==> r)) [
         mutual_implication' p q |> Commute |> apply_left
         rshunt |> apply
         commute |> apply_left
@@ -973,7 +973,7 @@ module PropCalculus =
 
     /// (p ⇒ q) ⇒ ((p ∨ r) ⇒ (q ∨ r)
     [<DerivedRule "(p ⇒ q) ⇒ ((p ∨ r) ⇒ (q ∨ r)">]
-    let mono_or p q r = theorem prop_calculus ( (p ==> q) ==> ((p ||| r) ==> (q ||| r)) ) [
+    let mono_or p q r = theorem prop_calculus ( (p ==> q) ==> ((p + r) ==> (q + r)) ) [
         def_implies |> apply_right
         commute_or_or p r q r |> apply_left |> branch_right
         idemp_or r |> apply_left |> branch_right
