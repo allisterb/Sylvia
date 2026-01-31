@@ -10,7 +10,7 @@ open ProofModules
 PropCalculus.Type.GetMembers()
 
 //getModuleFields PropCalculus.Type typeof<Rule> |> Array.filter(fun f -> f.Name = "get_reduce") |> Array.map(fun m -> match (m.GetCustomAttributes(typeof<AdmittedRuleAttribute>, false) |> List.ofArray) with | a::[] -> "ll" | _ -> "" )
-getModuleAdmissibleRules PropCalculus.Type
+getModuleDerivedRules PropCalculus.Type
 
 let p,q,r = boolvar3 "p" "q" "r"
 

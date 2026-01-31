@@ -637,7 +637,7 @@ module ProofModules =
             Description = match p.GetCustomAttribute(typeof<AdmissibleRuleAttribute>, true) with | NonNull a -> (a :?> AdmissibleRuleAttribute).Description | Null -> ""            
         }) 
 
-    let getModuleTheorems(moduleType:Type) =
+    let getModuleDerivedRules(moduleType:Type) =
         getModuleMethods moduleType typeof<Rule> |> Array.map(fun m -> 
         {
             Name= m.Name

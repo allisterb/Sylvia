@@ -34,7 +34,7 @@ module PredCalculus =
 
     let split_range_exists = Theory.S.Rules.[27]
 
-    (* Theorems *)
+    (* Derived rules *)
 
     /// forall x N P = (forall x true (N ==> P))
     let trade_forall_implies (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) = id_ax pred_calculus (forall (x, N, P) == forall' (x, N ==> P))
