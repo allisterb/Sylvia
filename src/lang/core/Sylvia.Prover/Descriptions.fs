@@ -3,7 +3,7 @@
 open System
 
 [<AttributeUsage(AttributeTargets.All)>]
-type AdmittedRuleAttribute(description:string) =
+type AdmissibleRuleAttribute(description:string) =
     inherit Attribute()
     member val Description = description
 

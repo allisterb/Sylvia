@@ -48,7 +48,7 @@ module PropCalculus =
     (* Admissible rules *)
 
     /// Reduce logical constants in expression. 
-    [<AdmittedRule "Reduce logical constants in expression.">]
+    [<AdmissibleRule "Reduce logical constants in expression.">]
     let reduce = Theory.S.Rules.[0]
 
     /// Logical expression is left associative.
@@ -144,7 +144,7 @@ module PropCalculus =
     
     let MutualImplication stmt = Tactics.MutualImplication prop_calculus Taut mutual_implication stmt
 
-    (* Theorems *)
+    (* Derived rules *)
     
     /// true = (p = p)
     let def_true (p:Prop) = id_ax prop_calculus (T == (p == p))  

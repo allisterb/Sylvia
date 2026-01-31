@@ -624,14 +624,17 @@ module ProofModules =
         moduleType.GetMethods() |> Array.filter(fun m -> m.IsPublic && m.IsStatic &&  (m.Name.StartsWith("get_")) && m.ReturnType = fieldType)
 
     let getModuleProperties (moduleType: Type) (propertyType: Type) = 
-        moduleType.GetProperties() |> Array.filter(fun p -> 
-            p.GetMethod <> null && p.GetMethod.IsPublic && p.GetMethod.IsStatic && p.PropertyType = propertyType)
+        moduleType.GetProperties() |> Array.filter(fun _p -> 
+            match _p.GetMethod with 
+            | NonNull p -> if p.IsPublic && p.IsStatic && _p.PropertyType = propertyType then true else false 
+            | _ -> false
+        )
 
-    let getModuleAdmittedRules(moduleType:Type) =
+    let getModuleAdmissibleRules(moduleType:Type) =
         getModuleProperties moduleType typeof<Rule> |> Array.map(fun p -> 
         {
             Name= p.Name
-            Description = match p.GetCustomAttribute(typeof<AdmittedRuleAttribute>, true) with | NonNull a -> (a :?> AdmittedRuleAttribute).Description | Null -> ""            
+            Description = match p.GetCustomAttribute(typeof<AdmissibleRuleAttribute>, true) with | NonNull a -> (a :?> AdmissibleRuleAttribute).Description | Null -> ""            
         }) 
 
     let getModuleTheorems(moduleType:Type) =
