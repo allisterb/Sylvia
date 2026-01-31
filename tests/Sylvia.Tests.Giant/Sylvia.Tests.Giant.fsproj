@@ -7,12 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="ParserTests.fs" />
     <Content Include="testappsettings.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Compile Include="TestsRuntime.fs" />
-    <Compile Include="Tests.fs" />
+    <Compile Include="PluginTests.fs" />
+    <Compile Include="ParserTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

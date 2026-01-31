@@ -11,7 +11,7 @@ open Sylvia.GenAI.Gemini
 open Sylvia.GenAI.Giant
 
 type PluginTests() =
-    inherit TestsRuntime()
+    inherit Sylvia.Tests.Giant.TestsRuntime()
 
     [<Fact>]
     member this.``Can create LLM session`` ()  =

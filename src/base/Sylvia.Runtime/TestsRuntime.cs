@@ -9,6 +9,7 @@ public class TestsRuntime : Runtime
 {
     static TestsRuntime()
     {
+        config = LoadConfigFile("testappsettings.json");
         var logger = new LoggerConfiguration()
              .Enrich.FromLogContext()
              .WriteTo.Console()
@@ -16,8 +17,7 @@ public class TestsRuntime : Runtime
              .CreateLogger();
         var lf = new SerilogLoggerFactory(logger);
         var lp = new SerilogLoggerProvider(logger, false);
-        Runtime.Initialize("Sylvia", "Tests", true, lf, lp);
-        config = LoadConfigFile("testappsettings.json");
+        Runtime.Initialize("Sylvia", "Tests", true, lf, lp);       
     }    
     static protected IConfigurationRoot config;
 }

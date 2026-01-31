@@ -6,7 +6,7 @@ open System.Reflection
 open FSharp.Quotations
 open FParsec
 
-module TheoremParsers =
+module ProofParsers =
     
     // -------------------------------------------------------------------------
     // Shared Parser Utilities
@@ -63,7 +63,7 @@ module TheoremParsers =
 
     // Public Prop Parser
     let propExprParser : Parser<Prop, unit> =
-        expressionParser .>> eof |>> (fun e -> Prop (expand_as<bool> e))
+        expressionParser .>> eof |>> (expand_as<bool> >> Prop)
 
     let parseProp text = 
         match run propExprParser text with

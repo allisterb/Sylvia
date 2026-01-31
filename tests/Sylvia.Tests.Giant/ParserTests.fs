@@ -13,22 +13,23 @@ module TestRules =
     [<DerivedRule("Test Derived Rule")>]
     let rule2 (e:Expr) = Admit(sprintf "rule2(%s)" (src e), fun _ -> e)
 
-        (* Module information members *)
+    (* Module information members *)
 
     type private IModuleTypeLocator = interface end
     
     let Type = match typeof<IModuleTypeLocator>.DeclaringType with | NonNull m -> m | _ -> failwith "Failed to locate module type."
 
 type ParserTests() =
-    
+    inherit TestsRuntime()
+
     [<Fact>]
     member this.``Can parse simple prop`` () =
-        let p = TheoremParsers.parseProp "p ==> q"
+        let p = ProofParsers.parseProp "p ==> q"
         Assert.Contains("===>", p.Display)
 
     [<Fact>]
     member this.``Can parse complex prop`` () =
-        let p = TheoremParsers.parseProp "((p ==> q) ==> ((p * r) ==> (q * r)))"
+        let p = ProofParsers.parseProp "((p ==> q) ==> ((p * r) ==> (q * r)))"
         Assert.NotNull(p)
 
     [<Fact>]
@@ -36,7 +37,7 @@ type ParserTests() =
         let admissible = ProofModules.getModuleAdmissibleRules TestRules.Type
         let derived = [||]
         
-        let ra = TheoremParsers.parseRuleApp admissible derived "rule1 |> apply_left |> branch_right"
+        let ra = ProofParsers.parseRuleApp admissible derived "rule1 |> apply_left |> branch_right"
         match ra with
         | BranchRight(ApplyLeft(r)) when r.Name = "rule1" -> ()
         | _ -> failwithf "Unexpected RuleApplication structure: %A" ra
@@ -46,7 +47,7 @@ type ParserTests() =
         let admissible = [||]
         let derived = ProofModules.getModuleDerivedRules TestRules.Type
         
-        let ra = TheoremParsers.parseRuleApp admissible derived "rule2 (p + q) |> apply_right"
+        let ra = ProofParsers.parseRuleApp admissible derived "rule2 (p + q) |> apply_right"
         match ra with
         | ApplyRight(r) when r.Name.Contains("rule2") && r.Name.Contains("p") && r.Name.Contains("q") -> ()
         | _ -> failwithf "Unexpected RuleApplication structure: %A" ra
