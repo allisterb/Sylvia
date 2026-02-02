@@ -824,3 +824,5 @@ module Pred =
     let forall'<'t when 't: equality> (x:TermVar<'t>, B:Pred<'t>) = Prop <@ forall_expr %(x.Expr) %(T.Expr) %(B[x].Expr) @>
 
     let forall<'t when 't: equality> (x:Term<'t>, R:Pred<'t>, B:Pred<'t>) = Prop <@ forall_expr %(x.Expr) %(R[x].Expr) %(B[x].Expr) @>
+
+    let realpred s = symbolic_pred<real> s

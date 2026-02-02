@@ -26,16 +26,26 @@ module ProofParsers =
     // Used for both Prop parsing and parsing arguments to derived rules.
 
     let private expressionParser : Parser<Expr, unit> =
-        let boolIdentifier : Parser<Expr, unit> =
-            many1Satisfy2L isIdentifierFirstChar isIdentifierChar "identifier" .>> ws
-            |>> function 
-                | "true" -> Expr.Value true
-                | "false" -> Expr.Value false
-                | id -> Expr.Var(Var(id, typeof<bool>))
+        let identifierStr = many1Satisfy2L isIdentifierFirstChar isIdentifierChar "identifier" .>> ws
+
+        let operand : Parser<Expr, unit> =
+            identifierStr .>>. opt (parens identifierStr)
+            |>> fun (id, argOpt) ->
+                match argOpt with
+                | Some arg ->
+                    let argVar = Var(arg, typeof<obj>)
+                    let funcType = FSharp.Reflection.FSharpType.MakeFunctionType(typeof<obj>, typeof<bool>)
+                    let funcVar = Var(id, funcType)
+                    Expr.Application(Expr.Var(funcVar), Expr.Var(argVar))
+                | None ->
+                    match id with
+                    | "true" -> Expr.Value true
+                    | "false" -> Expr.Value false
+                    | _ -> Expr.Var(Var(id, typeof<bool>))
 
         let opp = OperatorPrecedenceParser<Expr,unit,unit>()
         let expr = opp.ExpressionParser
-        let term = parens expr <|> boolIdentifier
+        let term = parens expr <|> operand
 
         // Helper expressions for operators, creating Expr<bool>
         let _equal l r = <@ (%l:bool) = (%r:bool) @>

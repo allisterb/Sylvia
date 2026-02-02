@@ -52,3 +52,20 @@ type ParserTests() =
         | ApplyRight(r) when r.Name.Contains("rule2") && r.Name.Contains("p") && r.Name.Contains("q") -> ()
         | _ -> failwithf "Unexpected RuleApplication structure: %A" ra
 
+    [<Fact>]
+    member this.``Can parse symbolic predicate expression`` () =
+        let p = ProofParsers.parseProp "P(x)"
+        Assert.NotNull(p)
+        // Check that the display string contains the predicate and argument
+        Assert.Contains("P", p.Display)
+        Assert.Contains("x", p.Display)
+
+    [<Fact>]
+    member this.``Can parse complex symbolic predicate expression`` () =
+        let p = ProofParsers.parseProp "P(x) ==> Q(y)"
+        Assert.Contains("===>", p.Display)
+        Assert.Contains("P", p.Display)
+        Assert.Contains("x", p.Display)
+        Assert.Contains("Q", p.Display)
+        Assert.Contains("y", p.Display)
+
