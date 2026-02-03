@@ -18,7 +18,7 @@ type CASPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:str
 
     [<KernelFunction("diff")>]
     [<Description("Differentiate an expression wrt a variable")>]
-    member x.Diff(variable: string, expression:string, ?logger:ILogger) =
+    member x.Diff(variable: string, expression:string, logger:ILogger | null) =
         let v = variable |> x.GetVar<real> |> Expr.Var
         match x.Parse<real> expression with
         | Ok expr -> 

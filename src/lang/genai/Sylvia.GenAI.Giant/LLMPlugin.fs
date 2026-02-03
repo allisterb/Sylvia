@@ -15,13 +15,17 @@ type SymbolException(message:string) =
 
 [<AutoOpen>]
 module private LLMUtils =
-    let log_kernel_func_info (logger: ILogger option) m = if logger.IsSome then logger.Value.LogInformation m
+    let log_kernel_func_info (logger: ILogger | null) m = 
+        match logger with
+        | NonNull l -> l.LogInformation m
+        | _ -> ()
 
-    let log_kernel_func_error (logger: ILogger option) m = if logger.IsSome then logger.Value.LogError m
+    let log_kernel_func_error (logger: ILogger | null) m = 
+        match logger with
+        | NonNull l -> l.LogError m
+        | _ -> ()
 
-    let log_kernel_func_ret (logger: ILogger option) m = 
-        do if logger.IsSome then logger.Value.LogInformation m
-        m
+    let log_kernel_func_ret (logger: ILogger | null) m = log_kernel_func_info logger m; m
    
 type LLMPlugin(name:string, sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:string) =
     inherit Runtime()
@@ -58,8 +62,8 @@ type LLMPlugin(name:string, sharedState: Dictionary<string, Dictionary<string, o
     member internal x.GetFunc<'t>(n:string) : Result<Expr<'t>, string> =
          let t = typeof<'t>
          if x.Functions.ContainsKey(n) && x.Functions[n].Type = t then x.Functions[n] :?> Expr<'t> |> Ok
-         else if x.Functions.ContainsKey(n) && x.Functions[n].Type <> t then Error <| sprintf "The defined function %s = %A has type %A not %A." n (Maxima.sprint x.Functions[n]) x.Functions[n].Type typeof<'t>
-         else Error <| sprintf "The function %s is not defined."  n
+         else if x.Functions.ContainsKey(n) && x.Functions[n].Type <> t then sprintf "The defined function %s = %A has type %A not %A." n (Maxima.sprint x.Functions[n]) x.Functions[n].Type typeof<'t> |> Error
+         else sprintf "The function %s is not defined."  n |> Error
 
     member internal x.Parse<'t>(expression: string) = MathNetExprParser.parse_to_expr<'t> x.Vars expression
                         

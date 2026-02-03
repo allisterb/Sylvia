@@ -40,9 +40,9 @@ type SymbolsPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id
     member internal x.DefineFunc<'t>(name:string, expression:string) = 
         match x.Parse<'t> expression with
         | Ok expr ->
-            let v = get_var expr
+            let v = get_vars expr
             x.Functions[name] <- expr
-            sprintf "Defined function %s(%s) = %A" name (v.Name) (sprinte expr)
+            sprintf "Defined function %s(%A) = %A" name v (sprinte expr)
         | Error error -> sprintf "Could not parse expression %s: %s. Make sure all variables in the expression have been introduced." expression error 
 
     [<KernelFunction("boolvar")>]
@@ -58,7 +58,7 @@ type SymbolsPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id
     member x.RealVar(name:string) = x.IntroduceVar(name, VariableType.Real)
     
     [<KernelFunction("realfun")>]
-    [<Description("Define a function of a real variable")>]
+    [<Description("Define a function of one or more real variables")>]
     member x.RealFun(name:string, expression:string) = x.DefineFunc<real>(name, expression)
 
 
