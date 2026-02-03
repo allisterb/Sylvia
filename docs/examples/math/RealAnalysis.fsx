@@ -1,17 +1,21 @@
 #load "Include.fsx"
-#nowarn "3391"
+
 
 
 open Sylvia
-open RealNumbers
-open Vector
 
-do CAS.Maxima.init "C:\\MathTools\\maxima-5.44.0\\bin\\maxima.bat"
 
+
+//do CAS.Maxima.init "C:\\MathTools\\maxima-5.44.0\\bin\\maxima.bat"
+do CAS.Maxima.init "C:\\MathTools\\maxima-5.49.0\\bin\\maxima.bat"
 let x = realvar "x"
 let y = realvar "y"
 let t = realvar "t"
 let c = realconst "c"
+
+let r = realfun "r" (x + 2*y***2)
+r.Dim
+
 open Integrals
 
 taylor_series x 0 5 (cos x)

@@ -8,10 +8,11 @@ open FSharp.Quotations
 open Matrix
 open Vector
 open MathNet.Symbolics
+open Economics
 fsi.PrintWidth <- 500
 
 
-//do Maxima.init "C:\\MathTools\\maxima-5.44.0\\bin\\maxima.bat"
+do Maxima.init "C:\\MathTools\\maxima-5.49.0\\bin\\maxima.bat"
 
 let m = econ_model<ConsumerPreference>
 (m.BudgetConstraint.Fix({|Y=4.|}))

@@ -15,7 +15,7 @@
 #r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\main\\FunScript\\bin\\Debug\\netstandard2.0\\FunScript.Util.dll"
 #r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\extra\\FunScript.Bindings.JSXGraph\\bin\\Debug\\netstandard2.0\\FunScript.Bindings.Base.dll"
 #r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\extra\\FunScript.Bindings.JSXGraph\\bin\\Debug\\netstandard2.0\\FunScript.Bindings.JSXGraph.dll"
-
+#r "C:\\Users\\Allister\\.nuget\\packages\\sylvia.arithmetic\\0.2.8\\lib\\netstandard2.0\\Sylvia.Provider.Arithmetic.Runtime.dll"
 #r "C:\\Projects\\Sylvia\\src\\base\\Sylvia.Collections\\bin\\Debug\\netstandard2.0\\Sylvia.Collections.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\Sylvia.Expressions\\bin\\Debug\\net10.0\\Sylvia.Expressions.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\Sylvia.Prover\\bin\\Debug\\net10.0\\Sylvia.Prover.dll"
@@ -30,6 +30,7 @@
 #r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.LinearAlgebra\\bin\\Debug\\net10.0\\Sylvia.LinearAlgebra.dll"
 #r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.RealAnalysis\\bin\\Debug\\net10.0\\Sylvia.RealAnalysis.dll"
 #r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.Statistics\\bin\\Debug\\net10.0\\Sylvia.Statistics.dll"
+#r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.Economics\\bin\\Debug\\net10.0\\Sylvia.Economics.dll"
 
 #nowarn "3391"
 

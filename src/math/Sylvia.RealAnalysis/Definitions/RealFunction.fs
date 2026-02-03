@@ -4,6 +4,7 @@ open System
 open FSharp.Quotations
 open FSharp.Quotations.Patterns
 open FSharp.Quotations.DerivedPatterns
+
 [<AbstractClass>]
 type RealFunction<'t, 'a when 't : equality and 'a: equality>(domain:ISet<'t>, codomain:ISet<real>, map:Expr<'t->real>, amap:Expr<'a->'t>, ?symbol:string) = 
     inherit ScalarFunction<'t, real, 'a>(domain, codomain, map, amap, ?symbol=symbol)
@@ -89,7 +90,7 @@ type RealFunction(n:int, f, s, ?vars: ScalarVar<real> list, ?symbol:string) =
         | Some s -> sprintf "$%s(%s) = %s$" s v (latex x.ScalarExpr)
 
     member x.JSDrawFunc() =
-        if x.Dim > 1 then failwith ""
+        if x.Dim > 1 then failwith "Cannot draw functions of more than 1 variable in JavaScript."
         let v = get_var x.Expr
         recombine_func_as<real->real> [v] x.Expr
         
