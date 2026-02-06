@@ -6,7 +6,7 @@ open System.Reflection
 open FSharp.Quotations
 
 open Descriptions
-open Patterns
+open Formula
 
 /// A theory is a set of axioms and a set of rules that transform one formula into another
 type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =

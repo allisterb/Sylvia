@@ -1,7 +1,7 @@
 ﻿namespace Sylvia
 
 open FSharp.Quotations
-open Patterns
+open Formula
 
 /// Tactics are functions that transform a theorem using valid logical rules into another theorem.
 module Tactics = 

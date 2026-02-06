@@ -9,6 +9,7 @@ open FSharp.Quotations.DerivedPatterns
 
 open Microsoft.Z3
 
+open Formula
 open TermParsers
 
 type Z3ModelResult =

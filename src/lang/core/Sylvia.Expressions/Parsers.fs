@@ -9,6 +9,8 @@ open FSharp.Quotations
 
 open FParsec
 open Antlr4.Runtime
+
+open Formula
 open TPTPParser
 
 module TermParsers =
@@ -175,8 +177,8 @@ module TermParsers =
                         Expr.Application(Expr.Var(funcVar), Expr.Var(argVar))
                     | None ->
                         match id with
-                        | "true" -> Expr.Value true
-                        | "false" -> Expr.Value false
+                        | "true" -> T.Expr 
+                        | "false" -> F.Expr
                         | _ -> Expr.Var(Var(id, typeof<bool>)))
             if t  = typeof<bool> || t = typeof<obj> then idp
             elif t = typeof<int> || t = typeof<real> then comparisonParser() <|> idp

@@ -7,6 +7,7 @@ open FSharp.Quotations
 open FSharp.Quotations.DerivedPatterns
 open FSharp.Reflection
 
+open Formula
 open Patterns
     
 module Display = 

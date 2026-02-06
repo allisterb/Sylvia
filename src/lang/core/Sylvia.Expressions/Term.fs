@@ -7,6 +7,8 @@ open FSharp.Quotations
 open FSharp.Quotations.Patterns
 open FSharp.Quotations.DerivedPatterns
 
+open Formula
+
 [<AbstractClass; StructuredFormatDisplay("{Display}")>]
 type Term<'t when 't: equality> (expr:Expr<'t>, ?h:TermHistory) =
     member val Expr = expr
