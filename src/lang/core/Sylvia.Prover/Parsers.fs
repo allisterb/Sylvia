@@ -21,15 +21,87 @@ module ProofParsers =
     let isIdentifierChar c = isLetter c || isDigit c || isMathChar c || c = '_'
 
     // -------------------------------------------------------------------------
-    // Expression Parser
+    // Integer Expression Parser
+    // -------------------------------------------------------------------------
+
+    let private intExprParser : Parser<Expr, unit> =
+        let identifierStr = many1Satisfy2L isIdentifierFirstChar isIdentifierChar "identifier" .>> ws
+
+        let operand : Parser<Expr, unit> =
+            (pint32 .>> ws |>> (fun n -> Expr.Value n))
+            <|>
+            (identifierStr .>>. opt (parens identifierStr)
+            >>= fun (id, argOpt) ->
+                match id with
+                | "true" | "false" -> fail "reserved"
+                | _ ->
+                    match argOpt with
+                    | Some arg ->
+                        let argVar = Var(arg, typeof<obj>)
+                        let funcType = FSharp.Reflection.FSharpType.MakeFunctionType(typeof<obj>, typeof<int>)
+                        let funcVar = Var(id, funcType)
+                        preturn (Expr.Application(Expr.Var(funcVar), Expr.Var(argVar)))
+                    | None ->
+                        preturn (Expr.Var(Var(id, typeof<int>))))
+
+        let opp = OperatorPrecedenceParser<Expr,unit,unit>()
+        let expr = opp.ExpressionParser
+        let term = parens expr <|> operand
+
+        // Helper expressions for arithmetic
+        let _add l r = <@ (%l:int) + (%r:int) @>
+        let _sub l r = <@ (%l:int) - (%r:int) @>
+        let _mul l r = <@ (%l:int) * (%r:int) @>
+        let _div l r = <@ (%l:int) / (%r:int) @>
+        let _neg l = <@ -(%l:int) @>
+
+        opp.TermParser <- term
+        
+        // Operator precedence (Standard Arithmetic)
+        // 3: Unary -
+        // 2: * /
+        // 1: + -
+        
+        opp.AddOperator(InfixOperator("+", ws, 1, Associativity.Left, fun l r -> _add (expand_as<int> l) (expand_as<int> r)))
+        opp.AddOperator(InfixOperator("-", ws, 1, Associativity.Left, fun l r -> _sub (expand_as<int> l) (expand_as<int> r)))
+        opp.AddOperator(InfixOperator("*", ws, 2, Associativity.Left, fun l r -> _mul (expand_as<int> l) (expand_as<int> r)))
+        opp.AddOperator(InfixOperator("/", ws, 2, Associativity.Left, fun l r -> _div (expand_as<int> l) (expand_as<int> r)))
+        opp.AddOperator(PrefixOperator("-", ws, 3, true, fun l -> _neg (expand_as<int> l)))
+        
+        expr
+
+    // -------------------------------------------------------------------------
+    // Boolean Expression Parser (Prop)
     // -------------------------------------------------------------------------
     // Used for both Prop parsing and parsing arguments to derived rules.
 
     let private expressionParser : Parser<Expr, unit> =
         let identifierStr = many1Satisfy2L isIdentifierFirstChar isIdentifierChar "identifier" .>> ws
 
+        // Comparison parser: intExpr op intExpr
+        let comparison : Parser<Expr, unit> =
+            let _eq l r = <@ (%l:int) = (%r:int) @>
+            let _lt l r = <@ (%l:int) < (%r:int) @>
+            let _gt l r = <@ (%l:int) > (%r:int) @>
+            let _lte l r = <@ (%l:int) <= (%r:int) @>
+            let _gte l r = <@ (%l:int) >= (%r:int) @>
+
+            attempt (
+                intExprParser .>>. 
+                choice [
+                    str_ws "=" >>. preturn _eq
+                    str_ws "<" >>. preturn _lt
+                    str_ws ">" >>. preturn _gt
+                    str_ws "<=" >>. preturn _lte
+                    str_ws ">=" >>. preturn _gte
+                ] .>>. intExprParser
+                |>> fun ((l, op), r) -> op (expand_as<int> l) (expand_as<int> r)
+            )
+
         let operand : Parser<Expr, unit> =
-            identifierStr .>>. opt (parens identifierStr)
+            comparison
+            <|>
+            (identifierStr .>>. opt (parens identifierStr)
             |>> fun (id, argOpt) ->
                 match argOpt with
                 | Some arg ->
@@ -41,7 +113,7 @@ module ProofParsers =
                     match id with
                     | "true" -> Expr.Value true
                     | "false" -> Expr.Value false
-                    | _ -> Expr.Var(Var(id, typeof<bool>))
+                    | _ -> Expr.Var(Var(id, typeof<bool>)))
 
         let opp = OperatorPrecedenceParser<Expr,unit,unit>()
         let expr = opp.ExpressionParser

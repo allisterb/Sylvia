@@ -69,3 +69,32 @@ type ParserTests() =
         Assert.Contains("Q", p.Display)
         Assert.Contains("y", p.Display)
 
+    [<Fact>]
+    member this.``Can parse arithmetic comparison`` () =
+        let p = ProofParsers.parseProp "a + b + 5 < 7"
+        Assert.NotNull(p)
+        Assert.Contains("+", p.Display)
+        Assert.Contains("<", p.Display)
+
+    [<Fact>]
+    member this.``Can parse arithmetic equality and multiplication`` () =
+        let p = ProofParsers.parseProp "x * y = 10"
+        Assert.NotNull(p)
+        Assert.Contains("*", p.Display)
+        Assert.Contains("=", p.Display)
+
+    [<Fact>]
+    member this.``Can parse complex logic with arithmetic`` () =
+        let p = ProofParsers.parseProp "not (x < 5) ==> x >= 5"
+        Assert.NotNull(p)
+        Assert.Contains("===>", p.Display)
+        Assert.Contains("<", p.Display)
+        Assert.Contains(">=", p.Display)
+
+    [<Fact>]
+    member this.``Can parse unary minus in arithmetic`` () =
+        let p = ProofParsers.parseProp "-x + y > 0"
+        Assert.NotNull(p)
+        Assert.Contains("-", p.Display)
+        Assert.Contains(">", p.Display)
+

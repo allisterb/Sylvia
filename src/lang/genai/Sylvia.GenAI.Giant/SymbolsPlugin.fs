@@ -6,6 +6,7 @@ open System.ComponentModel
 
 open FSharp.Quotations
 
+open Microsoft.Extensions.Logging
 open Microsoft.SemanticKernel
 
 open Sylvia
@@ -38,14 +39,14 @@ type SymbolsPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id
             sprintf "Introduced %s variable %s." t.Name name
         | NonNull v -> (sprintf "Variable %s with type %s has already been introduced." name v.Type.Name)
             
-    member internal x.IntroduceConstant<'t>(name:string) = 
+    member internal x.IntroduceConstant<'t>(name:string, logger:ILogger|null) = 
         let t = typeof<'t>   
         if x.Constants.ContainsKey name && x.Constants[name].Type = t then 
-            sprintf "The constant %s of type %A has already been introduced." name t
+            sprintf "The constant %s of type %A has already been introduced." name t |> log_kernel_func_info_ret logger
         else
             let v = Unchecked.defaultof<'t>
             x.Constants.Add(name, Expr.ValueWithName(v, t, name))
-            sprintf "Introduced %s constant %s." t.Name name
+            sprintf "Introduced %s constant %s." t.Name name |> log_kernel_func_info_ret logger
         
     member internal x.DefineFunc<'t>(name:string, expression:string) = 
         match x.Parse<'t> expression with
@@ -69,15 +70,15 @@ type SymbolsPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id
     
     [<KernelFunction("boolconst")>]
     [<Description("Introduce a boolean constant")>]
-    member x.BoolConst(name:string) = x.IntroduceConstant<bool>(name)
+    member x.BoolConst(name:string, logger:ILogger|null) = x.IntroduceConstant<bool>(name, logger) 
     
     [<KernelFunction("intconst")>]
     [<Description("Introduce a integer constant")>]
-    member x.IntConst(name:string) = x.IntroduceConstant<int>(name)
+    member x.IntConst(name:string, logger:ILogger|null) = x.IntroduceConstant<int>(name, logger)
 
     [<KernelFunction("realconst")>]
     [<Description("Introduce a real constant")>]
-    member x.RealConst(name:string) = x.IntroduceConstant<real>(name)
+    member x.RealConst(name:string, logger:ILogger|null) = x.IntroduceConstant<real>(name, logger)
 
     [<KernelFunction("realfun")>]
     [<Description("Define a function of one or more real variables")>]

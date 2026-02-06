@@ -9,6 +9,7 @@
     <Compile Include="LLMPlugin.fs" />
     <Compile Include="SymbolsPlugin.fs" />
     <Compile Include="CASPlugin.fs" />
+    <Compile Include="SMTPlugin.fs" />
     <Compile Include="LLMSession.fs" />
   </ItemGroup>
 

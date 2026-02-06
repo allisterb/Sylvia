@@ -23,6 +23,6 @@ type CASPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:str
         match x.Parse<real> expression with
         | Ok expr -> 
             let deriv = Maxima.sprint <| Analysis.diff v expr in 
-            sprintf "The derivative of %s wrt %s is %s." expression variable deriv |> log_kernel_func_ret logger
+            sprintf "The derivative of %s wrt %s is %s." expression variable deriv |> log_kernel_func_info_ret logger
         | Error error -> sprintf "Could not parse expression %s: %s. Make sure all variables have been introduced." expression error 
         

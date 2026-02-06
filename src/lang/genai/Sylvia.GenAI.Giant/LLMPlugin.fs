@@ -25,7 +25,7 @@ module private LLMUtils =
         | NonNull l -> l.LogError m
         | _ -> ()
 
-    let log_kernel_func_ret (logger: ILogger | null) m = log_kernel_func_info logger m; m
+    let log_kernel_func_info_ret (logger: ILogger | null) m = log_kernel_func_info logger m; m
    
 type LLMPlugin(name:string, sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:string) =
     inherit Runtime()
