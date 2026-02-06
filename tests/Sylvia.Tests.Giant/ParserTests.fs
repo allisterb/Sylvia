@@ -29,7 +29,7 @@ type ParserTests() =
 
     [<Fact>]
     member this.``Can parse complex prop`` () =
-        let p = parseProp<bool> "((p ==> q) ==> ((p * r) ==> (q * r)))"
+        let p = parseProp<bool> "((p ==> q) ==> ((p && r) ==> (q && r)))"
         Assert.NotNull(p)
 
     [<Fact>]
@@ -47,7 +47,7 @@ type ParserTests() =
         let admissible = [||]
         let derived = ProofModules.getModuleDerivedRules TestRules.Type
         
-        let ra = ProofParsers.parseRuleApp<int> admissible derived "rule2 (p + q) |> apply_right"
+        let ra = ProofParsers.parseRuleApp<int> admissible derived "rule2 (p || q) |> apply_right"
         match ra with
         | ApplyRight(r) when r.Name.Contains("rule2") && r.Name.Contains("p") && r.Name.Contains("q") -> ()
         | _ -> failwithf "Unexpected RuleApplication structure: %A" ra
