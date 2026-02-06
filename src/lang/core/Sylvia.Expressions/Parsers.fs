@@ -76,14 +76,14 @@ module TermParsers =
         expr
 
      // -------------------------------------------------------------------------
-    // Integer Expression Parser
+    // Real Expression Parser
     // -------------------------------------------------------------------------
 
     let private realExprParser : Parser<Expr, unit> =
         let identifierStr = many1Satisfy2L isIdentifierFirstChar isIdentifierChar "identifier" .>> ws
 
         let operand : Parser<Expr, unit> =
-            (pint32 .>> ws |>> (fun n -> Expr.Value n))
+            (pfloat .>> ws |>> (fun n -> Expr.Value n))
             <|>
             (identifierStr .>>. opt (parens identifierStr)
             >>= fun (id, argOpt) ->
@@ -223,6 +223,16 @@ module TermParsers =
         match run boolExprParser<'t> text with
         | Success(result, _, _) -> Result.Ok result
         | Failure(errorMsg, _, _) -> sprintf "Failed to parse Prop: %s" errorMsg |> Result.Error
+
+    let parseIntExpr text = 
+        match run intExprParser text with
+        | Success(result, _, _) -> result |> expand_as<int> |> Result.Ok 
+        | Failure(errorMsg, _, _) -> sprintf "Failed to parse integer expression: %s" errorMsg |> Result.Error
+
+    let parseRealExpr text = 
+        match run realExprParser text with
+        | Success(result, _, _) -> result |> expand_as<real> |> Result.Ok 
+        | Failure(errorMsg, _, _) -> sprintf "Failed to parse real expression: %s" errorMsg |> Result.Error
 
 module TPTPParser =
     type Parser(text:string) = 

@@ -374,11 +374,25 @@ module Z3 =
         | Status.SATISFIABLE -> s.OptModel() |> _get_rat_var_model |> Some
         | _ -> None
 
-    let parse_bool_expr (s:Z3Solver) (e:string) = parseBoolExpr e |> Result.map (create_bool_expr s)
+    let parse_bool_expr<'t when 't: equality and 't: comparison> (s:Z3Solver) (e:string) = parseBoolExpr<'t> e |> Result.map (create_bool_expr s)
+
+    let check_bool_sat (constraints: string list) =
+        let s = new Z3Solver()
+        let c = constraints |> List.map (parse_bool_expr<bool> s)
+        if c |> List.exists(fun r -> r.IsError) then            
+                c 
+                |> List.choose (function Error e -> Some e | _ -> None) 
+                |> List.insertAt 0 "Could not parse one more of the constraints:\n" 
+                |> String.concat "\n"                 
+        else
+            c 
+            |> List.choose (function Ok _e -> Some _e | _ -> None) 
+            |> s.Check 
+            |> sprintf "%A"
 
     let check_int_sat (constraints: string list) =
         let s = new Z3Solver()
-        let c = constraints |> List.map (parse_bool_expr s)
+        let c = constraints |> List.map (parse_bool_expr<int> s)
         if c |> List.exists(fun r -> r.IsError) then            
                 c 
                 |> List.choose (function Error e -> Some e | _ -> None) 
@@ -390,9 +404,9 @@ module Z3 =
             |> s.Check 
             |> sprintf "%A" 
             
-    let check_bool_sat (constraints: string list) =
+    let check_real_sat (constraints: string list) =
         let s = new Z3Solver()
-        let c = constraints |> List.map (parse_bool_expr s)
+        let c = constraints |> List.map (parse_bool_expr<real> s)
         if c |> List.exists(fun r -> r.IsError) then            
                 c 
                 |> List.choose (function Error e -> Some e | _ -> None) 
@@ -402,7 +416,8 @@ module Z3 =
             c 
             |> List.choose (function Ok _e -> Some _e | _ -> None) 
             |> s.Check 
-            |> sprintf "%A" 
+            |> sprintf "%A"
+
     [<assembly:InternalsVisibleTo("Sylvia.Tests.Solver.Z3")>]
     do()
 
