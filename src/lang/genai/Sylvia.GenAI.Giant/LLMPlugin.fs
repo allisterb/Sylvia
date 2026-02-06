@@ -43,6 +43,8 @@ type LLMPlugin(name:string, sharedState: Dictionary<string, Dictionary<string, o
 
     member x.Vars with get() = x.SharedState["Symbols"]["Vars"] :?> List<Var>
 
+    member x.Constants with get() = x.SharedState["Symbols"]["Constants"] :?> Dictionary<string, Expr>
+
     member x.Functions with get() = x.SharedState["Symbols"]["Functions"] :?> Dictionary<string, Expr>
 
     member internal x.GetVar<'t>(n:string) : Var =          
@@ -59,6 +61,12 @@ type LLMPlugin(name:string, sharedState: Dictionary<string, Dictionary<string, o
             x.Vars.Add(_v)
             _v
     
+    member internal x.GetConstant<'t>(n:string) : Result<Expr<'t>, string> =          
+        let t = typeof<'t>
+        if x.Constants.ContainsKey(n) && x.Constants[n].Type = t then x.Constants[n] :?> Expr<'t> |> Ok
+         else if x.Constants.ContainsKey(n) && x.Constants[n].Type <> t then sprintf "The defined constant %s has type %A not %A." n x.Constants[n].Type typeof<'t> |> Error
+         else sprintf "The constant %s is not defined."  n |> Error
+        
     member internal x.GetFunc<'t>(n:string) : Result<Expr<'t>, string> =
          let t = typeof<'t>
          if x.Functions.ContainsKey(n) && x.Functions[n].Type = t then x.Functions[n] :?> Expr<'t> |> Ok
