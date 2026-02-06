@@ -5,7 +5,7 @@ open FSharp.Quotations
 open Xunit
 
 open Sylvia
-
+open TermParsers
 module TestRules =
     [<AdmissibleRule("Test Admissible Rule")>]
     let rule1 = Admit("rule1", id)
@@ -24,12 +24,12 @@ type ParserTests() =
 
     [<Fact>]
     member this.``Can parse simple prop`` () =
-        let p = ProofParsers.parseProp "p ==> q"
+        let p = parseProp "p ==> q"
         Assert.Contains("===>", p.Display)
 
     [<Fact>]
     member this.``Can parse complex prop`` () =
-        let p = ProofParsers.parseProp "((p ==> q) ==> ((p * r) ==> (q * r)))"
+        let p = parseProp "((p ==> q) ==> ((p * r) ==> (q * r)))"
         Assert.NotNull(p)
 
     [<Fact>]
@@ -54,7 +54,7 @@ type ParserTests() =
 
     [<Fact>]
     member this.``Can parse symbolic predicate expression`` () =
-        let p = ProofParsers.parseProp "P(x)"
+        let p = parseProp "P(x)"
         Assert.NotNull(p)
         // Check that the display string contains the predicate and argument
         Assert.Contains("P", p.Display)
@@ -62,7 +62,7 @@ type ParserTests() =
 
     [<Fact>]
     member this.``Can parse complex symbolic predicate expression`` () =
-        let p = ProofParsers.parseProp "P(x) ==> Q(y)"
+        let p = parseProp "P(x) ==> Q(y)"
         Assert.Contains("===>", p.Display)
         Assert.Contains("P", p.Display)
         Assert.Contains("x", p.Display)
@@ -71,21 +71,21 @@ type ParserTests() =
 
     [<Fact>]
     member this.``Can parse arithmetic comparison`` () =
-        let p = ProofParsers.parseProp "a + b + 5 < 7"
+        let p = parseProp "a + b + 5 < 7"
         Assert.NotNull(p)
         Assert.Contains("+", p.Display)
         Assert.Contains("<", p.Display)
 
     [<Fact>]
     member this.``Can parse arithmetic equality and multiplication`` () =
-        let p = ProofParsers.parseProp "x * y = 10"
+        let p = parseProp "x * y = 10"
         Assert.NotNull(p)
         Assert.Contains("*", p.Display)
         Assert.Contains("=", p.Display)
 
     [<Fact>]
     member this.``Can parse complex logic with arithmetic`` () =
-        let p = ProofParsers.parseProp "not (x < 5) ==> x >= 5"
+        let p = parseProp "not (x < 5) ==> x >= 5"
         Assert.NotNull(p)
         Assert.Contains("===>", p.Display)
         Assert.Contains("<", p.Display)
@@ -93,7 +93,7 @@ type ParserTests() =
 
     [<Fact>]
     member this.``Can parse unary minus in arithmetic`` () =
-        let p = ProofParsers.parseProp "-x + y > 0"
+        let p = parseProp "-x + y > 0"
         Assert.NotNull(p)
         Assert.Contains("-", p.Display)
         Assert.Contains(">", p.Display)

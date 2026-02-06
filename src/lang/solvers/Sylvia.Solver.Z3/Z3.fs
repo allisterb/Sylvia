@@ -9,6 +9,8 @@ open FSharp.Quotations.DerivedPatterns
 
 open Microsoft.Z3
 
+open TermParsers
+
 type Z3ModelResult =
 | ConstResult of Expr
 | FuncResult of FuncInterp
@@ -271,8 +273,8 @@ module Z3 =
             x.Item(fd)
         | _ -> x.Eval(create_expr solver index) |> ConstResult
 
-    let check_sat_model (s:Z3Solver) (a: Expr<bool list>) = 
-        let sol = a |> expand_list |> List.map (create_bool_expr s) |> s.Check 
+    let check_sat_model (s:Z3Solver) (a: Expr<bool> list) = 
+        let sol = a |> List.map (create_bool_expr s) |> s.Check 
         match sol with
         | Status.SATISFIABLE -> Some (s.Model())
         | _ -> None
@@ -319,13 +321,13 @@ module Z3 =
 
     let pop(s:Z3Solver) = s.Solver.Pop()
 
-    let get_int_var_model (s:Z3Solver) (a: Expr<bool list>) = check_sat_model s a |> Option.map _get_int_var_model
+    let get_int_var_model (s:Z3Solver) (a: Expr<bool> list) = check_sat_model s a |> Option.map _get_int_var_model
 
-    let get_rat_var_model (s:Z3Solver) (a: Expr<bool list>) = check_sat_model s a |> Option.map _get_rat_var_model
+    let get_rat_var_model (s:Z3Solver) (a: Expr<bool> list) = check_sat_model s a |> Option.map _get_rat_var_model
 
-    let get_bool_var_model (s:Z3Solver) (a: Expr<bool list>) = check_sat_model s a |> Option.map _get_bool_var_model
+    let get_bool_var_model (s:Z3Solver) (a: Expr<bool> list) = check_sat_model s a |> Option.map _get_bool_var_model
     
-    let get_int_var_sol (solver:Z3Solver) (a: Expr<bool list>) (v:Expr<int>) =
+    let get_int_var_sol (solver:Z3Solver) (a: Expr<bool> list) (v:Expr<int>) =
         match get_int_var_model solver a with
         | Some l -> 
             match List.tryFind (fun (name, _) -> name = v.ToString()) l with
@@ -337,7 +339,7 @@ module Z3 =
     let check_sat (s:Z3Solver) a = (Option.isSome <| check_sat_model s a)
 
     let check_unsat (s:Z3Solver) (e:Expr<bool>) =
-        let ne = <@ not(%e) @> in check_sat s <@[%ne]@>
+        let ne = <@ not(%e) @> in check_sat s [ <@ %ne @> ]
 
     let opt_set_param (s:Z3Solver) (k:string) (v:string) = s.OptimizerParams.Add(s.Ctx.MkSymbol k, s.Ctx.MkSymbol v)
 
@@ -372,7 +374,9 @@ module Z3 =
         | Status.SATISFIABLE -> s.OptModel() |> _get_rat_var_model |> Some
         | _ -> None
 
-    [<assembly:InternalsVisibleTo("Sylvester.Tests.Solver.Z3")>]
+    let parse_bool_expr (s:Z3Solver) (e:string) = parseBoolExpr e |> Result.map (create_bool_expr s)
+
+    [<assembly:InternalsVisibleTo("Sylvia.Tests.Solver.Z3")>]
     do()
 
  
