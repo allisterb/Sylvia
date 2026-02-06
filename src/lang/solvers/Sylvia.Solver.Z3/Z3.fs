@@ -212,14 +212,14 @@ module Z3 =
         match expr' with
         | Var v when v.Type = typeof<bool> -> vars.[v.Name]
         | ValueWithName(v, t, _) when t = typeof<bool> -> solver.Ctx.MkBool(v :?> bool)
-        | Bool true -> solver.Ctx.MkTrue()
-        | Bool false -> solver.Ctx.MkFalse()
-        | Call(None, Op "op_Equality" ,l::r::[]) -> solver.Ctx.MkEq(create_expr solver l, create_expr solver r)
-        | Call(None, Op "op_Inequality" ,l::r::[])  -> solver.Ctx.MkDistinct(create_expr solver l, create_expr solver r)
-        | Call(None, Op "op_BarAmpBar",l::r::[]) -> solver.Ctx.MkAnd(create_bool_expr solver l, create_bool_expr solver r)
-        | Call(None, Op "op_BitwiseOr",l::r::[]) -> solver.Ctx.MkOr(create_bool_expr solver l, create_bool_expr solver r)
-        | Call(None, Op "Not",r::[]) -> solver.Ctx.MkNot(create_bool_expr solver r)
-        | Call(None, Op "op_EqualsEqualsGreater",l::r::[]) -> solver.Ctx.MkImplies(create_bool_expr solver l, create_bool_expr solver r)
+        | True -> solver.Ctx.MkTrue()
+        | False -> solver.Ctx.MkFalse()
+        | Equals(l, r) -> solver.Ctx.MkEq(create_expr solver l, create_expr solver r)
+        | NotEquals(l, r)   -> solver.Ctx.MkDistinct(create_expr solver l, create_expr solver r)
+        | And(l, r)  -> solver.Ctx.MkAnd(create_bool_expr solver l, create_bool_expr solver r)
+        | Or(l, r) -> solver.Ctx.MkOr(create_bool_expr solver l, create_bool_expr solver r)
+        | Not r  -> solver.Ctx.MkNot(create_bool_expr solver r)
+        | Implies(l, r)  -> solver.Ctx.MkImplies(create_bool_expr solver l, create_bool_expr solver r)
         (* Arithmetic constraints *)
         | Call(None, Op "op_GreaterThan",l::r::[]) -> solver.Ctx.MkGt(create_arith_expr solver l, create_arith_expr solver r)
         | Call(None, Op "op_LessThan",l::r::[]) -> solver.Ctx.MkLt(create_arith_expr solver l, create_arith_expr solver r)
@@ -229,10 +229,10 @@ module Z3 =
         | Call(None, Op "op_BarQmarkBar",l::r::[]) -> solver.Ctx.MkSetMembership(create_expr solver l, create_set_expr solver r)
         | Call(None, Op "op_BarLessBar",l::r::[]) -> solver.Ctx.MkSetSubset(create_set_expr solver l, create_set_expr solver r)
         (* Quantifiers *)
-        | Call(None, Op "forall", Var v::range::body::[]) -> solver.Ctx.MkForall([|(v |> Expr.Var |> create_expr solver)|], create_expr solver (<@@ (%%range:bool) ===> (%%body:bool) @@>)) :> BoolExpr
-        | Call(None, Op "forall", PropertyGet (None, arr, [])::range::body::[]) when arr.PropertyType.IsArray -> solver.Ctx.MkForall([|solver.Ctx.MkArrayConst(arr.Name, solver.Ctx.MkIntSort(), (create_sort solver (arr.PropertyType.GetElementType())))|], create_expr solver (<@@ (%%range:bool) ===> (%%body:bool) @@>)) :> BoolExpr
-        | Call(None, Op "exists", Var v::range::body::[]) -> solver.Ctx.MkExists([|(v |> Expr.Var |> create_expr solver)|], create_expr solver (<@@ (%%range:bool) && (%%body:bool) @@>)) :> BoolExpr
-        | Call(None, Op "exists", PropertyGet (None, arr, [])::range::body::[]) when arr.PropertyType.IsArray -> solver.Ctx.MkExists([|solver.Ctx.MkArrayConst(arr.Name, solver.Ctx.MkIntSort(), (create_sort solver (arr.PropertyType.GetElementType())))|], create_expr solver (<@@ (%%range:bool) && (%%body:bool) @@>)) :> BoolExpr
+        | ForAll(_, bound, range, body) -> solver.Ctx.MkForall((bound |> List.toArray |> Array.map (Expr.Var >> (create_expr solver))), create_expr solver (<@@ (%%range:bool) ===> (%%body:bool) @@>)) :> BoolExpr
+        //| Call(None, Op "forall", PropertyGet (None, arr, [])::range::body::[]) when arr.PropertyType.IsArray -> solver.Ctx.MkForall([|solver.Ctx.MkArrayConst(arr.Name, solver.Ctx.MkIntSort(), (create_sort solver (arr.PropertyType.GetElementType())))|], create_expr solver (<@@ (%%range:bool) ===> (%%body:bool) @@>)) :> BoolExpr
+        | Exists(_, bound, range, body) -> solver.Ctx.MkExists((bound |> List.toArray |> Array.map (Expr.Var >> (create_expr solver))), create_expr solver (<@@ (%%range:bool) && (%%body:bool) @@>)) :> BoolExpr
+        //| Call(None, Op "exists", PropertyGet (None, arr, [])::range::body::[]) when arr.PropertyType.IsArray -> solver.Ctx.MkExists([|solver.Ctx.MkArrayConst(arr.Name, solver.Ctx.MkIntSort(), (create_sort solver (arr.PropertyType.GetElementType())))|], create_expr solver (<@@ (%%range:bool) && (%%body:bool) @@>)) :> BoolExpr
         | _ -> failwithf "Cannot create Z3 constraint from %A." expr
 
     and internal create_expr (solver:Z3Solver) (expr:FSharp.Quotations.Expr) : Expr =
