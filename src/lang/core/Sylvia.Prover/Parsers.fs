@@ -89,11 +89,11 @@ module ProofParsers =
             attempt (
                 intExprParser .>>. 
                 choice [
-                    str_ws "=" >>. preturn _eq
-                    str_ws "<" >>. preturn _lt
-                    str_ws ">" >>. preturn _gt
                     str_ws "<=" >>. preturn _lte
                     str_ws ">=" >>. preturn _gte
+                    str_ws "=" >>. preturn _eq
+                    str_ws "<" >>. preturn _lt
+                    str_ws ">" >>. preturn _gt                    
                 ] .>>. intExprParser
                 |>> fun ((l, op), r) -> op (expand_as<int> l) (expand_as<int> r)
             )
