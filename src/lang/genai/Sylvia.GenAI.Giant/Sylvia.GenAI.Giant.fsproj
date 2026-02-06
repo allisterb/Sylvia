@@ -18,6 +18,7 @@
     <ProjectReference Include="..\..\cas\Sylvia.CAS.Maxima\Sylvia.CAS.Maxima.fsproj" />
     <ProjectReference Include="..\..\core\Sylvia.Expressions\Sylvia.Expressions.fsproj" />
     <ProjectReference Include="..\..\core\Sylvia.Prover\Sylvia.Prover.fsproj" />
+    <ProjectReference Include="..\..\solvers\Sylvia.Solver.Z3\Sylvia.Solver.Z3.fsproj" />
     <ProjectReference Include="..\Sylvia.GenAI.Gemini\Sylvia.GenAI.Gemini.csproj" />
   </ItemGroup>
 
