@@ -39,11 +39,12 @@ The Sylvia.GenAI.Giant project at @src/lang/genai/Sylvia.GenAI/Giant is an imple
 the formal logic and methods and symbolic manipulations of tools like theorem provers and computer algebra systems and solvers. This will allow LLMs to both provide verifiable formal proofs for mathematical theorems
 as well as reason correctly and provide verifiable traces of their decision-making in safety critical scenarios.
 
-Read the PDFs in the @src/lang/genai/Sylvia.GenAI.Giant/docs folder to understand the concept of a Neurosymbolic Transition System
+Read the PDFs in the @src/lang/genai/Sylvia.GenAI.Giant/docs folder to understand the concept of a Neurosymbolic Transition System.
 
 Giant uses Gemini's function calling capabilities to provide it with the ability to reason symbolically and iteratively construct formal proofs of statements and theorem in parallel with its informal natural language thinking 
-and reasoning. Giant uses the Sylvia.CAS.Maxima project at @src/lang/cas/Sylvia.CAS.Maxima as its computer algebra system and the Sylvia.Prover project at @src/lang/core/Sylvia.Prover as its
-equational logic theorem prover. Read the PDFS in the @src/lang/core/Sylvia.Prover/docs to understand the concepts behind the equational logic prover. Read the code in
+and reasoning. Giant uses the Sylvia.CAS.Maxima project at @src/lang/cas/Sylvia.CAS.Maxima as its computer algebra system and the Sylvia.Solver.Z3 project at @src/lang/solvers/Sylvia.Solver.Z3
+as its SMT solver and the Sylvia.Prover project at @src/lang/core/Sylvia.Prover as its equational logic theorem prover. 
+Read the PDFS in the @src/lang/core/Sylvia.Prover/docs to understand the concepts behind the equational logic prover. Read the code in
 @src/lang/genai/core/Sylvia.Prover to understand the prover implementation and the core propositional and predicate logic theories.
 
 

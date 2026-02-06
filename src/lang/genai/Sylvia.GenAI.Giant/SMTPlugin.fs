@@ -15,7 +15,7 @@ type SMTPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:str
     inherit LLMPlugin("SMT", sharedState, ?id=id)
 
     [<KernelFunction("check_int_sat")>]
-    [<Description("Check if a set of integer constraints has a solution.")>]
+    [<Description("Check if a set of integer constraints is satisfiable.")>]
     member x.CheckIntSat([<ParamArray>] constraints:string array, logger:ILogger | null) : string =
         let s = new Z3Solver()
         let c = constraints |> Array.map (parse_bool_expr s)

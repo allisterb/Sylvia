@@ -34,6 +34,13 @@ type PluginTests() =
         } |> Async.RunSynchronously
         Assert.NotEmpty llm.SharedState
         
-        
+    [<Fact>]
+    member this.``Can solve integer constraints`` ()  =
+        let llm = new LLMSession()  
+        async {
+            let! r1 = llm.Prompt("Is the set of integer constraints x > 5 and x < 9 satisfiable?") |> Async.AwaitTask           
+            Assert.NotNull r1
+        } |> Async.RunSynchronously
+        Assert.NotEmpty llm.SharedState 
        
 

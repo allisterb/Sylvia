@@ -11,6 +11,7 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
     inherit ModelConversation(ModelIds.Gemma3, systemPrompts=LLMSession.SystemPrompts, plugins=[|
         new SymbolsPlugin(sharedState)
         new CASPlugin(sharedState) 
+        new SMTPlugin(sharedState)
     |]) 
     
     do sharedState.Add("Common", new Dictionary<string, obj>())
@@ -23,6 +24,8 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
         match x.plugins.Find(fun p -> p.Name = name && p :? 't) with | NonNull plugin -> plugin :?> 't | Null -> failwith "coul"
 
     member x.CAS = x.GetPlugin<CASPlugin> "CAS"
+
+    member x.SMT = x.GetPlugin<SMTPlugin> "SMT"
 
     static member SystemPrompts = [|
         """You are Giant, a Neurosymbolic Transition System (NSTS) that integrates Gemini's natural language intuition with the formal symbolic power of the Sylvia F# DSL.
@@ -49,7 +52,7 @@ You operate on two parallel tracks:
 *   Define any function symbols like f(x) used using tool calls. The variables in the function should be introduced before
 *   **Expression Syntax:** When calling tools, ALL mathematical expressions must be formatted in standard infix notation. specifically, use the caret symbol `^` for exponentiation (e.g., write `x^2` for x squared, NOT `x**2` or `pow(x, 2)`).
 
-You have access to Computer Algebra System (CAS) and Theorem Prover tools via Sylvia. Use them extensively.
+You have access to Computer Algebra System (CAS) and Satifiability-Modulo Theories (SMT) solver and theorem prover tools via Sylvia. Use them extensively.
         """
     |]
 
