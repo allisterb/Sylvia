@@ -26,14 +26,14 @@ module ProofParsers =
     // RuleApplication Parser
     // -------------------------------------------------------------------------
 
-    let ruleApplicationParser (admissible: ModuleAdmissibleRule[]) (derived: ModuleDerivedRule[]) : Parser<RuleApplication, unit> =
+    let ruleApplicationParser<'t when 't: equality and 't:comparison> (admissible: ModuleAdmissibleRule[]) (derived: ModuleDerivedRule[]) : Parser<RuleApplication, unit> =
         
         // Identifier for rule names
         let ruleIdentifier = many1Satisfy2L isIdentifierFirstChar isIdentifierChar "rule identifier" .>> ws
         
         // Parse arguments for a rule (0 or more expressions)
         let parseArgs (paramCount: int) =
-             parray paramCount boolExprParser
+             parray paramCount boolExprParser<'t>
         
         // Lookup rule and parse args if necessary
         let parseRuleStart = 
@@ -91,7 +91,7 @@ module ProofParsers =
              )
              <|> preturn (RuleApplication.Apply rule) // Implicit Apply if no pipeline
 
-    let parseRuleApp (admissible: ModuleAdmissibleRule[]) (derived: ModuleDerivedRule[]) text =
-        match run (ruleApplicationParser admissible derived) text with
+    let parseRuleApp<'t when 't: equality and 't:comparison> (admissible: ModuleAdmissibleRule[]) (derived: ModuleDerivedRule[]) text =
+        match run (ruleApplicationParser<'t> admissible derived) text with
         | Success(result, _, _) -> result
         | Failure(errorMsg, _, _) -> failwithf "Failed to parse RuleApplication: %s" errorMsg
