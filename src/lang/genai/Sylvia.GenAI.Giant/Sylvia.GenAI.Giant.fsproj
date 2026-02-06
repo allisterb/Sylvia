@@ -6,6 +6,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="examples\SMT.fsx" />
+    <None Include="examples\Include.fsx" />
     <Compile Include="LLMPlugin.fs" />
     <Compile Include="SymbolsPlugin.fs" />
     <Compile Include="CASPlugin.fs" />

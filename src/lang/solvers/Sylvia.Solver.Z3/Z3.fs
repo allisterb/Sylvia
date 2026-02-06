@@ -346,11 +346,11 @@ module Z3 =
     let opt_assert_hard (s:Z3Solver) (a:Expr<bool> list) = 
         let constraints = a |> List.map(create_bool_expr s) |> List.toArray in s.Optimizer.Assert constraints
 
-    let opt_assert_at_most (s:Z3Solver) (a:Expr<bool list >) k = 
-        let constraints = a |> expand_list |> List.map(create_bool_expr s) |> List.toArray in s.Ctx.MkAtMost(constraints, k) |> s.Optimizer.Assert
+    let opt_assert_at_most (s:Z3Solver) (a:Expr<bool> list) k = 
+        let constraints = a |> List.map(create_bool_expr s) |> List.toArray in s.Ctx.MkAtMost(constraints, k) |> s.Optimizer.Assert
 
-    let opt_assert_at_least (s:Z3Solver) (a:Expr<bool list >) k = 
-        let constraints = a |> expand_list |> List.map(create_bool_expr s) |> List.toArray in s.Ctx.MkAtLeast(constraints, k) |> s.Optimizer.Assert
+    let opt_assert_at_least (s:Z3Solver) (a:Expr<bool> list) k = 
+        let constraints = a |> List.map(create_bool_expr s) |> List.toArray in s.Ctx.MkAtLeast(constraints, k) |> s.Optimizer.Assert
 
     let opt_maximize (s:Z3Solver) (a:FSharp.Quotations.Expr) = 
         a |> create_arith_expr  s |> s.Optimizer.MkMaximize
@@ -376,6 +376,33 @@ module Z3 =
 
     let parse_bool_expr (s:Z3Solver) (e:string) = parseBoolExpr e |> Result.map (create_bool_expr s)
 
+    let check_int_sat (constraints: string list) =
+        let s = new Z3Solver()
+        let c = constraints |> List.map (parse_bool_expr s)
+        if c |> List.exists(fun r -> r.IsError) then            
+                c 
+                |> List.choose (function Error e -> Some e | _ -> None) 
+                |> List.insertAt 0 "Could not parse one more of the constraints:\n" 
+                |> String.concat "\n"                 
+        else
+            c 
+            |> List.choose (function Ok _e -> Some _e | _ -> None) 
+            |> s.Check 
+            |> sprintf "%A" 
+            
+    let check_bool_sat (constraints: string list) =
+        let s = new Z3Solver()
+        let c = constraints |> List.map (parse_bool_expr s)
+        if c |> List.exists(fun r -> r.IsError) then            
+                c 
+                |> List.choose (function Error e -> Some e | _ -> None) 
+                |> List.insertAt 0 "Could not parse one more of the constraints:\n" 
+                |> String.concat "\n"                 
+        else
+            c 
+            |> List.choose (function Ok _e -> Some _e | _ -> None) 
+            |> s.Check 
+            |> sprintf "%A" 
     [<assembly:InternalsVisibleTo("Sylvia.Tests.Solver.Z3")>]
     do()
 
