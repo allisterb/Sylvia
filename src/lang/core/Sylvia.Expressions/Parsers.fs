@@ -75,50 +75,112 @@ module TermParsers =
         
         expr
 
+     // -------------------------------------------------------------------------
+    // Integer Expression Parser
+    // -------------------------------------------------------------------------
+
+    let private realExprParser : Parser<Expr, unit> =
+        let identifierStr = many1Satisfy2L isIdentifierFirstChar isIdentifierChar "identifier" .>> ws
+
+        let operand : Parser<Expr, unit> =
+            (pint32 .>> ws |>> (fun n -> Expr.Value n))
+            <|>
+            (identifierStr .>>. opt (parens identifierStr)
+            >>= fun (id, argOpt) ->
+                match id with
+                | "true" | "false" -> fail "reserved"
+                | _ ->
+                    match argOpt with
+                    | Some arg ->
+                        let argVar = Var(arg, typeof<obj>)
+                        let funcType = FSharp.Reflection.FSharpType.MakeFunctionType(typeof<obj>, typeof<real>)
+                        let funcVar = Var(id, funcType)
+                        preturn (Expr.Application(Expr.Var(funcVar), Expr.Var(argVar)))
+                    | None ->
+                        preturn (Expr.Var(Var(id, typeof<real>))))
+
+        let opp = OperatorPrecedenceParser<Expr,unit,unit>()
+        let expr = opp.ExpressionParser
+        let term = parens expr <|> operand
+
+        // Helper expressions for arithmetic
+        let _add l r = <@ (%l:real) + (%r:real) @>
+        let _sub l r = <@ (%l:real) - (%r:real) @>
+        let _mul l r = <@ (%l:real) * (%r:real) @>
+        let _div l r = <@ (%l:real) / (%r:real) @>
+        let _pow l r = <@ (%l:real) ** (%r:real) @>
+        let _neg l = <@ -(%l:real) @>
+
+        opp.TermParser <- term
+        
+        // Operator precedence (Standard Arithmetic)
+        // 4: Unary -
+        // 3: ^
+        // 2: * /
+        // 1: + -
+        
+       
+        opp.AddOperator(InfixOperator("+", ws, 1, Associativity.Left, fun l r -> _add (expand_as<real> l) (expand_as<real> r)))
+        opp.AddOperator(InfixOperator("-", ws, 1, Associativity.Left, fun l r -> _sub (expand_as<real> l) (expand_as<real> r)))
+        opp.AddOperator(InfixOperator("*", ws, 2, Associativity.Left, fun l r -> _mul (expand_as<real> l) (expand_as<real> r)))
+        opp.AddOperator(InfixOperator("/", ws, 2, Associativity.Left, fun l r -> _div (expand_as<real> l) (expand_as<real> r)))
+        opp.AddOperator(InfixOperator("^", ws, 3, Associativity.Left, fun l r -> _pow (expand_as<real> l) (expand_as<real> r)))
+        opp.AddOperator(PrefixOperator("-", ws, 4, true, fun l -> _neg (expand_as<real> l)))
+        
+        expr
     // -------------------------------------------------------------------------
     // Boolean Expression Parser (Prop)
     // -------------------------------------------------------------------------
     // Used for both Prop parsing and parsing arguments to derived rules.
 
-    let boolExprParser : Parser<Expr, unit> =
+    let boolExprParser<'t when 't: equality and 't : comparison> : Parser<Expr, unit> =
+        let t = typeof<'t>
         let identifierStr = many1Satisfy2L isIdentifierFirstChar isIdentifierChar "identifier" .>> ws
+        
+        let comparisonParser() : Parser<Expr, unit> =
+            if t = typeof<int> || t = typeof<real> then
+                let _eq l r = <@ (%l:'t) = (%r:'t) @>
+                let _lt l r = <@ (%l:'t) < (%r:'t) @>
+                let _gt l r = <@ (%l:'t) > (%r:'t) @>
+                let _lte l r = <@ (%l:'t) <= (%r:'t) @>
+                let _gte l r = <@ (%l:'t) >= (%r:'t) @>
 
-        // Comparison parser: intExpr op intExpr
-        let comparison : Parser<Expr, unit> =
-            let _eq l r = <@ (%l:int) = (%r:int) @>
-            let _lt l r = <@ (%l:int) < (%r:int) @>
-            let _gt l r = <@ (%l:int) > (%r:int) @>
-            let _lte l r = <@ (%l:int) <= (%r:int) @>
-            let _gte l r = <@ (%l:int) >= (%r:int) @>
-
-            attempt (
-                intExprParser .>>. 
-                choice [
-                    str_ws "<=" >>. preturn _lte
-                    str_ws ">=" >>. preturn _gte
-                    str_ws "=" >>. preturn _eq
-                    str_ws "<" >>. preturn _lt
-                    str_ws ">" >>. preturn _gt                    
-                ] .>>. intExprParser
-                |>> fun ((l, op), r) -> op (expand_as<int> l) (expand_as<int> r)
-            )
-
-        let operand : Parser<Expr, unit> =
-            comparison
-            <|>
-            (identifierStr .>>. opt (parens identifierStr)
-            |>> fun (id, argOpt) ->
-                match argOpt with
-                | Some arg ->
-                    let argVar = Var(arg, typeof<obj>)
-                    let funcType = FSharp.Reflection.FSharpType.MakeFunctionType(typeof<obj>, typeof<bool>)
-                    let funcVar = Var(id, funcType)
-                    Expr.Application(Expr.Var(funcVar), Expr.Var(argVar))
-                | None ->
-                    match id with
-                    | "true" -> Expr.Value true
-                    | "false" -> Expr.Value false
-                    | _ -> Expr.Var(Var(id, typeof<bool>)))
+                let parser = 
+                    if t = typeof<int> then intExprParser 
+                    elif t  = typeof<real> then realExprParser                
+                    else  failwithf "%A expression parser is not implemented." t
+                            
+                attempt (
+                    parser .>>. 
+                    choice [
+                        str_ws "<=" >>. preturn _lte
+                        str_ws ">=" >>. preturn _gte
+                        str_ws "=" >>. preturn _eq
+                        str_ws "<" >>. preturn _lt
+                        str_ws ">" >>. preturn _gt                    
+                    ] .>>. parser
+                    |>> fun ((l, op), r) -> op (expand_as<'t> l) (expand_as<'t> r)
+                )
+            else failwithf "%A expression parser is not implemented." t
+            
+        let operand : Parser<Expr, unit> =       
+            let idp = 
+                (identifierStr .>>. opt (parens identifierStr)
+                |>> fun (id, argOpt) ->
+                    match argOpt with
+                    | Some arg ->
+                        let argVar = Var(arg, typeof<obj>)
+                        let funcType = FSharp.Reflection.FSharpType.MakeFunctionType(typeof<obj>, typeof<bool>)
+                        let funcVar = Var(id, funcType)
+                        Expr.Application(Expr.Var(funcVar), Expr.Var(argVar))
+                    | None ->
+                        match id with
+                        | "true" -> Expr.Value true
+                        | "false" -> Expr.Value false
+                        | _ -> Expr.Var(Var(id, typeof<bool>)))
+            if t  = typeof<bool> || t = typeof<obj> then idp
+            elif t = typeof<int> || t = typeof<real> then comparisonParser() <|> idp
+            else failwithf "%A expression parser is not implemented." t
 
         let opp = OperatorPrecedenceParser<Expr,unit,unit>()
         let expr = opp.ExpressionParser
@@ -149,16 +211,16 @@ module TermParsers =
         expr
 
     // Public Prop Parser
-    let propExprParser : Parser<Prop, unit> =
-        boolExprParser .>> eof |>> (expand_as<bool> >> Prop)
+    let propExprParser<'t when 't: equality and 't : comparison> : Parser<Prop, unit> =
+        boolExprParser<'t> .>> eof |>> (expand_as<bool> >> Prop)
 
-    let parseProp text = 
-        match run propExprParser text with
+    let parseProp<'t when 't: equality and 't : comparison> text = 
+        match run propExprParser<'t> text with
         | Success(result, _, _) -> result
         | Failure(errorMsg, _, _) -> failwithf "Failed to parse Prop: %s" errorMsg
 
-    let parseBoolExpr text = 
-        match run boolExprParser text with
+    let parseBoolExpr<'t when 't: equality and 't : comparison> text = 
+        match run boolExprParser<'t> text with
         | Success(result, _, _) -> Result.Ok result
         | Failure(errorMsg, _, _) -> sprintf "Failed to parse Prop: %s" errorMsg |> Result.Error
 
