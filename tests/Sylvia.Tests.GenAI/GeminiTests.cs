@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 
 using Sylvia.GenAI.Gemini;
 
-
 public class GeminiTests : TestsRuntime
 {
     [Fact]
@@ -18,6 +17,18 @@ public class GeminiTests : TestsRuntime
             Console.WriteLine(message);
         }
         Assert.NotEmpty(mc.messages);
+
+    }
+
+    [Fact]
+    public async Task CanGenerateImage()
+    {
+        var ig = new ImageGenerator(config: new Google.GenAI.Types.GenerateImagesConfig()
+        {            
+            NumberOfImages = 1,
+        });
+
+       
 
     }
 }

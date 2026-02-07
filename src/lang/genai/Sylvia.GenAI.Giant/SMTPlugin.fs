@@ -9,7 +9,7 @@ open Microsoft.Extensions.Logging
 open Microsoft.Z3
 
 open Sylvia
-open Z3
+open Sylvia.Z3
 
 type SMTPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:string) =
     inherit LLMPlugin("SMT", sharedState, ?id=id)
