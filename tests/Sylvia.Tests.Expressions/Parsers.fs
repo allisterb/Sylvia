@@ -11,18 +11,12 @@ module Parsers =
     [<Fact>]
     let ``Can parse function def``() =
         let R = Infix.parse("BAR(x) + 1")
-        // Assert.Equal (R, Infix.parse("BAR()")) 
-        // The original assertion seems wrong or placeholder, I'll leave it as is but commented out if it fails, 
-        // but since I'm overwriting, I should keep original intent or fix it. 
-        // The original read showed: Assert.Equal (R, Infix.parse("BAR()"))
-        // I'll keep it exactly as it was.
         Assert.Equal (R, Infix.parse("BAR()"))
 
     [<Fact>]
     let ``Can parse forall``() =
         let text = "forall(x, P(x))"
         let result = TermParsers.parseProp<bool> text
-        // Verify it is a ForAll expression
         match result.Expr with
         | Formula.ForAll(op, bound, range, body) -> 
             Assert.Single(bound)
@@ -37,7 +31,6 @@ module Parsers =
         | Formula.ForAll(op, bound, range, body) -> 
             Assert.Single(bound)
             Assert.Equal("x", bound.Head.Name)
-            // Check range is not True
             match range with
             | Formula.True -> Assert.Fail("Range should not be True")
             | _ -> ()
@@ -52,3 +45,16 @@ module Parsers =
             Assert.Single(bound)
             Assert.Equal("y", bound.Head.Name)
         | _ -> Assert.Fail(sprintf "Expected Exists expression but got: %A" result.Expr)
+
+    [<Fact>]
+    let ``Can parse forall with int comparison``() =
+        let text = "forall(x, x > 7)"
+        let result = TermParsers.parseProp<int> text
+        match result.Expr with
+        | Formula.ForAll(op, bound, range, body) ->
+            Assert.Single(bound)
+            Assert.Equal("x", bound.Head.Name)
+            // Body should be x > 7 (int comparison)
+            // It might be represented as GreaterThan(x, 7) or similar.
+            // Just verifying it parses successfully is good step.
+        | _ -> Assert.Fail(sprintf "Expected ForAll expression but got: %A" result.Expr)

@@ -197,15 +197,21 @@ module TermParsers =
 
             if t  = typeof<bool> || t = typeof<obj> then 
                      choice [
-                        str_ws "forall" >>. quantifierParser (fun b r bod -> <@@ forall_expr (%%b:bool) %r %bod @@>)
-                        str_ws "exists" >>. quantifierParser (fun b r bod -> <@@ exists_expr (%%b:bool) %r %bod @@>)
+                        str_ws "forall" >>. quantifierParser (fun b r bod -> <@@ forall_expr (%%b:'t) %r %bod @@>)
+                        str_ws "exists" >>. quantifierParser (fun b r bod -> <@@ exists_expr (%%b:'t) %r %bod @@>)
                         idp
                      ]
-                elif t = typeof<int> || t = typeof<real> then comparisonParser() <|> idp
+                elif t = typeof<int> || t = typeof<real> then 
+                     choice [
+                        str_ws "forall" >>. quantifierParser (fun b r bod -> <@@ forall_expr (%%b:'t) %r %bod @@>)
+                        str_ws "exists" >>. quantifierParser (fun b r bod -> <@@ exists_expr (%%b:'t) %r %bod @@>)
+                        comparisonParser()
+                        idp
+                     ]                    
                 else failwithf "%A expression parser is not implemented." t
 
         let opp = OperatorPrecedenceParser<Expr,unit,unit>()
-        exprRef := opp.ExpressionParser
+       
         let term = parens expr <|> operand
 
         // Helper expressions for operators, creating Expr<bool>
@@ -229,7 +235,7 @@ module TermParsers =
         opp.AddOperator(InfixOperator("||", ws, 3, Associativity.Left, fun l r -> _or (expand_as<bool> l) (expand_as<bool> r)))
         opp.AddOperator(InfixOperator("&&", ws, 4, Associativity.Left, fun l r -> _and (expand_as<bool> l) (expand_as<bool> r)))
         opp.AddOperator(PrefixOperator("not", ws, 5, true, fun l -> _not (expand_as<bool> l)))
-        
+        exprRef := opp.ExpressionParser
         expr
 
     // Public Prop Parser
