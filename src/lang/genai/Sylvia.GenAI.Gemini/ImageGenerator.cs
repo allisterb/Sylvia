@@ -29,18 +29,53 @@ public class ImageGenerator : Runtime
     public ImageGenerator() : this(
          config: new GenerateImagesConfig()
          { 
-             NumberOfImages = 1
-             
+             NumberOfImages = 1,
+             OutputMimeType = "image/png",
          })
     {}
     #endregion
 
     #region Methods
-    public async Task<byte[]> Prompt(string prompt, string? outputFile = null)
+    public async Task<byte[]?> Prompt(string prompt, string? outputFile = null)
     {      
-        GenerateImagesResponse response = await client.Models.GenerateImagesAsync("ll", prompt, imagesConfig);
-        //response.GeneratedImages.First().Image.
-        //return response;
+        GenerateImagesResponse response = await client.Models.GenerateImagesAsync(ModelIds.Imagen4, prompt, imagesConfig);
+        if (response.GeneratedImages is not null && response.GeneratedImages.Count > 0)
+        {
+            var image = response.GeneratedImages.First().Image;
+            if (image is not null && image.ImageBytes is not null)
+            {
+                if (outputFile is not null)
+                {
+                    await System.IO.File.WriteAllBytesAsync(outputFile, image.ImageBytes);
+                }
+                return image.ImageBytes;
+            }
+            else
+            {
+                return null;
+            }
+            
+        }
+        else
+        {
+            return null;
+        }
+    }
+
+    public async Task<List<string>> GetImageModelsAsync()
+    {
+        var _models = await client.Models.ListAsync();
+        List<string> imageModels = new List<string>();  
+        await foreach (var model in _models)
+        {
+                        
+            if (model is not null && model.Name is not null && model.SupportedActions is not null && model.SupportedActions.Contains("generateImages"))
+            {
+                imageModels.Add(model.Name);
+            }
+            
+        }
+        return imageModels;
     }
     #endregion
 
@@ -49,6 +84,13 @@ public class ImageGenerator : Runtime
 
     public readonly GenerateImagesConfig imagesConfig;
 
-    public readonly static IConfigurationRoot? config = null;
+    public static IConfigurationRoot? config = null;
     #endregion
+
+    public record ModelIds
+    {
+        public const string Imagen3 = "imagen-3.0-generate-002";
+        public const string NanoBanana = "nano-banana-pro-preview";
+        public const string Imagen4 = "imagen-4.0-generate-001";
+    }
 }

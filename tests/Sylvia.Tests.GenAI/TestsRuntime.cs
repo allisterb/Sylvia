@@ -8,6 +8,7 @@ public class TestsRuntime : Sylvia.TestsRuntime
     {
         Initialize("OnlyHumans", "Tests", true);
         ModelConversation.config = config;
+        ImageGenerator.config = config; 
     }
 
 }

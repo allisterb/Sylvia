@@ -12,10 +12,6 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.Google;
 
-public record ModelIds
-{
-    public const string Gemma3 = "gemini-3-pro-preview";
-}
 
 public class ModelConversation : Runtime
 {
@@ -164,5 +160,12 @@ public class ModelConversation : Runtime
     protected List<IPlugin> plugins = new List<IPlugin>();
 
     public static IConfigurationRoot? config = null;
+    #endregion
+
+    #region Types
+    public record ModelIds
+    {
+        public const string Gemma3 = "gemini-3-pro-preview";
+    }
     #endregion
 }

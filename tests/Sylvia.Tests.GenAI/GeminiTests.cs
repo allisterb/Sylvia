@@ -21,14 +21,19 @@ public class GeminiTests : TestsRuntime
     }
 
     [Fact]
+    public async Task CanGetImageModels()
+    {
+        var ig = new ImageGenerator();
+        var models = await ig.GetImageModelsAsync();
+        Assert.NotEmpty(models);
+    }
+
+
+    [Fact]
     public async Task CanGenerateImage()
     {
-        var ig = new ImageGenerator(config: new Google.GenAI.Types.GenerateImagesConfig()
-        {            
-            NumberOfImages = 1,
-        });
-
-       
-
+        var ig = new ImageGenerator();
+        var b = await ig.Prompt("A cute cat sitting on a windowsill", "cat.png");
+        Assert.NotNull(b);
     }
 }
