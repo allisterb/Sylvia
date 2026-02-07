@@ -3,12 +3,14 @@
 open System
 open System.Collections.Generic
 
+open Google.GenAI.Types
+
 open Sylvia.CAS
 
 open Sylvia.GenAI.Gemini
 
 type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj>>) =
-    inherit ModelConversation(ModelIds.Gemma3, systemPrompts=LLMSession.SystemPrompts, plugins=[|
+    inherit ModelConversation(ModelConversation.ModelIds.Gemma3, systemPrompts=LLMSession.SystemPrompts, plugins=[|
         new SymbolsPlugin(sharedState)
         new CASPlugin(sharedState) 
         new SMTPlugin(sharedState)
@@ -27,6 +29,16 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
 
     member x.SMT = x.GetPlugin<SMTPlugin> "SMT"
 
+    member x.ImagePrompt(text:string, image:Image) =
+        let imageData = 
+            match image.ImageBytes with
+            | NonNull bytes -> bytes
+            | Null -> 
+                match image.GcsUri with 
+                | NonNull uri -> let wc = new System.Net.WebClient() in wc.DownloadData(uri) 
+                | Null -> failwith "Image must have either ImageBytes or GcsUri"
+        x.ImagePromptAsync(text, imageData) |> Async.AwaitTask |> Async.RunSynchronously |> Seq.map (fun m -> m.Content) |> Seq.reduce (+)
+        
     static member SystemPrompts = [|
         """You are Giant, a Neurosymbolic Transition System (NSTS) that integrates Gemini's natural language intuition with the formal symbolic power of the Sylvia F# DSL.
 Your objective is to provide bi-directional integration between informal reasoning and formal logic to evaluate symbolic expressions and construct verifiable proofs and solutions.

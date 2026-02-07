@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
+
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,7 +12,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.Google;
-
 
 public class ModelConversation : Runtime
 {
@@ -121,12 +121,17 @@ public class ModelConversation : Runtime
         messages.AddAssistantMessage(sb.ToString());
     }
 
-    public async Task<List<ChatMessageContent>> Prompt(string prompt, params object[] args)
+    public async Task<List<ChatMessageContent>> Prompt(string prompt, params ChatMessageContent[] items)
     {
         var messageItems = new ChatMessageContentItemCollection()
         {
-            new Microsoft.SemanticKernel.TextContent(string.Format(prompt, args))
+            new Microsoft.SemanticKernel.TextContent(prompt)
         };
+
+        foreach(var item in items)
+        {
+            messageItems.Add(item);
+        }   
         messages.AddUserMessage(messageItems);
         List<ChatMessageContent> response = new List<ChatMessageContent>();
                 
@@ -138,6 +143,20 @@ public class ModelConversation : Runtime
         return response;
     }
 
+    public async Task<List<ChatMessageContent>> ImagePromptAsync(string prompt, byte[] imageData, string imageMimeType = "image/png") 
+    {
+        messages.AddUserMessage([
+            new Microsoft.SemanticKernel.TextContent(prompt),
+            new ImageContent(imageData, imageMimeType),
+        ]);
+        List<ChatMessageContent> response = new List<ChatMessageContent>();
+        foreach (var m in await chat.GetChatMessageContentsAsync(messages, promptExecutionSettings, kernel))
+        {
+            response.Add(m);
+            messages.Add(m);
+        }
+        return response;
+    }
     #endregion
 
     #region Fields

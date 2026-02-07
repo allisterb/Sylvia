@@ -30,6 +30,7 @@ public class ImageGenerator : Runtime
          config: new GenerateImagesConfig()
          { 
              NumberOfImages = 1,
+             ImageSize = "1K",
              OutputMimeType = "image/png",
          })
     {}

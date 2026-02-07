@@ -1,20 +1,19 @@
-#r "C:\\Users\\Allister\\.nuget\\packages\\microsoft.extensions.logging.abstractions\\10.0.0\\lib\\net10.0\\Microsoft.Extensions.Logging.Abstractions.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\microsoft.extensions.configuration.abstractions\\10.0.1\\lib\\net10.0\\Microsoft.Extensions.Configuration.Abstractions.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\microsoft.extensions.configuration.json\\10.0.1\\lib\\net10.0\\Microsoft.Extensions.Configuration.Json.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\fparsec\\1.0.3\\lib\\netstandard1.6\FParsec.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\fparsec\\1.0.3\\lib\\netstandard1.6\FParsecCS.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\mathnet.numerics\\4.15.0\\lib\\netstandard2.0\MathNet.Numerics.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\mathnet.numerics.fsharp\\4.15.0\\lib\\netstandard2.0\\MathNet.Numerics.FSharp.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\microsoft.z3\\4.12.2\\lib\\netstandard2.0\\Microsoft.Z3.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\fsharp.quotations.evaluator\\2.1.0\\lib\\netstandard2.0\\FSharp.Quotations.Evaluator.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\csvhelper\\12.1.2\\lib\\netstandard2.0\\CsvHelper.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\google.genai\0.11.0\\lib\\netstandard2.0\\Google.GenAI.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\google.apis.auth\\1.73.0\\lib\\netstandard2.0\\Google.Apis.Auth.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\google.apis.core\\1.73.0\\lib\\netstandard2.0\\Google.Apis.Core.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\microsoft.dotnet.interactive.formatting\\1.0.0-beta.24568.1\\lib\\netstandard2.0\\Microsoft.DotNet.Interactive.Formatting.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\unquote\\7.0.1\\lib\\netstandard2.0\\Unquote.dll"
-#r "C:\\Users\\Allister\\.nuget\\packages\\sylvia.arithmetic\\0.2.8\\lib\\netstandard2.0\\Sylvia.Provider.Arithmetic.Runtime.dll"
+#r "nuget: Microsoft.Extensions.Logging.Abstractions, 10.0.0"
+#r "nuget: Microsoft.Extensions.Configuration.Abstractions, 10.0.1"
+#r "nuget: Microsoft.Extensions.Configuration.Json, 10.0.1"
+#r "nuget: Microsoft.SemanticKernel.Abstractions, 1.70.0"
+#r "nuget: Microsoft.SemanticKernel.Connectors.Google, 1.70.0-alpha"
+#r "nuget: FParsec, 1.0.3"
+#r "nuget: MathNet.Numerics.FSharp, 4.15.0"
+#r "nuget: Microsoft.Z3, 4.12.2"
+#r "nuget: FSharp.Quotations.Evaluator, 2.1.0"
+#r "nuget: CsvHelper, 12.1.2"
+#r "nuget: Google.GenAI, 0.11.0"
+#r "nuget: Microsoft.DotNet.Interactive.Formatting, 1.0.0-beta.24568.1"
+#r "nuget: Unquote, 7.0.1"
+#r "nuget: sylvia.arithmetic, 0.2.8"
 
+#r "C:\\Users\\Allister\\.nuget\\packages\\sylvia.arithmetic\\0.2.8\\lib\\netstandard2.0\\Sylvia.Provider.Arithmetic.Runtime.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\core\\Sylvia.Expressions\\bin\\Debug\\net10.0\\Expect.NETStandard.dll"
 #r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\main\\FunScript\\bin\\Debug\\netstandard2.0\\FunScript.dll"
 #r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\main\\FunScript\\bin\\Debug\\netstandard2.0\\FunScript.Interop.NETStandard.dll"
@@ -33,6 +32,7 @@
 #r "C:\\Projects\\Sylvia\\src\\data\\Sylvia.Data\\bin\\Debug\\netstandard2.0\\Sylvia.Data.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\visualization\\Sylvia.Visualization.Html\\bin\\Debug\\net10.0\\Sylvia.Visualization.Html.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\genai\\Sylvia.GenAI.Gemini\\bin\\Debug\\net10.0\\Sylvia.GenAI.Gemini.dll"
+#r "C:\\Projects\\Sylvia\\src\\lang\\genai\\Sylvia.GenAI.Giant\\bin\\Debug\\net10.0\\Sylvia.GenAI.Giant.dll"
 
 #r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.AbstractAlgebra\\bin\\Debug\\net10.0\\Sylvia.AbstractAlgebra.dll"
 #r "C:\\Projects\\Sylvia\\src\\Math\\Sylvia.LinearAlgebra\\bin\\Debug\\net10.0\\Sylvia.LinearAlgebra.dll"
@@ -47,6 +47,7 @@ open Microsoft.DotNet.Interactive.Formatting
 open Sylvia
 open Sylvia.GenAI.Gemini    
 
+ModelConversation.config <- Runtime.LoadConfigFile("testappsettings.json")
 ImageGenerator.config <- Runtime.LoadConfigFile("testappsettings.json")
 
 Formatter.Register<Image>(
