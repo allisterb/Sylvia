@@ -36,4 +36,20 @@
 
 #nowarn "3391"
 
+namespace Sylvia.GenAI.Giant
 
+open Sylvia
+
+module Examples =
+
+    let check_bool_sat (constraints: string list) =
+        let s = new Z3Solver()
+        Sylvia.Z3.check_bool_sat s constraints  
+
+    let check_int_sat (constraints: string list) =
+        let s = new Z3Solver()
+        Sylvia.Z3.check_int_sat s constraints  
+
+    let check_real_sat (constraints: string list) =
+        let s = new Z3Solver()
+        Sylvia.Z3.check_real_sat s constraints  

@@ -380,8 +380,7 @@ module Z3 =
 
     let parse_bool_expr<'t when 't: equality and 't: comparison> (s:Z3Solver) (e:string) = parseBoolExpr<'t> e |> Result.map (create_bool_expr s)
 
-    let check_bool_sat (constraints: string list) =
-        let s = new Z3Solver()
+    let check_bool_sat (s:Z3Solver) (constraints: string list) =        
         let c = constraints |> List.map (parse_bool_expr<bool> s)
         if c |> List.exists(fun r -> r.IsError) then            
                 c 
@@ -394,8 +393,7 @@ module Z3 =
             |> s.Check 
             |> sprintf "%A"
 
-    let check_int_sat (constraints: string list) =
-        let s = new Z3Solver()
+    let check_int_sat (s:Z3Solver) (constraints: string list) =        
         let c = constraints |> List.map (parse_bool_expr<int> s)
         if c |> List.exists(fun r -> r.IsError) then            
                 c 
@@ -408,8 +406,7 @@ module Z3 =
             |> s.Check 
             |> sprintf "%A" 
             
-    let check_real_sat (constraints: string list) =
-        let s = new Z3Solver()
+    let check_real_sat (s:Z3Solver) (constraints: string list) =
         let c = constraints |> List.map (parse_bool_expr<real> s)
         if c |> List.exists(fun r -> r.IsError) then            
                 c 
