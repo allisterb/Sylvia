@@ -36,7 +36,7 @@ public class ImageGenerator : Runtime
     #endregion
 
     #region Methods
-    public async Task<byte[]?> Prompt(string prompt, string? outputFile = null)
+    public async Task<Image?> PromptAsync(string prompt, string? outputFile = null)
     {      
         GenerateImagesResponse response = await client.Models.GenerateImagesAsync(ModelIds.Imagen4, prompt, imagesConfig);
         if (response.GeneratedImages is not null && response.GeneratedImages.Count > 0)
@@ -48,7 +48,7 @@ public class ImageGenerator : Runtime
                 {
                     await System.IO.File.WriteAllBytesAsync(outputFile, image.ImageBytes);
                 }
-                return image.ImageBytes;
+                return image;
             }
             else
             {
@@ -61,6 +61,9 @@ public class ImageGenerator : Runtime
             return null;
         }
     }
+
+    public Image? Prompt(string prompt, string? outputFile = null) => PromptAsync(prompt, outputFile).GetAwaiter().GetResult();
+    
 
     public async Task<List<string>> GetImageModelsAsync()
     {

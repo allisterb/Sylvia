@@ -35,5 +35,6 @@ public class GeminiTests : TestsRuntime
         var ig = new ImageGenerator();
         var b = await ig.Prompt("A cute cat sitting on a windowsill", "cat.png");
         Assert.NotNull(b);
+        Assert.NotEmpty(b.)
     }
 }
