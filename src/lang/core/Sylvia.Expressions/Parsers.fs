@@ -139,6 +139,8 @@ module TermParsers =
         let t = typeof<'t>
         let identifierStr = many1Satisfy2L isIdentifierFirstChar isIdentifierChar "identifier" .>> ws
         
+        let expr, exprRef = createParserForwardedToRef<Expr, unit>()
+
         let comparisonParser() : Parser<Expr, unit> =
             if t = typeof<int> || t = typeof<real> then
                 let _eq l r = <@ (%l:'t) = (%r:'t) @>
@@ -180,12 +182,30 @@ module TermParsers =
                         | "true" -> T.Expr 
                         | "false" -> F.Expr
                         | _ -> Expr.Var(Var(id, typeof<bool>)))
-            if t  = typeof<bool> || t = typeof<obj> then idp
-            elif t = typeof<int> || t = typeof<real> then comparisonParser() <|> idp
-            else failwithf "%A expression parser is not implemented." t
+
+            let quantifierParser op =
+                 parens (
+                    identifierStr .>> str_ws "," .>>. expr .>>. opt (str_ws "," >>. expr)
+                 )
+                 |>> fun ((boundName, e1), e2Opt) ->
+                    let bound = Var(boundName, typeof<'t>)
+                    let range, body = 
+                        match e2Opt with
+                        | None -> (T.Expr, expand_as<bool> e1)
+                        | Some e2 -> (expand_as<bool> e1, expand_as<bool> e2)
+                    op (Expr.Var(bound)) (expand_as<bool> range) (expand_as<bool> body)
+
+            if t  = typeof<bool> || t = typeof<obj> then 
+                     choice [
+                        str_ws "forall" >>. quantifierParser (fun b r bod -> <@@ forall_expr (%%b:bool) %r %bod @@>)
+                        str_ws "exists" >>. quantifierParser (fun b r bod -> <@@ exists_expr (%%b:bool) %r %bod @@>)
+                        idp
+                     ]
+                elif t = typeof<int> || t = typeof<real> then comparisonParser() <|> idp
+                else failwithf "%A expression parser is not implemented." t
 
         let opp = OperatorPrecedenceParser<Expr,unit,unit>()
-        let expr = opp.ExpressionParser
+        exprRef := opp.ExpressionParser
         let term = parens expr <|> operand
 
         // Helper expressions for operators, creating Expr<bool>

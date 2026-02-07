@@ -168,6 +168,7 @@ module Z3 =
         | Call(None, Op "FromOne" , []) as e when e.Type = typeof<Rational> -> create_numeral solver 1Q
         | Call(None, Op "FromZero" , []) as e when e.Type = typeof<Rational> -> create_numeral solver 0Q
         | Call(None, Op "FromInt32", (Int32 i)::[]) as e when  e.Type = typeof<Rational> -> create_numeral solver i
+        | Call(None, Op "op_UnaryNegation" ,r::[]) -> solver.Ctx.MkUnaryMinus(create_arith_expr solver r)
         | Call(None, Op "op_Addition" ,l::r::[]) -> solver.Ctx.MkAdd((create_arith_expr solver l), (create_arith_expr solver r))
         | Call(None, Op "op_Multiply" ,l::r::[]) -> solver.Ctx.MkMul((create_arith_expr solver l), (create_arith_expr solver r))
         | Call(None, Op "op_Subtraction" ,l::r::[]) -> solver.Ctx.MkSub((create_arith_expr solver l), (create_arith_expr solver r))
@@ -229,8 +230,10 @@ module Z3 =
         | Call(None, Op "op_BarQmarkBar",l::r::[]) -> solver.Ctx.MkSetMembership(create_expr solver l, create_set_expr solver r)
         | Call(None, Op "op_BarLessBar",l::r::[]) -> solver.Ctx.MkSetSubset(create_set_expr solver l, create_set_expr solver r)
         (* Quantifiers *)
+        | ForAll(_, bound, Bool true, body) -> solver.Ctx.MkForall((bound |> List.toArray |> Array.map (Expr.Var >> (create_expr solver))), create_expr solver (<@@ (%%body:bool) @@>)) :> BoolExpr
         | ForAll(_, bound, range, body) -> solver.Ctx.MkForall((bound |> List.toArray |> Array.map (Expr.Var >> (create_expr solver))), create_expr solver (<@@ (%%range:bool) ===> (%%body:bool) @@>)) :> BoolExpr
         //| Call(None, Op "forall", PropertyGet (None, arr, [])::range::body::[]) when arr.PropertyType.IsArray -> solver.Ctx.MkForall([|solver.Ctx.MkArrayConst(arr.Name, solver.Ctx.MkIntSort(), (create_sort solver (arr.PropertyType.GetElementType())))|], create_expr solver (<@@ (%%range:bool) ===> (%%body:bool) @@>)) :> BoolExpr
+        | Exists(_, bound, Bool true, body) -> solver.Ctx.MkExists((bound |> List.toArray |> Array.map (Expr.Var >> (create_expr solver))), create_expr solver (<@@ (%%body:bool) @@>)) :> BoolExpr
         | Exists(_, bound, range, body) -> solver.Ctx.MkExists((bound |> List.toArray |> Array.map (Expr.Var >> (create_expr solver))), create_expr solver (<@@ (%%range:bool) && (%%body:bool) @@>)) :> BoolExpr
         //| Call(None, Op "exists", PropertyGet (None, arr, [])::range::body::[]) when arr.PropertyType.IsArray -> solver.Ctx.MkExists([|solver.Ctx.MkArrayConst(arr.Name, solver.Ctx.MkIntSort(), (create_sort solver (arr.PropertyType.GetElementType())))|], create_expr solver (<@@ (%%range:bool) && (%%body:bool) @@>)) :> BoolExpr
         | _ -> failwithf "Cannot create Z3 constraint from %A." expr
