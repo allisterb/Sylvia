@@ -1,7 +1,7 @@
 ﻿namespace Sylvia
 
 open FSharp.Quotations
-
+open Formula
 open BooleanAlgebra
 
 /// Theory of set algebra based on a generic Boolean algebra.

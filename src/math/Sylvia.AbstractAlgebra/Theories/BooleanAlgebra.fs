@@ -4,6 +4,7 @@ open FSharp.Quotations
 open FSharp.Quotations.Patterns
 open FSharp.Quotations.DerivedPatterns
 
+open Formula
 open Patterns
 open Descriptions
 
