@@ -24,7 +24,9 @@ type SMTPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:str
     member x.CheckBoolSat([<ParamArray>] formulas:string array, logger:ILogger | null) : string =
         let s = new Z3Solver()
         match check_bool_sat s formulas with
-        | Ok status -> status |> sprintf "%A" |> log_kernel_func_ret logger
+        | Ok status -> 
+            x.Models.Push(s.Model())
+            status |> sprintf "%A" |> log_kernel_func_ret logger
         | Error error -> log_kernel_func_ret logger error
         
     [<KernelFunction("check_int_sat")>]
