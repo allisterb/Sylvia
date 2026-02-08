@@ -177,8 +177,8 @@ module TermParsers =
                 |>> fun (id, argOpt) ->
                     match argOpt with
                     | Some arg ->
-                        let argVar = Var(arg, typeof<obj>)
-                        let funcType = FSharp.Reflection.FSharpType.MakeFunctionType(typeof<obj>, typeof<bool>)
+                        let argVar = Var(arg, typeof<'t>)
+                        let funcType = FSharp.Reflection.FSharpType.MakeFunctionType(typeof<'t>, typeof<bool>)
                         let funcVar = Var(id, funcType)
                         Expr.Application(Expr.Var(funcVar), Expr.Var(argVar))
                     | None ->

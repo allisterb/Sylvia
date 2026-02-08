@@ -32,8 +32,9 @@ get_prop_model ["Tie || Shirt"; "not Tie || Shirt"; "not Tie || not Shirt"]
 // Get an integer model for x > 5 and x <> 6 and x < 8
 get_int_model ["x > 5"; "x <> 6"; "x < 8"]
 *)
-check_bool_sat [
+check_int_sat [
     "forall(islander, IsKnight(islander) || IsKnave(islander))"
-    "IsKnight(islander) ==> TellsTruth(islander) && IsKnave(islander) ==> not TellsTruth(islander)"
-    "exists(islander, IsKanve(islander) && TellsTruth(islander))"
+    "forall(islander, IsKnight(islander) ==> TellsTruth(islander))"
+    "forall(islander, IsKnave(islander) ==> not TellsTruth(islander))"
+    "exists(islander, IsKnave(islander) && TellsTruth(islander))"
 ]

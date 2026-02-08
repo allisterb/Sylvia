@@ -111,6 +111,7 @@ module Z3 =
 
     let rec create_sort (solver:Z3Solver)  =
         function
+        | BoolType -> solver.Ctx.MkBoolSort() :> Sort
         | IntType -> solver.Ctx.MkIntSort() :> Sort
         | RatType -> solver.Ctx.MkRealSort() :> Sort
         | SetType as t -> 
@@ -209,7 +210,7 @@ module Z3 =
             |> List.choose(fun v -> if v.Type = typeof<bool> then Some v else None)
             |> List.map(fun v -> v.Name, solver.Ctx.MkBoolConst(v.Name)) |> Map.ofList
         let arrayDecls = new System.Collections.Generic.Dictionary<string, ArrayExpr>()
-
+        let funcDecls = new System.Collections.Generic.Dictionary<string, FuncDecl>()
         match expr' with
         | Var v when v.Type = typeof<bool> -> vars.[v.Name]
         | ValueWithName(v, t, _) when t = typeof<bool> -> solver.Ctx.MkBool(v :?> bool)
@@ -236,12 +237,16 @@ module Z3 =
         | Exists(_, bound, Bool true, body) -> solver.Ctx.MkExists((bound |> List.toArray |> Array.map (Expr.Var >> (create_expr solver))), create_expr solver (<@@ (%%body:bool) @@>)) :> BoolExpr
         | Exists(_, bound, range, body) -> solver.Ctx.MkExists((bound |> List.toArray |> Array.map (Expr.Var >> (create_expr solver))), create_expr solver (<@@ (%%range:bool) && (%%body:bool) @@>)) :> BoolExpr
         //| Call(None, Op "exists", PropertyGet (None, arr, [])::range::body::[]) when arr.PropertyType.IsArray -> solver.Ctx.MkExists([|solver.Ctx.MkArrayConst(arr.Name, solver.Ctx.MkIntSort(), (create_sort solver (arr.PropertyType.GetElementType())))|], create_expr solver (<@@ (%%range:bool) && (%%body:bool) @@>)) :> BoolExpr
-        | _ -> failwithf "Cannot create Z3 constraint from %A." expr
-        | Application(Var p, var) ->
-            let fd = solver.Ctx.MkFuncDecl(p.Name, (create_sort solver var.Type), (create_sort solver expr.Type))
-            fd.Apply(create_expr solver var) :?> BoolExpr
         (* Predicates *)
+        | Application(Var p, var) as e when e.Type = typeof<bool> ->
+            do if not (funcDecls.ContainsKey(p.Name)) then funcDecls.Add(p.Name, solver.Ctx.MkFuncDecl(p.Name, (create_sort solver var.Type), (create_sort solver expr.Type)))
+            let fd = funcDecls.[p.Name] 
+            //let fd = solver.Ctx.MkFuncDecl(p.Name, (create_sort solver var.Type), (create_sort solver expr.Type))
+            let appExpr  = fd.Apply(create_expr solver var)
+            solver.Ctx.MkEq(appExpr, solver.Ctx.MkTrue())
         
+        | _ -> failwithf "Cannot create Z3 BoolExpr from %A." expr
+
     and internal create_expr (solver:Z3Solver) (expr:FSharp.Quotations.Expr) : Expr =
         let funcDecls = new System.Collections.Generic.Dictionary<string, FuncDecl>()
         let arrayDecls = new System.Collections.Generic.Dictionary<string, ArrayExpr>()
