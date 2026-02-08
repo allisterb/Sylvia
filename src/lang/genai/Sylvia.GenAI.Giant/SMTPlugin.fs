@@ -23,51 +23,26 @@ type SMTPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:str
     [<Description("Check if a set of boolean formulas is satisfiable.")>]
     member x.CheckBoolSat([<ParamArray>] formulas:string array, logger:ILogger | null) : string =
         let s = new Z3Solver()
-        let c = formulas |> Array.map (parse_bool_expr<bool> s)
-        if c |> Array.exists(fun r -> r.IsError) then            
-                c 
-                |> Array.choose (function Error e -> Some e | _ -> None) 
-                |> Array.insertAt 0 "Could not parse one more of the constraints:\n" 
-                |> String.concat "\n" 
-                |> log_kernel_func_info_ret logger
-        else
-            c 
-            |> Array.choose (function Ok _e -> Some _e | _ -> None) 
-            |> s.Check 
-            |> sprintf "%A" 
-            |> log_kernel_func_info_ret logger       
-
+        match check_bool_sat s formulas with
+        | Ok status -> status |> sprintf "%A" |> log_kernel_func_ret logger
+        | Error error -> log_kernel_func_ret logger error
+        
     [<KernelFunction("check_int_sat")>]
     [<Description("Check if a set of integer constraints is satisfiable.")>]
     member x.CheckIntSat([<ParamArray>] constraints:string array, logger:ILogger | null) : string =
         let s = new Z3Solver()
-        let c = constraints |> Array.map (parse_bool_expr s)
-        if c |> Array.exists(fun r -> r.IsError) then            
-                c 
-                |> Array.choose (function Error e -> Some e | _ -> None) 
-                |> Array.insertAt 0 "Could not parse one more of the constraints:\n" 
-                |> String.concat "\n" 
-                |> log_kernel_func_info_ret logger
-        else
-            c 
-            |> Array.choose (function Ok _e -> Some _e | _ -> None) 
-            |> s.Check 
-            |> sprintf "%A" 
-            |> log_kernel_func_info_ret logger
+        match check_int_sat s constraints with
+        | Ok status -> status |> sprintf "%A" |> log_kernel_func_ret logger
+        | Error error -> log_kernel_func_ret logger error
             
     [<KernelFunction("get_int_model")>]
     [<Description("Get a model or interpretation that satisifies a set of integer constraints.")>]
     member x.GetIntModel([<ParamArray>] constraints:string array, logger:ILogger | null) : string =
         let s = new Z3Solver()
-        let c = constraints |> Array.map (parse_bool_expr s)
-        if c |> Array.exists(fun r -> r.IsError) then            
-                c 
-                |> Array.choose (function Error e -> Some e | _ -> None) 
-                |> Array.insertAt 0 "Could not parse one more of the constraints:\n" 
-                |> String.concat "\n" 
-                |> log_kernel_func_info_ret logger
-        else
-            let status = c |> Array.choose (function Ok _e -> Some _e | _ -> None)  |> s.Check 
+        get_int_model s constraints 
+        |> Seq.map (fun (v,e) -> sprintf "%A=%A\n" v e) 
+        |> Seq.reduce (+)
+        |> log_kernel_func_ret logger
             
             
             

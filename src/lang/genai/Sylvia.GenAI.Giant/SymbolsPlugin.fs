@@ -42,11 +42,11 @@ type SymbolsPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id
     member internal x.IntroduceConstant<'t>(name:string, logger:ILogger|null) = 
         let t = typeof<'t>   
         if x.Constants.ContainsKey name && x.Constants[name].Type = t then 
-            sprintf "The constant %s of type %A has already been introduced." name t |> log_kernel_func_info_ret logger
+            sprintf "The constant %s of type %A has already been introduced." name t |> log_kernel_func_ret logger
         else
             let v = Unchecked.defaultof<'t>
             x.Constants.Add(name, Expr.ValueWithName(v, t, name))
-            sprintf "Introduced %s constant %s." t.Name name |> log_kernel_func_info_ret logger
+            sprintf "Introduced %s constant %s." t.Name name |> log_kernel_func_ret logger
         
     member internal x.DefineFunc<'t>(name:string, expression:string) = 
         match x.Parse<'t> expression with
@@ -67,11 +67,7 @@ type SymbolsPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id
     [<KernelFunction("realvar")>]
     [<Description("Introduce a real variable")>]
     member x.RealVar(name:string) = x.IntroduceVar(name, VariableType.Real)
-    
-    [<KernelFunction("boolconst")>]
-    [<Description("Introduce a boolean constant")>]
-    member x.BoolConst(name:string, logger:ILogger|null) = x.IntroduceConstant<bool>(name, logger) 
-    
+        
     [<KernelFunction("intconst")>]
     [<Description("Introduce a integer constant")>]
     member x.IntConst(name:string, logger:ILogger|null) = x.IntroduceConstant<int>(name, logger)

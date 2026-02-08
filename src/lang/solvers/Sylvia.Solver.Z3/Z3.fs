@@ -393,21 +393,21 @@ module Z3 =
             |> Seq.choose (function Ok _e -> Some _e | _ -> None) 
             |> Ok 
           
-    let check_bool_sat (s:Z3Solver) (constraints: string list) =        
+    let check_bool_sat (s:Z3Solver) (constraints: string seq) =        
         constraints |> parse_constraints<bool> s |> Result.map s.Check
 
-    let check_int_sat (s:Z3Solver) (constraints: string list) =        
+    let check_int_sat (s:Z3Solver) (constraints: string seq) =        
         constraints |> parse_constraints<int> s |> Result.map s.Check
             
-    let check_real_sat (s:Z3Solver) (constraints: string list) =
+    let check_real_sat (s:Z3Solver) (constraints: string seq) =
         constraints |> parse_constraints<real> s |> Result.map s.Check
 
-    let get_prop_model (s:Z3Solver) (constraints: string list) =
+    let get_prop_model (s:Z3Solver) (constraints: string seq) =
         match check_bool_sat s constraints with
         | Ok (Status.SATISFIABLE) -> _get_bool_var_model (s.Model()) |> List.toSeq
         | _ -> Seq.empty
 
-    let get_int_model (s:Z3Solver) (constraints: string list) =
+    let get_int_model (s:Z3Solver) (constraints: string seq) =
         match check_int_sat s constraints with
         | Ok (Status.SATISFIABLE) -> _get_int_var_model (s.Model()) |> List.toSeq
         | _ -> Seq.empty

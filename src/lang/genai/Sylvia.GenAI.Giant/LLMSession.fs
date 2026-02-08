@@ -29,6 +29,8 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
 
     member x.SMT = x.GetPlugin<SMTPlugin> "SMT"
 
+    member x.Prompt(text:string) = x.PromptAsync(text) |> Async.AwaitTask |> Async.RunSynchronously |> Seq.map (fun m -> m.Content) |> Seq.reduce (+)
+
     member x.ImagePrompt(text:string, image:Image) =
         let imageData = 
             match image.ImageBytes with

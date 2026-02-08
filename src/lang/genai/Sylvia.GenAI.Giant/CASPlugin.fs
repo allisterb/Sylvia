@@ -14,7 +14,7 @@ open Sylvia.CAS
 type CASPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:string) =
     inherit LLMPlugin("CAS", sharedState, ?id=id)
     
-    do CAS.Maxima.init "C:\\MathTools\\maxima-5.44.0\\bin\\maxima.bat"
+    do CAS.Maxima.init "C:\\MathTools\\maxima-5.49.0\\bin\\maxima.bat"
 
     [<KernelFunction("diff")>]
     [<Description("Differentiate an expression wrt a variable")>]
@@ -23,6 +23,6 @@ type CASPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:str
         match x.Parse<real> expression with
         | Ok expr -> 
             let deriv = Maxima.sprint <| Analysis.diff v expr in 
-            sprintf "The derivative of %s wrt %s is %s." expression variable deriv |> log_kernel_func_info_ret logger
-        | Error error -> sprintf "Could not parse expression %s: %s. Make sure all variables have been introduced." expression error 
+            sprintf "The derivative of %s wrt %s is %s." expression variable deriv |> log_kernel_func_ret logger
+        | Error error -> sprintf "Could not parse expression %s: %s. Make sure all variables have been introduced." expression error |> log_kernel_func_ret logger
         

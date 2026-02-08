@@ -17,7 +17,7 @@ type SymbolException(message:string) =
 module private LLMUtils =
     let log_kernel_func_info (logger: ILogger | null) m = 
         match logger with
-        | NonNull l -> l.LogInformation m
+        | NonNull l -> m |> sprintf "%A" |> l.LogInformation 
         | _ -> ()
 
     let log_kernel_func_error (logger: ILogger | null) m = 
@@ -25,7 +25,7 @@ module private LLMUtils =
         | NonNull l -> l.LogError m
         | _ -> ()
 
-    let log_kernel_func_info_ret (logger: ILogger | null) m = log_kernel_func_info logger m; m
+    let log_kernel_func_ret (logger: ILogger | null) m = log_kernel_func_info logger m; m
    
 type LLMPlugin(name:string, sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:string) =
     inherit Runtime()

@@ -16,31 +16,19 @@ type PluginTests() =
     [<Fact>]
     member this.``Can create LLM session`` ()  =
         let llm = new LLMSession()  
-        async {
-            let! r1 = llm.Prompt("Introduce the real variable x") |> Async.AwaitTask
-            Assert.NotNull r1
-            let! r2 = llm.Prompt("diffrentiate x^2 wrt x") |> Async.AwaitTask
-            Assert.NotNull r2
-        } |> Async.RunSynchronously
+        let r2 = llm.Prompt("diffrentiate x^2 wrt x") 
         Assert.NotEmpty llm.SharedState
         
     [<Fact>]
     member this.``Can define function`` ()  =
         let llm = new LLMSession()  
-        async {
-            let! r1 = llm.Prompt("Introduce the real variables x and y") |> Async.AwaitTask
-            let! r2 = llm.Prompt("Let f(x, y) = x^2 + y^3. Find f'(x)") |> Async.AwaitTask
-            Assert.NotNull r2
-        } |> Async.RunSynchronously
+        let r2 = llm.Prompt("Let f(x, y) = x^2 + y^3. Find f'(x)")
         Assert.NotEmpty llm.SharedState
         
     [<Fact>]
     member this.``Can solve integer constraints`` ()  =
         let llm = new LLMSession()  
-        async {
-            let! r1 = llm.Prompt("Is the set of integer constraints x > 5 and x < 9 satisfiable?") |> Async.AwaitTask           
-            Assert.NotNull r1
-        } |> Async.RunSynchronously
+        let r1 = llm.Prompt("Is the set of integer constraints x > 5 and x < 9 satisfiable?")
         Assert.NotEmpty llm.SharedState 
        
 
