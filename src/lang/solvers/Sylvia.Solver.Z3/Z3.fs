@@ -302,11 +302,16 @@ module Z3 =
         
 
     let internal get_model (m:Model) = 
-        let c = m.ConstDecls |> Array.map(fun c -> c.Name.ToString(), match  m.[c] with | ConstResult c -> c.ToString()  | _ -> failwith "This not a constant result.")
+        m.Decls |> Array.map(fun c -> c.Name.ToString(), 
+                                                        match  m.[c] with 
+                                                        | ConstResult c -> c.ToString()  
+                                                        | FuncResult c -> c.Else.ToString()                                                       
+                                                        | _ -> failwith "Unknown result.")
                 
-        let f = m.FuncDecls |> Array.map(fun c -> c.Name.ToString(), match  m.[c] with | FuncResult c -> c.ToString()  | _ -> failwith "This not a function result.")
+        //let f = m.FuncDecls |> Array.map(fun c -> c.Name.ToString(), match  m.[c] with | FuncResult c -> c.ToString()  | _ -> failwith "This not a function result.")
 
-        Array.concat [c; f]
+        //let f = m.
+        //Array.concat [c; f]
 
     let internal get_fun_model (m:Model) = 
         m.ConstDecls 

@@ -3,7 +3,7 @@
 open Sylvia.GenAI.Giant.Examples
 
 (* GIANT function calling examples begin here *)
-
+(*
 // Check if the propositional formula p ∧ ¬p is satisfiable.
 check_bool_sat ["p && not p"]
 
@@ -30,12 +30,13 @@ get_bool_model ["Tie || Shirt"; "not Tie || Shirt"; "not Tie || not Shirt"]
 
 // Get an integer model for x > 5 and x <> 6 and x < 8
 get_int_model ["x > 5"; "x <> 6"; "x < 8"]
-
+*)
 (*
     Formalize the following puzzle and check if it is satisfiable. If it is, get a model for the puzzle.
     "On an island, there are only two types of people: knights who always tell the truth and knaves who always lie."
     "There is at least one knave on the island who tells the truth."
 *)
+get_int_model ["x > 5"; "x <> 6"; "x < 8"]
 get_bool_model [
     "forall(islander, IsKnight(islander) || IsKnave(islander))"
     "forall(islander, IsKnight(islander) ==> TellsTruth(islander))"
