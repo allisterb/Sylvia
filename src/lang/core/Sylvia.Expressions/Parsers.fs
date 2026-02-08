@@ -60,6 +60,7 @@ module TermParsers =
         let _sub l r = <@ (%l:int) - (%r:int) @>
         let _mul l r = <@ (%l:int) * (%r:int) @>
         let _div l r = <@ (%l:int) / (%r:int) @>
+        let _mod l r = <@ (%l:int) % (%r:int) @>
         let _neg l = <@ -(%l:int) @>
 
         opp.TermParser <- term
@@ -67,10 +68,11 @@ module TermParsers =
         // Operator precedence (Standard Arithmetic)
         // 3: Unary -
         // 2: * /
-        // 1: + -
+        // 1: + - %
         
         opp.AddOperator(InfixOperator("+", ws, 1, Associativity.Left, fun l r -> _add (expand_as<int> l) (expand_as<int> r)))
         opp.AddOperator(InfixOperator("-", ws, 1, Associativity.Left, fun l r -> _sub (expand_as<int> l) (expand_as<int> r)))
+        opp.AddOperator(InfixOperator("mod", ws, 1, Associativity.Left, fun l r -> _mod (expand_as<int> l) (expand_as<int> r)))
         opp.AddOperator(InfixOperator("*", ws, 2, Associativity.Left, fun l r -> _mul (expand_as<int> l) (expand_as<int> r)))
         opp.AddOperator(InfixOperator("/", ws, 2, Associativity.Left, fun l r -> _div (expand_as<int> l) (expand_as<int> r)))
         opp.AddOperator(PrefixOperator("-", ws, 3, true, fun l -> _neg (expand_as<int> l)))
@@ -144,6 +146,7 @@ module TermParsers =
         let comparisonParser() : Parser<Expr, unit> =
             if t = typeof<int> || t = typeof<real> then
                 let _eq l r = <@ (%l:'t) = (%r:'t) @>
+                let _noteq l r = <@ (%l:'t) <> (%r:'t) @>
                 let _lt l r = <@ (%l:'t) < (%r:'t) @>
                 let _gt l r = <@ (%l:'t) > (%r:'t) @>
                 let _lte l r = <@ (%l:'t) <= (%r:'t) @>
@@ -160,6 +163,7 @@ module TermParsers =
                         str_ws "<=" >>. preturn _lte
                         str_ws ">=" >>. preturn _gte
                         str_ws "=" >>. preturn _eq
+                        str_ws "<>" >>. preturn _noteq
                         str_ws "<" >>. preturn _lt
                         str_ws ">" >>. preturn _gt                    
                     ] .>>. parser

@@ -419,6 +419,16 @@ module Z3 =
             |> s.Check 
             |> sprintf "%A"
 
+    let get_prop_model (s:Z3Solver) (constraints: string list) =
+        if check_bool_sat s constraints = Status.SATISFIABLE.ToString() then
+            _get_bool_var_model (s.Model()) |> List.toSeq
+        else Seq.empty
+
+    let get_int_model (s:Z3Solver) (constraints: string list) =
+        if check_int_sat s constraints = Status.SATISFIABLE.ToString() then
+            _get_int_var_model (s.Model()) |> List.toSeq
+        else Seq.empty
+
     [<assembly:InternalsVisibleTo("Sylvia.Tests.Solver.Z3")>]
     do()
 
