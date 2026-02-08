@@ -5,28 +5,13 @@
 #r "nuget: Microsoft.SemanticKernel.Connectors.Google, 1.70.0-alpha"
 #r "nuget: FParsec, 1.0.3"
 #r "nuget: MathNet.Numerics.FSharp, 4.15.0"
-#r "nuget: Microsoft.Z3, 4.12.2"
+#r "nuget: Microsoft.Z3, 4.11.2"
 #r "nuget: FSharp.Quotations.Evaluator, 2.1.0"
 #r "nuget: CsvHelper, 12.1.2"
 #r "nuget: Google.GenAI, 0.11.0"
 #r "nuget: Microsoft.DotNet.Interactive.Formatting, 1.0.0-beta.24568.1"
 #r "nuget: Unquote, 7.0.1"
-#r "nuget: sylvia.arithmetic, 0.2.8"
-
-#r "nuget: Microsoft.Extensions.Logging.Abstractions, 10.0.0"
-#r "nuget: Microsoft.Extensions.Configuration.Abstractions, 10.0.1"
-#r "nuget: Microsoft.Extensions.Configuration.Json, 10.0.1"
-#r "nuget: Microsoft.SemanticKernel.Abstractions, 1.70.0"
-#r "nuget: Microsoft.SemanticKernel.Connectors.Google, 1.70.0-alpha"
-#r "nuget: FParsec, 1.0.3"
-#r "nuget: MathNet.Numerics.FSharp, 4.15.0"
-#r "nuget: Microsoft.Z3, 4.12.2"
-#r "nuget: FSharp.Quotations.Evaluator, 2.1.0"
-#r "nuget: CsvHelper, 12.1.2"
-#r "nuget: Google.GenAI, 0.11.0"
-#r "nuget: Microsoft.DotNet.Interactive.Formatting, 1.0.0-beta.24568.1"
-#r "nuget: Unquote, 7.0.1"
-#r "nuget: sylvia.arithmetic, 0.2.8"
+#r "nuget: Sylvia.Arithmetic, 0.2.8"
 
 #r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/Expect.NETStandard.dll"
 #r "../ext/FunScript/src/main/FunScript/bin/Debug/netstandard2.0/FunScript.dll"
@@ -55,8 +40,8 @@ open Microsoft.DotNet.Interactive.Formatting
 open Sylvia
 open Sylvia.GenAI.Gemini    
 
-ModelConversation.config <- Runtime.LoadConfigFile("./../testappsettings.json")
-ImageGenerator.config <- Runtime.LoadConfigFile("./../testappsettings.json")
+ModelConversation.config <- Runtime.LoadConfigFile("testappsettings.json")
+ImageGenerator.config <- Runtime.LoadConfigFile("testappsettings.json")
 
 Formatter.Register<Image>(
         (fun (image: Image) (writer: System.IO.TextWriter) ->
