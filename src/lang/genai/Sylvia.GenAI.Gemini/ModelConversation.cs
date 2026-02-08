@@ -77,64 +77,37 @@ public class ModelConversation : Runtime
 
     public ModelConversation AddPlugin<T>(T obj, string pluginName)
     {
-#pragma warning disable SKEXP0120 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
         kernel.Plugins.AddFromObject<T>(obj, jsonSerializerOptions: new System.Text.Json.JsonSerializerOptions(), pluginName: pluginName);
-#pragma warning restore SKEXP0120 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
         return this;
     }
 
-    public async IAsyncEnumerable<StreamingChatMessageContent> PromptAsync(string prompt, params object[] args)
-    {
-        var messageItems = new ChatMessageContentItemCollection()
-        {
-            new Microsoft.SemanticKernel.TextContent(string.Format(prompt, args))
-        };
-        messages.AddUserMessage(messageItems);
-        StringBuilder sb = new StringBuilder();
-        await foreach (var m in chat.GetStreamingChatMessageContentsAsync(messages, promptExecutionSettings, kernel))
-        {
-            if (m.Content is not null && !string.IsNullOrEmpty(m.Content))
-            {
-                sb.Append(m.Content);
-                yield return m;
-            }
-        }
-        messages.AddAssistantMessage(sb.ToString());
-    }
-
-    public async IAsyncEnumerable<StreamingChatMessageContent> PromptAsync(string prompt, byte[]? imageData, string imageMimeType = "image/png")
-    {
-        messages.AddUserMessage([
-            new Microsoft.SemanticKernel.TextContent(prompt),
-            new ImageContent(imageData, imageMimeType),
-
-        ]);
-        StringBuilder sb = new StringBuilder();
-        await foreach (var m in chat.GetStreamingChatMessageContentsAsync(messages, promptExecutionSettings, kernel))
-        {
-            if (m.Content is not null && !string.IsNullOrEmpty(m.Content))
-            {
-                sb.Append(m.Content);
-                yield return m;
-            }
-        }
-        messages.AddAssistantMessage(sb.ToString());
-    }
-
-    public async Task<List<ChatMessageContent>> Prompt(string prompt, params ChatMessageContent[] items)
+    public async IAsyncEnumerable<StreamingChatMessageContent> StreamingPromptAsync(string prompt)
     {
         var messageItems = new ChatMessageContentItemCollection()
         {
             new Microsoft.SemanticKernel.TextContent(prompt)
         };
-
-        foreach(var item in items)
-        {
-            messageItems.Add(item);
-        }   
         messages.AddUserMessage(messageItems);
-        List<ChatMessageContent> response = new List<ChatMessageContent>();
-                
+        StringBuilder sb = new StringBuilder();
+        await foreach (var m in chat.GetStreamingChatMessageContentsAsync(messages, promptExecutionSettings, kernel))
+        {
+            if (m.Content is not null && !string.IsNullOrEmpty(m.Content))
+            {
+                sb.Append(m.Content);
+                yield return m;
+            }
+        }
+        messages.AddAssistantMessage(sb.ToString());
+    }
+
+    public async Task<List<ChatMessageContent>> PromptAsync(string prompt)
+    {
+        var messageItems = new ChatMessageContentItemCollection()
+        {
+            new Microsoft.SemanticKernel.TextContent(prompt)
+        };
+        messages.AddUserMessage(messageItems);
+        List<ChatMessageContent> response = new List<ChatMessageContent>();      
         foreach(var m in await chat.GetChatMessageContentsAsync(messages, promptExecutionSettings, kernel))
         {
             response.Add(m);
@@ -165,8 +138,6 @@ public class ModelConversation : Runtime
     public readonly string? embeddingModelId;
 
     public readonly Kernel kernel = new Kernel();
-
-    //public readonly Client client;
 
     public readonly IChatClient chatClient;
 

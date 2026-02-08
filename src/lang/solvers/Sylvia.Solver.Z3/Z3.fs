@@ -380,54 +380,37 @@ module Z3 =
 
     let parse_bool_expr<'t when 't: equality and 't: comparison> (s:Z3Solver) (e:string) = parseBoolExpr<'t> e |> Result.map (create_bool_expr s)
 
-    let check_bool_sat (s:Z3Solver) (constraints: string list) =        
-        let c = constraints |> List.map (parse_bool_expr<bool> s)
-        if c |> List.exists(fun r -> r.IsError) then            
+    let parse_constraints<'t when 't: equality and 't: comparison> (s:Z3Solver) (constraints:string seq) =
+        let c = constraints |> Seq.map (parse_bool_expr<'t> s)
+        if c |> Seq.exists(fun r -> r.IsError) then            
                 c 
-                |> List.choose (function Error e -> Some e | _ -> None) 
-                |> List.insertAt 0 "Could not parse one more of the constraints:\n" 
-                |> String.concat "\n"                 
+                |> Seq.choose (function Error e -> Some e | _ -> None) 
+                |> Seq.insertAt 0 "Could not parse one more of the constraints:\n" 
+                |> String.concat "\n"  
+                |> Error
         else
             c 
-            |> List.choose (function Ok _e -> Some _e | _ -> None) 
-            |> s.Check 
-            |> sprintf "%A"
+            |> Seq.choose (function Ok _e -> Some _e | _ -> None) 
+            |> Ok 
+          
+    let check_bool_sat (s:Z3Solver) (constraints: string list) =        
+        constraints |> parse_constraints<bool> s |> Result.map s.Check
 
     let check_int_sat (s:Z3Solver) (constraints: string list) =        
-        let c = constraints |> List.map (parse_bool_expr<int> s)
-        if c |> List.exists(fun r -> r.IsError) then            
-                c 
-                |> List.choose (function Error e -> Some e | _ -> None) 
-                |> List.insertAt 0 "Could not parse one more of the constraints:\n" 
-                |> String.concat "\n"                 
-        else
-            c 
-            |> List.choose (function Ok _e -> Some _e | _ -> None) 
-            |> s.Check 
-            |> sprintf "%A" 
+        constraints |> parse_constraints<int> s |> Result.map s.Check
             
     let check_real_sat (s:Z3Solver) (constraints: string list) =
-        let c = constraints |> List.map (parse_bool_expr<real> s)
-        if c |> List.exists(fun r -> r.IsError) then            
-                c 
-                |> List.choose (function Error e -> Some e | _ -> None) 
-                |> List.insertAt 0 "Could not parse one more of the constraints:\n" 
-                |> String.concat "\n"                 
-        else
-            c 
-            |> List.choose (function Ok _e -> Some _e | _ -> None) 
-            |> s.Check 
-            |> sprintf "%A"
+        constraints |> parse_constraints<real> s |> Result.map s.Check
 
     let get_prop_model (s:Z3Solver) (constraints: string list) =
-        if check_bool_sat s constraints = Status.SATISFIABLE.ToString() then
-            _get_bool_var_model (s.Model()) |> List.toSeq
-        else Seq.empty
+        match check_bool_sat s constraints with
+        | Ok (Status.SATISFIABLE) -> _get_bool_var_model (s.Model()) |> List.toSeq
+        | _ -> Seq.empty
 
     let get_int_model (s:Z3Solver) (constraints: string list) =
-        if check_int_sat s constraints = Status.SATISFIABLE.ToString() then
-            _get_int_var_model (s.Model()) |> List.toSeq
-        else Seq.empty
+        match check_int_sat s constraints with
+        | Ok (Status.SATISFIABLE) -> _get_int_var_model (s.Model()) |> List.toSeq
+        | _ -> Seq.empty
 
     [<assembly:InternalsVisibleTo("Sylvia.Tests.Solver.Z3")>]
     do()

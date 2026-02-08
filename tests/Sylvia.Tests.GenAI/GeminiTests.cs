@@ -10,8 +10,8 @@ public class GeminiTests : TestsRuntime
     [Fact]
     public async Task CanStartGemma3ProConversation()
     {
-        var mc = new ModelConversation(ModelIds.Gemma3);
-        var m = mc.PromptAsync("Hello who are you");
+        var mc = new ModelConversation(ModelConversation.ModelIds.Gemma3);
+        var m = mc.StreamingPromptAsync("Hello who are you");
         await foreach (var message in m)
         {
             Console.WriteLine(message);
@@ -33,8 +33,8 @@ public class GeminiTests : TestsRuntime
     public async Task CanGenerateImage()
     {
         var ig = new ImageGenerator();
-        var b = await ig.Prompt("A cute cat sitting on a windowsill", "cat.png");
+        var b = await ig.PromptAsync("A cute cat sitting on a windowsill", "cat.png");
         Assert.NotNull(b);
-        Assert.NotEmpty(b.)
+        
     }
 }

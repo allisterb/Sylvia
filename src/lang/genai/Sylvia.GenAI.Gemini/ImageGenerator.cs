@@ -65,7 +65,6 @@ public class ImageGenerator : Runtime
 
     public Image? Prompt(string prompt, string? outputFile = null) => PromptAsync(prompt, outputFile).GetAwaiter().GetResult();
     
-
     public async Task<List<string>> GetImageModelsAsync()
     {
         var _models = await client.Models.ListAsync();
@@ -73,7 +72,7 @@ public class ImageGenerator : Runtime
         await foreach (var model in _models)
         {
                         
-            if (model is not null && model.Name is not null && model.SupportedActions is not null && model.SupportedActions.Contains("generateImages"))
+            if (model is not null && model.Name is not null && model.SupportedActions is not null && model.SupportedActions.Contains("predict") && model.DisplayName is not null && model.DisplayName.ToLower().Contains("image"))
             {
                 imageModels.Add(model.Name);
             }
