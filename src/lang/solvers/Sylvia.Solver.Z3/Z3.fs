@@ -300,6 +300,14 @@ module Z3 =
         |> Array.toList 
         |> List.map(fun c -> c.Name, match  m.[c] with | ConstResult c -> c  | _ -> failwith "This not a constant result.")
         
+
+    let internal get_model (m:Model) = 
+        let c = m.ConstDecls |> Array.map(fun c -> c.Name.ToString(), match  m.[c] with | ConstResult c -> c.ToString()  | _ -> failwith "This not a constant result.")
+                
+        let f = m.FuncDecls |> Array.map(fun c -> c.Name.ToString(), match  m.[c] with | FuncResult c -> c.ToString()  | _ -> failwith "This not a function result.")
+
+        Array.concat [c; f]
+
     let internal get_fun_model (m:Model) = 
         m.ConstDecls 
         |> Array.toList 
@@ -414,15 +422,26 @@ module Z3 =
     let check_real_sat (s:Z3Solver) (constraints: string seq) =
         constraints |> parse_constraints<real> s |> Result.map s.Check
 
-    let get_prop_model (s:Z3Solver) (constraints: string seq) =
+    let get_bool_model (s:Z3Solver) (constraints: string seq) =
         match check_bool_sat s constraints with
-        | Ok (Status.SATISFIABLE) -> _get_bool_var_model (s.Model()) |> List.toSeq
-        | _ -> Seq.empty
+        | Ok Status.SATISFIABLE -> get_model (s.Model()) |> Ok
+        | Ok Status.UNSATISFIABLE -> "UNSAT" |> Error
+        | Ok _ -> "UNKNOWN" |> Error
+        | Error r  -> Error r
 
     let get_int_model (s:Z3Solver) (constraints: string seq) =
         match check_int_sat s constraints with
-        | Ok (Status.SATISFIABLE) -> _get_int_var_model (s.Model()) |> List.toSeq
-        | _ -> Seq.empty
+        | Ok Status.SATISFIABLE -> get_model (s.Model()) |> Ok
+        | Ok Status.UNSATISFIABLE -> "UNSAT" |> Error
+        | Ok _ -> "UNKNOWN" |> Error
+        | Error r  -> Error r
+
+    let get_real_model (s:Z3Solver) (constraints: string seq) =
+        match check_real_sat s constraints with
+        | Ok Status.SATISFIABLE -> get_model (s.Model()) |> Ok
+        | Ok Status.UNSATISFIABLE -> "UNSAT" |> Error
+        | Ok _ -> "UNKNOWN" |> Error
+        | Error r  -> Error r
 
     [<assembly:InternalsVisibleTo("Sylvia.Tests.Solver.Z3")>]
     do()

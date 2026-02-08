@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.36811.4
+# Visual Studio Version 18
+VisualStudioVersion = 18.2.11415.280 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sylvia.Runtime", "base\Sylvia.Runtime\Sylvia.Runtime.csproj", "{840121D5-F365-40E5-9F63-7180274DB1E7}"
 EndProject
@@ -128,7 +128,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Notebooks", "Notebooks", "{
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Giant", "Giant", "{5E765D43-E273-49BD-91DE-6C12EAB6AFCC}"
 	ProjectSection(SolutionItems) = preProject
-		..\notebooks\GiantFunctionCalling.fsx = ..\notebooks\GiantFunctionCalling.fsx
 		..\notebooks\Include.fsx = ..\notebooks\Include.fsx
 	EndProjectSection
 EndProject

@@ -37,14 +37,28 @@ type SMTPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:str
         | Ok status -> status |> sprintf "%A" |> log_kernel_func_ret logger
         | Error error -> log_kernel_func_ret logger error
             
+    [<KernelFunction("check_real_sat")>]
+    [<Description("Check if a set of real constraints is satisfiable.")>]
+    member x.CheckRealSat([<ParamArray>] constraints:string array, logger:ILogger | null) : string =
+        let s = new Z3Solver()
+        match check_real_sat s constraints with
+        | Ok status -> status |> sprintf "%A" |> log_kernel_func_ret logger
+        | Error error -> log_kernel_func_ret logger error
+
     [<KernelFunction("get_int_model")>]
     [<Description("Get a model or interpretation that satisifies a set of integer constraints.")>]
     member x.GetIntModel([<ParamArray>] constraints:string array, logger:ILogger | null) : string =
         let s = new Z3Solver()
-        get_int_model s constraints 
-        |> Seq.map (fun (v,e) -> sprintf "%A=%A\n" v e) 
-        |> Seq.reduce (+)
-        |> log_kernel_func_ret logger
+        match get_int_model s constraints with
+        | Ok model -> 
+            x.Models.Push(s.Model())
+            model 
+            |> Seq.map (fun (v,e) -> sprintf "%A=%A\n" v e) 
+            |> Seq.reduce (+)
+            |> log_kernel_func_ret logger
+        | Error error -> log_kernel_func_ret logger error
+        
+        
             
             
             

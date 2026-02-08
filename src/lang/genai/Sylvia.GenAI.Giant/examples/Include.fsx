@@ -5,7 +5,7 @@
 #r "nuget: Microsoft.SemanticKernel.Connectors.Google, 1.70.0-alpha"
 #r "nuget: FParsec, 1.0.3"
 #r "nuget: MathNet.Numerics.FSharp, 4.15.0"
-#r "nuget: Microsoft.Z3, 4.12.2"
+#r "nuget: Microsoft.Z3, 4.11.2"
 #r "nuget: FSharp.Quotations.Evaluator, 2.1.0"
 #r "nuget: CsvHelper, 12.1.2"
 #r "nuget: Google.GenAI, 0.11.0"
@@ -43,6 +43,7 @@
 namespace Sylvia.GenAI.Giant
 
 open Sylvia
+open Sylvia.Z3
 
 module Examples =
 
@@ -58,9 +59,9 @@ module Examples =
         let s = new Z3Solver()
         Sylvia.Z3.check_real_sat s constraints  
 
-    let get_prop_model (constraints: string list) =
+    let get_bool_model (constraints: string list) =
         let s = new Z3Solver()
-        Sylvia.Z3.get_prop_model s constraints
+        Sylvia.Z3.get_bool_model s constraints
         
     let get_int_model (constraints: string list) =
         let s = new Z3Solver()
