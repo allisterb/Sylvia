@@ -4,6 +4,7 @@ open Sylvia.GenAI.Giant.Examples
 
 (* GIANT function calling examples begin here *)
 
+(*
 // Check if the propositional formula p && not p is satisfiable.
 check_bool_sat ["p && not p"]
 
@@ -30,3 +31,9 @@ get_prop_model ["Tie || Shirt"; "not Tie || Shirt"; "not Tie || not Shirt"]
 
 // Get an integer model for x > 5 and x <> 6 and x < 8
 get_int_model ["x > 5"; "x <> 6"; "x < 8"]
+*)
+check_bool_sat [
+    "forall(islander, IsKnight(islander) || IsKnave(islander))"
+    "IsKnight(islander) ==> TellsTruth(islander) && IsKnave(islander) ==> not TellsTruth(islander)"
+    "exists(islander, IsKanve(islander) && TellsTruth(islander))"
+]

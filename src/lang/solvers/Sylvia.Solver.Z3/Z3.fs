@@ -237,7 +237,11 @@ module Z3 =
         | Exists(_, bound, range, body) -> solver.Ctx.MkExists((bound |> List.toArray |> Array.map (Expr.Var >> (create_expr solver))), create_expr solver (<@@ (%%range:bool) && (%%body:bool) @@>)) :> BoolExpr
         //| Call(None, Op "exists", PropertyGet (None, arr, [])::range::body::[]) when arr.PropertyType.IsArray -> solver.Ctx.MkExists([|solver.Ctx.MkArrayConst(arr.Name, solver.Ctx.MkIntSort(), (create_sort solver (arr.PropertyType.GetElementType())))|], create_expr solver (<@@ (%%range:bool) && (%%body:bool) @@>)) :> BoolExpr
         | _ -> failwithf "Cannot create Z3 constraint from %A." expr
-
+        | Application(Var p, var) ->
+            let fd = solver.Ctx.MkFuncDecl(p.Name, (create_sort solver var.Type), (create_sort solver expr.Type))
+            fd.Apply(create_expr solver var) :?> BoolExpr
+        (* Predicates *)
+        
     and internal create_expr (solver:Z3Solver) (expr:FSharp.Quotations.Expr) : Expr =
         let funcDecls = new System.Collections.Generic.Dictionary<string, FuncDecl>()
         let arrayDecls = new System.Collections.Generic.Dictionary<string, ArrayExpr>()
@@ -245,7 +249,10 @@ module Z3 =
         | FuncApply(p, var) ->
             do if not (funcDecls.ContainsKey(p.Name)) then funcDecls.Add(p.Name, solver.Ctx.MkFuncDecl(p.Name, (create_sort solver var.Type), (create_sort solver expr.Type)))
             let fd = funcDecls.[p.Name] in fd.Apply(create_expr solver var)
-        
+        | Application(Var p, var) ->
+            do if not (funcDecls.ContainsKey(p.Name)) then funcDecls.Add(p.Name, solver.Ctx.MkFuncDecl(p.Name, (create_sort solver var.Type), (create_sort solver expr.Type)))
+            let fd = funcDecls.[p.Name] in fd.Apply(create_expr solver var)
+            
         | ArrayGet(arr, idx) -> 
             do if not (arrayDecls.ContainsKey(arr.Name)) then arrayDecls.Add(arr.Name, solver.Ctx.MkArrayConst(arr.Name, (create_sort solver idx.Type), (create_sort solver (expr.Type))))
             let ad = arrayDecls.[arr.Name] in solver.Ctx.MkSelect(ad, create_expr solver idx)
