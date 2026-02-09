@@ -9,6 +9,7 @@ open Microsoft.Extensions.Logging
 
 open Sylvia
 open Sylvia.TermParsers
+open Sylvia.ProofParsers
 
 type ProverPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:string) as this =
     inherit LLMPlugin("Prover", sharedState, ?id=id)
@@ -16,13 +17,18 @@ type ProverPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:
     let theories = new Dictionary<string, Theory>()
     let admissibleRules = new Dictionary<string, ModuleAdmissibleRule array>()
     let derivedRules = new Dictionary<string, ModuleDerivedRule array>()
-
+    
     let parse theory theorem =
         match theory with
         | "prop_calculus"
         | "pred_calculus" -> parseProp<bool> theorem
         | _ -> failwith "not implemented"
 
+    let parseRuleApp theory ra =
+        match theory with
+        | "prop_calculus"
+        | "pred_calculus" -> parseRuleApp<bool> admissibleRules[theory] derivedRules[theory] ra
+        | _ -> failwith "not implemented"
     do
         theories.Add("prop_calculus", PropCalculus.prop_calculus)
         theories.Add("pred_calculus", PredCalculus.pred_calculus)
@@ -35,16 +41,12 @@ type ProverPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:
     member x.Proofs = proofs
 
     [<KernelFunction("proof")>]
-    [<Description("Start a proof of a theorem using the specified theory.")>]
-    member x.BoolProof(id:string, theory:string, theorem:string, logger:ILogger | null) : string =
-        match parse theory theorem with
-        | Ok t ->
-            if not (theories.ContainsKey theory) then
-                sprintf "Theory %A does not exist" theory |> log_kernel_func_ret logger
-            else
-                let p = proof theories[theory] t []
-                do proofs.Add(id, p)
-                sprintf "Started proof %s of %s using theory %s." id theorem theory |> log_kernel_func_ret logger
-        | Error error -> sprintf "%s" error |> log_kernel_func_ret logger
+    [<Description("Create a proof of a theorem using the specified theory.")>]
+    member x.Proof(theory:string, theorem:string, ruleApplications: string array, id:string, logger:ILogger | null) : string =
+       match parseProof theories admissibleRules derivedRules theory theorem ruleApplications with
+       | Ok proof -> 
+              proofs.Add(id, proof)
+              sprintf "Proof created with ID: %s" id |> log_kernel_func_ret logger
+       | Error error -> log_kernel_func_ret logger error
             
             

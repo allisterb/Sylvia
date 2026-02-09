@@ -36,5 +36,12 @@ type PluginTests() =
         let llm = new LLMSession()  
         let r1 = llm.Prompt("Is the set of integer constraints x > 5 and x < 9 satisfiable?")
         Assert.NotEmpty llm.SharedState 
+
+    
+    [<Fact>]
+    member this.``Can start proof`` ()  =
+        let llm = new LLMSession()  
+        let r1 = llm.Prompt("")
+        Assert.NotEmpty llm.SharedState 
        
 

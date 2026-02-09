@@ -1,9 +1,7 @@
 namespace Sylvia
 
-open System
-open System.Reflection
+open System.Collections.Generic
 
-open FSharp.Quotations
 open FParsec
 
 open TermParsers
@@ -93,5 +91,37 @@ module ProofParsers =
 
     let parseRuleApp<'t when 't: equality and 't:comparison> (admissible: ModuleAdmissibleRule[]) (derived: ModuleDerivedRule[]) text =
         match run (ruleApplicationParser<'t> admissible derived) text with
-        | Success(result, _, _) -> result
-        | Failure(errorMsg, _, _) -> failwithf "Failed to parse RuleApplication: %s" errorMsg
+        | Success(result, _, _) -> Result.Ok result
+        | Failure(errorMsg, _, _) -> sprintf "Failed to parse RuleApplication: %s" errorMsg |> Result.Error 
+
+    let parseProof (theories:Dictionary<string, Theory>) (admissibleRules: Dictionary<string, ModuleAdmissibleRule array>) (derivedRules: Dictionary<string, ModuleDerivedRule array>) 
+        (theory:string) (theorem:string) (ruleApplications: string array) =
+        
+        let parse theory theorem =
+            match theory with
+            | "prop_calculus"
+            | "pred_calculus" -> parseProp<bool> theorem
+            | _ -> failwith "not implemented"
+
+        let parseRuleApp theory ra =
+            match theory with
+            | "prop_calculus"
+            | "pred_calculus" -> parseRuleApp<bool> admissibleRules[theory] derivedRules[theory] ra
+            | _ -> failwith "not implemented"
+
+        match parse theory theorem with
+        | Result.Ok t ->
+            if not (theories.ContainsKey theory) then
+                sprintf "Theory %A does not exist" theory |> Result.Error
+            else
+                let ra = ruleApplications |> Array.map (parseRuleApp theory)
+                if ra |> Array.exists(fun r -> r.IsError) then            
+                    ra 
+                    |> Array.choose (function Result.Error e -> Some e | _ -> None) 
+                    |> Array.insertAt 0 "Could not parse one more of the constraints:\n" 
+                    |> String.concat "\n"  
+                    |> Result.Error
+                else
+                    let p = proof theories[theory] t (ra |> Array.choose (function Result.Ok r -> Some r | _ -> None) |> Array.toList) 
+                    Result.Ok p                
+        | Result.Error error -> sprintf "%s" error |> Result.Error
