@@ -14,8 +14,6 @@ open Sylvia.CAS
 type CASPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:string) =
     inherit LLMPlugin("CAS", sharedState, ?id=id)
     
-    do CAS.Maxima.init "C:\\MathTools\\maxima-5.49.0\\bin\\maxima.bat"
-
     [<KernelFunction("diff")>]
     [<Description("Differentiate an expression wrt a variable")>]
     member x.Diff(variable: string, expression:string, logger:ILogger | null) =
