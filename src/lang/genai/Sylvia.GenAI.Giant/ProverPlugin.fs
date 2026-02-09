@@ -17,6 +17,7 @@ type ProverPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:
     let admissibleRules = new Dictionary<string, ModuleAdmissibleRule array>()
     let derivedRules = new Dictionary<string, ModuleDerivedRule array>()    
     do
+        Proof.LogLevel <- 0
         theories.Add("prop_calculus", PropCalculus.prop_calculus)
         theories.Add("pred_calculus", PredCalculus.pred_calculus)
         admissibleRules.Add("prop_calculus", ProofModules.getModuleAdmissibleRules(PropCalculus.Type))
@@ -24,7 +25,7 @@ type ProverPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:
         derivedRules.Add("prop_calculus", ProofModules.getModuleDerivedRules(PropCalculus.Type))
         derivedRules.Add("pred_calculus", ProofModules.getModuleDerivedRules(PredCalculus.Type))
         this.State.Add("Proofs", proofs)
-        Proof.LogLevel <- 0
+      
 
     member x.Proofs = proofs
 

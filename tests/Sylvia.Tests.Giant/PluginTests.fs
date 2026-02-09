@@ -49,6 +49,6 @@ type PluginTests() =
     [<Fact>]
     member this.``Can solve`` ()  =
         let llm = new LLMSession()  
-        let r1 = llm.Solve "Find a solution to the integer formula x > 5 and x <> 6 and x < 8" 
+        let r1 = llm.Solve "Find a solution to the integer formula x > 5 and x <> 6 and x < 7" 
         Assert.NotEmpty llm.SharedState 
         Assert.True r1.Model.IsSome
