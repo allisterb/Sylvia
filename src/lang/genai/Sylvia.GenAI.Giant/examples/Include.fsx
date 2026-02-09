@@ -42,9 +42,10 @@
 
 namespace Sylvia.GenAI.Giant
 
+open System.Collections.Generic
 open Sylvia
 open Sylvia.Z3
-
+open Sylvia.ProofParsers
 module Examples =
 
     let check_bool_sat (constraints: string list) =
@@ -66,3 +67,19 @@ module Examples =
     let get_int_model (constraints: string list) =
         let s = new Z3Solver()
         Sylvia.Z3.get_int_model s constraints
+
+    let theories = new Dictionary<string, Theory>()
+    let admissibleRules = new Dictionary<string, ModuleAdmissibleRule array>()
+    let derivedRules = new Dictionary<string, ModuleDerivedRule array>()    
+    do
+        theories.Add("prop_calculus", PropCalculus.prop_calculus)
+        theories.Add("pred_calculus", PredCalculus.pred_calculus)
+        admissibleRules.Add("prop_calculus", ProofModules.getModuleAdmissibleRules(PropCalculus.Type))
+        admissibleRules.Add("pred_calculus", ProofModules.getModuleAdmissibleRules(PredCalculus.Type))
+        derivedRules.Add("prop_calculus", ProofModules.getModuleDerivedRules(PropCalculus.Type))
+        derivedRules.Add("pred_calculus", ProofModules.getModuleDerivedRules(PredCalculus.Type))
+
+    let proof (theory:string) (theorem:string) (ruleApplications: string list) =
+        match parseProof theories admissibleRules derivedRules theory theorem (List.toArray ruleApplications) with
+        | Ok proof -> proof 
+        | Error error -> failwith error

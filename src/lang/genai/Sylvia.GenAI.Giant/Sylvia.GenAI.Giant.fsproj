@@ -9,6 +9,7 @@
   <ItemGroup>
     <None Include="examples\Include.fsx" />
     <None Include="examples\SMT.fsx" />
+    <None Include="examples\Prover.fsx" />
     <Compile Include="LLMPlugin.fs" />
     <Compile Include="SymbolsPlugin.fs" />
     <Compile Include="CASPlugin.fs" />

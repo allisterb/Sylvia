@@ -8,7 +8,6 @@ open Microsoft.SemanticKernel
 open Microsoft.Extensions.Logging
 
 open Sylvia
-open Sylvia.TermParsers
 open Sylvia.ProofParsers
 
 type ProverPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:string) as this =
@@ -16,19 +15,7 @@ type ProverPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:
     let proofs = new Dictionary<string, Proof>()
     let theories = new Dictionary<string, Theory>()
     let admissibleRules = new Dictionary<string, ModuleAdmissibleRule array>()
-    let derivedRules = new Dictionary<string, ModuleDerivedRule array>()
-    
-    let parse theory theorem =
-        match theory with
-        | "prop_calculus"
-        | "pred_calculus" -> parseProp<bool> theorem
-        | _ -> failwith "not implemented"
-
-    let parseRuleApp theory ra =
-        match theory with
-        | "prop_calculus"
-        | "pred_calculus" -> parseRuleApp<bool> admissibleRules[theory] derivedRules[theory] ra
-        | _ -> failwith "not implemented"
+    let derivedRules = new Dictionary<string, ModuleDerivedRule array>()    
     do
         theories.Add("prop_calculus", PropCalculus.prop_calculus)
         theories.Add("pred_calculus", PredCalculus.pred_calculus)

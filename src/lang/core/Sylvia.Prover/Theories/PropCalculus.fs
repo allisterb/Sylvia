@@ -973,7 +973,7 @@ module PropCalculus =
 
     /// (p ⇒ q) ⇒ ((p ∨ r) ⇒ (q ∨ r)
     [<DerivedRule "(p ⇒ q) ⇒ ((p ∨ r) ⇒ (q ∨ r)">]
-    let mono_or p q r = theorem prop_calculus ( (p ==> q) ==> ((p + r) ==> (q + r)) ) [
+    let mono_or p q r = theorem prop_calculus ( (p ==> q) ==> ((p ||| r) ==> (q ||| r)) ) [
         def_implies |> apply_right
         commute_or_or p r q r |> apply_left |> branch_right
         idemp_or r |> apply_left |> branch_right
