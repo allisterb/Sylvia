@@ -31,7 +31,7 @@ type SMTPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:str
               proofs.Add(s.Solver.Proof.ToString())
               log_kernel_func_ret logger "UNSATISFIABLE"
         | Ok status -> 
-            x.Models.Add(s.Model())
+            x.Models.Add(s.Model())        
             status |> sprintf "%A" |> log_kernel_func_ret logger
         | Error error -> log_kernel_func_ret logger error
         

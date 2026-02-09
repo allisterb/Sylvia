@@ -54,8 +54,8 @@ ImageGenerator.config <- Runtime.LoadConfigFile("testappsettings.json")
 
 if System.OperatingSystem.IsWindows() then 
     Maxima.init "C:\\MathTools\\maxima-5.49.0\\bin\\maxima.bat"
-else
-    Maxima.init "/usr/lib/maxima/5.47.0/binary-gcl/maxima"
+//else
+//    Maxima.init "/usr/lib/maxima/5.47.0/binary-gcl/maxima"
 
 
 Formatter.Register<Image>(
@@ -136,35 +136,37 @@ Formatter.Register<LLMModel>(
 
         let encode = System.Net.WebUtility.HtmlEncode
 
-        // Build model values display (compact at top of the panel)
-        let valuesHtml =
+        // Helper to safely extract ModelProof as string if present (handles null or empty)
+        let proofTextOpt =
+            try
+                match box m.ModelProof with
+                | null -> None
+                | :? string as s when System.String.IsNullOrWhiteSpace(s) -> None
+                | :? string as s -> Some s
+                | _ -> None
+            with _ -> None
+
+        // If a proof is present that means the solver returned UNSAT; show proof instead of model values.
+        let formalHtml =            
             match m.Model with
             | Some model ->
-                Sylvia.Z3.get_model model
-                |> Array.map (fun (name, value) ->
-                    let n = encode name
-                    let v = encode value
-                    $"<div class=\"llmmodel-item\"><span class=\"llmmodel-name\">{n}</span>=<span class=\"llmmodel-val-inline\">{v}</span></div>")
-                |> String.concat ""
-            | None -> "<div class=\"llmmodel-no-values\"><em>No model values.</em></div>"
-
-        // Build proof display (use preformatted block, preserve whitespace)
-        let proofHtml =
-            // Handle both null/empty and present text. Assumes ModelProof is string | null.
-            // If ModelProof was changed to option<string>, update matching accordingly.
-            let proofText =
-                try
-                    match box m.ModelProof with
-                    | null -> null
-                    | :? string as s -> s
-                    | _ -> m.ModelProof.ToString()
-                with _ -> null
-
-            if System.String.IsNullOrWhiteSpace(proofText) then
-                "<p><em>No solver proof available.</em></p>"
-            else
-                let encoded = encode proofText
-                $"<pre class=\"llmmodel-proof\"><code>{encoded}</code></pre>"
+                // get_model returns (name, value) pairs; escape for HTML and render as compact chips
+                let valuesHtml =
+                    Sylvia.Z3.get_model model
+                    |> Array.map (fun (name, value) ->
+                        let n = encode name
+                        let v = encode value
+                        $"<div class=\"llmmodel-item\"><span class=\"llmmodel-name\">{n}</span>=<span class=\"llmmodel-val-inline\">{v}</span></div>")
+                    |> String.concat ""
+                $"<div class=\"llmmodel-values\">{valuesHtml}</div><div class=\"llmmodel-proof-wrap\"></div>"
+            | None ->
+                match proofTextOpt with
+                | Some proofText ->
+                    // Display UNSAT notice and the proof in a scrollable pre block.
+                    let encodedProof = encode proofText
+                    $"<div class=\"llmmodel-unsat\"> <strong>Solver result: UNSATISFIABLE</strong></div><div class=\"llmmodel-proof-wrap\"><pre class=\"llmmodel-proof\"><code>{encodedProof}</code></pre></div>"
+                | None ->  $"<div class=\"llmmodel-unsat\"> <strong>Solver result: UNSATISFIABLE</strong></div>"
+                
 
         // Inline CSS tuned to fit in a Jupyter notebook cell.
         // The formal panel is column-flexed so values sit on top and proof takes remaining space (scrollable).
@@ -181,11 +183,9 @@ Formatter.Register<LLMModel>(
             ".llmmodel-val-inline{color:#111;}" +
             ".llmmodel-proof{background:#f7f7f9;padding:10px;border-radius:4px;overflow:auto;white-space:pre;font-family:Menlo,Consolas,\"DejaVu Sans Mono\",monospace;font-size:0.9rem;border:1px solid #eee;flex:1 1 auto;}" +
             ".llmmodel-no-values{color:#666;font-style:italic;}" +
+            ".llmmodel-unsat{background:#fff4f4;border:1px solid #ffd4d6;padding:8px;border-radius:4px;margin-bottom:8px;color:#a30000;}" +
             "@media (max-width:700px){.llmmodel-container{flex-direction:column;}}" +
             "</style>"
-
-        let formalHtml =
-            $"<div class=\"llmmodel-values\">{valuesHtml}</div><div class=\"llmmodel-proof-wrap\">{proofHtml}</div>"
 
         let html =
             style +
@@ -195,7 +195,7 @@ Formatter.Register<LLMModel>(
                     intuitionHtml +
                         "</div>" +
                         "<div class=\"llmmodel-panel llmmodel-formal\">" +
-                        "<h2>SMT Model & Solver Proof</h2>" +
+                        "<h2>SMT Solver Result</h2>" +
                             formalHtml +
                              "</div>" +
                              "</div>"
