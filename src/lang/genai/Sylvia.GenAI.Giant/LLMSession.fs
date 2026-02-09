@@ -17,20 +17,18 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
         new ProverPlugin(sharedState)
     |]) 
     
-    do sharedState.Add("Common", new Dictionary<string, obj>())
+    let mutable lastProofIndex = 0
+
+    let mutable lastModelIndex = 0
     
+    let mutable lastExprIndex = 0
+
     new() = LLMSession(new Dictionary<string, Dictionary<string, obj>>())
             
     member val SharedState = sharedState
-    
-    member val LastProofIndex = 0 with get, set
-
-    member val LastModelIndex = 0 with get, set
-
-    member val LastExprIndex = 0 with get, set
-
+            
     member x.GetPlugin<'t when 't :> LLMPlugin>(name) = 
-        match x.plugins.Find(fun p -> p.Name = name && p :? 't) with | NonNull plugin -> plugin :?> 't | Null -> failwith "coul"
+        x.plugins.Find(fun p -> p.Name = name && p :? 't) |> function | NonNull plugin -> plugin :?> 't | Null -> failwithf "Could not find plugin %s." name
 
     member x.CAS = x.GetPlugin<CASPlugin> "CAS"
 
@@ -53,9 +51,9 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
     member x.Prove(prompt: string) =
         let r = x.Prompt(prompt)    
         let proof = 
-            if x.Prover.Proofs.Count > x.LastProofIndex then
-                let proofId = x.Prover.Proofs.Keys |> Seq.skip x.LastProofIndex |> Seq.head
-                x.LastProofIndex <- x.LastProofIndex + 1
+            if x.Prover.Proofs.Count > lastProofIndex then
+                let proofId = x.Prover.Proofs.Keys |> Seq.skip lastProofIndex |> Seq.head
+                lastProofIndex <- lastProofIndex + 1
                 Some x.Prover.Proofs.[proofId]
             else None
         {Text = r; Proof = proof}
@@ -63,9 +61,9 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
     member x.Solve(prompt: string) =
         let r = x.Prompt(prompt)    
         let model = 
-            if x.SMT.Models.Count > x.LastModelIndex then
-                let m = x.SMT.Models.[x.LastModelIndex]
-                x.LastModelIndex <- x.LastModelIndex + 1
+            if x.SMT.Models.Count > lastModelIndex then
+                let m = x.SMT.Models.[lastModelIndex]
+                lastModelIndex <- lastModelIndex + 1
                 Some m
             else None
         {Text = r; Model = model}

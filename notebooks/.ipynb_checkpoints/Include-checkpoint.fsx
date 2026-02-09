@@ -12,7 +12,6 @@
 #r "nuget: Microsoft.DotNet.Interactive.Formatting, 1.0.0-beta.24568.1"
 #r "nuget: Unquote, 7.0.1"
 #r "nuget: Sylvia.Arithmetic, 0.2.8"
-#r "nuget: Markdig, 0.44.0"
 
 #r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/Expect.NETStandard.dll"
 #r "../ext/FunScript/src/main/FunScript/bin/Debug/netstandard2.0/FunScript.dll"
@@ -42,8 +41,6 @@ open Sylvia
 open Sylvia.CAS
 open Sylvia.GenAI.Gemini    
 
-open Markdig
-
 if System.OperatingSystem.IsWindows() then 
     Maxima.init "C:\\MathTools\\maxima-5.49.0\\bin\\maxima.bat"
 else
@@ -66,55 +63,3 @@ Formatter.Register<Image>(
         ),
         HtmlFormatter.MimeType
     )
-
-open Sylvia.GenAI.Giant
-Formatter.Register<LLMProof>(
-    (fun (proof: LLMProof) (writer: System.IO.TextWriter) ->
-        // Convert LLM-provided markdown/intuitive text to HTML (Markdig)
-        let intuitionHtml =
-            if System.String.IsNullOrWhiteSpace(proof.Text) then
-                "<p><em>No LLM intuition available.</em></p>"
-            else
-                // Markdig converts markdown to HTML
-                Markdown.ToHtml(proof.Text)
-
-        // Convert the formal Proof object to HTML-safe text and place in a scrollable code block
-        let formalHtml =
-            match proof.Proof with
-            | Some p ->
-                let encoded = p.Log
-                // Use <pre><code> so whitespace and structure are preserved
-                $"<pre class=\"llmproof-formal\"><code>{encoded}</code></pre>"
-            | None ->
-                "<p><em>No formal proof available.</em></p>"
-
-        // Inline CSS tuned to fit inside a Jupyter notebook cell.
-        // Panels are side-by-side on wide screens and stacked on narrow screens.
-        // Each panel scrolls internally (max-height: 60vh) so the notebook cell stays compact.
-        let style =
-            "<style>" +
-            ".llmproof-container{display:flex;flex-direction:row;gap:12px;width:100%;box-sizing:border-box;}" +
-            ".llmproof-panel{flex:1 1 50%;min-width:0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.04);overflow:auto;max-height:60vh;}" +
-            ".llmproof-panel h2{margin-top:0;font-size:1rem;color:#333;}" +
-            ".llmproof-formal{background:#f7f7f9;padding:10px;border-radius:4px;overflow:auto;white-space:pre;font-family:Menlo,Consolas,\"DejaVu Sans Mono\",monospace;font-size:0.9rem;border:1px solid #eee;}" +
-            ".llmproof-intuition pre,.llmproof-intuition code{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,\"Helvetica Neue\",Arial;}" +
-            "@media (max-width:700px){.llmproof-container{flex-direction:column;}}" +
-            "</style>"
-
-        let html =
-            style +
-            "<div class=\"llmproof-container\">" +
-              "<div class=\"llmproof-panel llmproof-intuition\">" +
-                "<h2>LLM Intuition</h2>" +
-                    intuitionHtml +
-                        "</div>" +
-                        "<div class=\"llmproof-panel llmproof-formal-panel\">" +
-                        "<h2>Formal Proof</h2>" +
-                            formalHtml +
-                             "</div>" +
-                             "</div>"
-
-        writer.Write(html)
-    ),
-    HtmlFormatter.MimeType
-)
