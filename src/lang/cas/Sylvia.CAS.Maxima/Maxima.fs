@@ -1,6 +1,7 @@
 ﻿namespace Sylvia.CAS
 
 open System
+open System.Runtime.InteropServices
 open System.Text
 open System.Text.RegularExpressions
 open FSharp.Quotations
@@ -14,7 +15,8 @@ open Expect
 type Maxima(?maximaCmd:string) =
     inherit Runtime()
     let cmd = defaultArg maximaCmd "maxima"
-    let p = new ConsoleProcess(cmd, Array.empty, false)
+    let args = if RuntimeInformation.IsOSPlatform(OSPlatform.Linux) then [|"--disable-readline"|] else Array.empty
+    let p = new ConsoleProcess(cmd, args, false)
     let output, session = 
         if p.Initialized then
             let _s = new ProcessSpawnable(p.Process, new StringBuilder())
