@@ -4,9 +4,17 @@ open FSharp.Quotations
 
 open Xunit
 
+module private Helper =
+    type Result<'TOk,'Error> with
+        member x.Val =
+            match x with
+            | Ok v -> v
+            | Error e -> failwithf "Expected Ok but got Error: %A" e  
+
 open Sylvia
 open TermParsers
-module TestRules =
+
+module TestRules =    
     [<AdmissibleRule("Test Admissible Rule")>]
     let rule1 = Admit("rule1", id)
 
@@ -19,13 +27,15 @@ module TestRules =
     
     let Type = match typeof<IModuleTypeLocator>.DeclaringType with | NonNull m -> m | _ -> failwith "Failed to locate module type."
 
+open Helper
+
 type ParserTests() =
     inherit TestsRuntime()
 
     [<Fact>]
     member this.``Can parse simple prop`` () =
         let p = parseProp<bool> "p ==> q"
-        Assert.Contains("===>", p.Display)
+        Assert.Contains("===>", p.Val.Display)
 
     [<Fact>]
     member this.``Can parse complex prop`` () =
@@ -39,7 +49,7 @@ type ParserTests() =
         
         let ra = ProofParsers.parseRuleApp<bool> admissible derived "rule1 |> apply_left |> branch_right"
         match ra with
-        | BranchRight(ApplyLeft(r)) when r.Name = "rule1" -> ()
+        | Ok(BranchRight(ApplyLeft(r))) when r.Name = "rule1" -> ()
         | _ -> failwithf "Unexpected RuleApplication structure: %A" ra
 
     [<Fact>]
@@ -49,7 +59,7 @@ type ParserTests() =
         
         let ra = ProofParsers.parseRuleApp<int> admissible derived "rule2 (p || q) |> apply_right"
         match ra with
-        | ApplyRight(r) when r.Name.Contains("rule2") && r.Name.Contains("p") && r.Name.Contains("q") -> ()
+        | Ok(ApplyRight(r)) when r.Name.Contains("rule2") && r.Name.Contains("p") && r.Name.Contains("q") -> ()
         | _ -> failwithf "Unexpected RuleApplication structure: %A" ra
 
     [<Fact>]
@@ -57,44 +67,44 @@ type ParserTests() =
         let p = parseProp<bool> "P(x)"
         Assert.NotNull(p)
         // Check that the display string contains the predicate and argument
-        Assert.Contains("P", p.Display)
-        Assert.Contains("x", p.Display)
+        Assert.Contains("P", p.Val.Display)
+        Assert.Contains("x", p.Val.Display)
 
     [<Fact>]
     member this.``Can parse complex symbolic predicate expression`` () =
         let p = parseProp<bool> "P(x) ==> Q(y)"
-        Assert.Contains("===>", p.Display)
-        Assert.Contains("P", p.Display)
-        Assert.Contains("x", p.Display)
-        Assert.Contains("Q", p.Display)
-        Assert.Contains("y", p.Display)
+        Assert.Contains("===>", p.Val.Display)
+        Assert.Contains("P", p.Val.Display)
+        Assert.Contains("x", p.Val.Display)
+        Assert.Contains("Q", p.Val.Display)
+        Assert.Contains("y", p.Val.Display)
 
     [<Fact>]
     member this.``Can parse arithmetic comparison`` () =
         let p = parseProp<int> "a + b + 5 < 7"
         Assert.NotNull(p)
-        Assert.Contains("+", p.Display)
-        Assert.Contains("<", p.Display)
+        Assert.Contains("+", p.Val.Display)
+        Assert.Contains("<", p.Val.Display)
 
     [<Fact>]
     member this.``Can parse arithmetic equality and multiplication`` () =
         let p = parseProp<int> "x * y = 10"
         Assert.NotNull(p)
-        Assert.Contains("*", p.Display)
-        Assert.Contains("=", p.Display)
+        Assert.Contains("*", p.Val.Display)
+        Assert.Contains("=", p.Val.Display)
 
     [<Fact>]
     member this.``Can parse complex logic with arithmetic`` () =
         let p = parseProp<int> "not (x < 5) ==> x >= 5"
         Assert.NotNull(p)
-        Assert.Contains("===>", p.Display)
-        Assert.Contains("<", p.Display)
-        Assert.Contains(">=", p.Display)
+        Assert.Contains("===>", p.Val.Display)
+        Assert.Contains("<", p.Val.Display)
+        Assert.Contains(">=", p.Val.Display)
 
     [<Fact>]
     member this.``Can parse unary minus in arithmetic`` () =
         let p = parseProp<int> "-x + y > 0"
         Assert.NotNull(p)
-        Assert.Contains("-", p.Display)
-        Assert.Contains(">", p.Display)
+        Assert.Contains("-", p.Val.Display)
+        Assert.Contains(">", p.Val.Display)
 

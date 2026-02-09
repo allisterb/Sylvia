@@ -294,9 +294,10 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
     member val Steps = steps
     abstract Complete:bool; default val Complete = logic |- _state || theory |- _state
     member val State = state
-    member val Subst = steps |> List.map (fun s  -> s.ApplyRule) |> List.fold(fun e r -> e >> r) id
-    member val Log = logBuilder
+    member val Subst = steps |> List.map (fun s  -> s.ApplyRule) |> List.fold(fun e r -> e >> r) id    
     member val Msg = prooflog
+    member x.Log with get() = logBuilder.ToString() and set(_:string) = logBuilder.Clear() |> ignore
+
     /// Proof log level.
     static member LogLevel with get() = logLevel and set(v) = logLevel <- v
     /// The default logical theory used by proofs. Defaults to S but can be changed to something else.
