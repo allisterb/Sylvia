@@ -153,7 +153,7 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
     let proof_sep = ""
     let _prooflog (steps:RuleApplication list) (level:int) (isLemma:bool) (x:string) = 
         let output (s:string) = 
-            logBuilder.Append(x) |> ignore
+            logBuilder.AppendLine(x) |> ignore
             printfn "%s" s 
         do 
             let isShortLemmaProof = isLemma && steps.Length <= 2
