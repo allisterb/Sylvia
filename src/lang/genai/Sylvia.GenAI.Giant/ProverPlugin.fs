@@ -38,11 +38,11 @@ type ProverPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:
     member x.ListRules(theory:string, logger:ILogger | null) : string =
         let admissible = 
             match admissibleRules.TryGetValue(theory) with
-            | true, rules -> rules |> Seq.map (fun r -> sprintf "Admissible: %s" r.Name)
+            | true, rules -> rules |> Seq.map (fun r -> sprintf "Admissible: %s (%s)" r.Name r.Description)
             | false, _ -> Seq.empty
         let derived = 
             match derivedRules.TryGetValue(theory) with
-            | true, rules -> rules |> Seq.map (fun r -> sprintf "Derived: %s" r.Name)
+            | true, rules -> rules |> Seq.map (fun r -> sprintf "Derived: %s (%s)" r.Name r.Description)
             | false, _ -> Seq.empty
         Seq.append admissible derived |> Seq.reduce (fun acc r -> acc + "\n" + r) |> log_kernel_func_ret logger
 
