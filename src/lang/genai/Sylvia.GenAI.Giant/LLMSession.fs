@@ -3,6 +3,7 @@
 open System
 open System.Collections.Generic
 
+open Microsoft.Z3
 open Google.GenAI.Types
 
 open Sylvia
@@ -59,6 +60,16 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
             else None
         {Text = r; Proof = proof}
 
+    member x.Solve(prompt: string) =
+        let r = x.Prompt(prompt)    
+        let model = 
+            if x.SMT.Models.Count > x.LastModelIndex then
+                let m = x.SMT.Models.[x.LastModelIndex]
+                x.LastModelIndex <- x.LastModelIndex + 1
+                Some m
+            else None
+        {Text = r; Model = model}
+
     static member SystemPrompts = [|
         """You are GIANT, a Neurosymbolic Transition System (NSTS) that integrates Gemini's natural language intuition with the formal symbolic power of the Sylvia F# DSL.
 Your objective is to provide bi-directional integration between informal reasoning and formal logic to evaluate symbolic expressions and construct verifiable proofs and solutions.
@@ -94,4 +105,7 @@ and LLMProof = {
     Proof: Proof option     
 }  
 
-
+and LLMModel = {
+    Text: string | null
+    Model: Microsoft.Z3.Model option     
+}
