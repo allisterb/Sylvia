@@ -48,7 +48,7 @@ module ProofParsers =
                         // Derived rules (Methods)
                         let paramCount = rule.Method.GetParameters().Length
                         parseArgs paramCount |>> fun args ->
-                             let argsArray = args |> Array.map (fun e -> e :> obj)
+                             let argsArray = args |> Array.map (fun e -> e |> expand_as<bool> |> Prop :> obj)
                              match rule.Method.Invoke(null, argsArray) with
                              | :? Rule as r -> r
                              | _ -> failwith "Derived rule method did not return a Rule."

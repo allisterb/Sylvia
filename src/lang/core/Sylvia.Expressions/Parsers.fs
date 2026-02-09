@@ -183,8 +183,8 @@ module TermParsers =
                         Expr.Application(Expr.Var(funcVar), Expr.Var(argVar))
                     | None ->
                         match id with
-                        | "true" -> T.Expr 
-                        | "false" -> F.Expr
+                        | "true"  | "T" -> T.Expr 
+                        | "false" | "F" -> F.Expr
                         | _ -> Expr.Var(Var(id, typeof<bool>)))
 
             let quantifierParser op =
