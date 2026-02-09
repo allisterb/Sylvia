@@ -43,8 +43,8 @@ open Sylvia.GenAI.Gemini
 
 if System.OperatingSystem.IsWindows() then 
     Maxima.init "C:\\MathTools\\maxima-5.49.0\\bin\\maxima.bat"
-//else
-    //Maxima.init "/usr/bin/maxima"
+else
+    Maxima.init "/usr/lib/maxima/5.47.0/binary-gcl/maxima"
 
 ModelConversation.config <- Runtime.LoadConfigFile("testappsettings.json")
 ImageGenerator.config <- Runtime.LoadConfigFile("testappsettings.json")
