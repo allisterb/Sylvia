@@ -2,15 +2,32 @@
 
 open System
 open System.Collections.Generic
-
-open Microsoft.Z3
+open System.IO
+open System.Text
+open System.Text.RegularExpressions
+  
 open Google.GenAI.Types
 
 open Sylvia
 open Sylvia.GenAI.Gemini
 
+module LLMSessionHelpers =
+    
+    let defaultMaxDocChars = 3000
+    
+    let ingestPromptText (path:string) (maxChars:int) : string =
+        if File.Exists(path) then
+            let text = File.ReadAllText(path)
+            if text.Length > maxChars then text.Substring(0, maxChars) else text
+        else ""
+
+    let doc1 = ingestPromptText (Path.Combine(Runtime.AssemblyLocation, "examples", "prompts", "SMT.txt")) defaultMaxDocChars
+    let doc2 = ingestPromptText (Path.Combine(Runtime.AssemblyLocation, "examples", "prompts", "Prover.txt")) defaultMaxDocChars
+
 type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj>>) =
-    inherit ModelConversation(ModelConversation.ModelIds.Gemma3, systemPrompts=LLMSession.SystemPrompts, plugins=[|
+    inherit ModelConversation(ModelConversation.ModelIds.Gemma3, 
+    systemPrompts=Array.append LLMSession.SystemPrompts [|LLMSessionHelpers.doc1; LLMSessionHelpers.doc2|], 
+    plugins=[|
         new SymbolsPlugin(sharedState)
         new CASPlugin(sharedState) 
         new SMTPlugin(sharedState)
@@ -22,9 +39,9 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
     let mutable lastModelIndex = 0
     
     let mutable lastExprIndex = 0
-
-    new() = LLMSession(new Dictionary<string, Dictionary<string, obj>>())
-            
+                                 
+    new() = new LLMSession(new Dictionary<string, Dictionary<string, obj>>())
+                   
     member val SharedState = sharedState
             
     member x.GetPlugin<'t when 't :> LLMPlugin>(name) = 
@@ -67,8 +84,8 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
                 Some m
             else None
         {Text = r; Model = model}
-
-    static member SystemPrompts = [|
+    
+    static member val SystemPrompts = [|
         """You are GIANT, a Neurosymbolic Transition System (NSTS) that integrates Gemini's natural language intuition with the formal symbolic power of the Sylvia F# DSL.
 Your objective is to provide bi-directional integration between informal reasoning and formal logic to evaluate symbolic expressions and construct verifiable proofs and solutions.
 
@@ -93,10 +110,19 @@ You operate on two parallel tracks:
 *   **Expression Syntax:** When calling tools, ALL mathematical expressions must be formatted in standard infix notation. specifically, use the caret symbol `^` for exponentiation (e.g., write `x^2` for x squared, NOT `x**2` or `pow(x, 2)`). All boolean expressions should use the following logical operators: `&&&` for AND, `|||` for OR, `-` for NOT, `==` for equality, `!=` for inequality, and `==>` for implication.
 
 You have access to Computer Algebra System (CAS), Satifiability Modulo Theories (SMT) solver, and theorem prover tools via Sylvia. You must use these tools to formalize your reasoning.
-* Read https://raw.githubusercontent.com/allisterb/Sylvia/refs/heads/master/src/lang/genai/Sylvia.GenAI.Giant/examples/SMT.fsx to understand how to use the SMT solver tools.
-* Read https://raw.githubusercontent.com/allisterb/Sylvia/refs/heads/master/src/lang/genai/Sylvia.GenAI.Giant/examples/Prover.fsx to understand how to use the Prover tools.
-        """
-    |]
+Read the provided examples to understand how to use the different tools.
+**Tools**
+
+***Solver***
+The Solver plugin uses Microsoft's Z3 SMT solver to check the satisfiability of logical formulas and constraints, and to find models that satisfy them. Read the following documents to understand how to use it:
+Read the provided examples to understand the syntax for expressing constraints and queries to the SMT solver. 
+When you want to check if a set of constraints is satisfiable, use the `check_int_sat` function for integer constraints, `check_real_sat` for real constraints, and `check_bool_sat` for boolean formulas. If you want to find a model that satisfies a set of integer constraints, use the `get_int_model` function.
+
+***Prover***
+The Sylvia prover is an equational logic theorem prover. 
+
+
+        """ |] with get, set
 
 and LLMProof = {
     Text: string | null
