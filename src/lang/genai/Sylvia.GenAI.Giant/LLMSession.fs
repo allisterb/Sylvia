@@ -14,6 +14,7 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
         new SymbolsPlugin(sharedState)
         new CASPlugin(sharedState) 
         new SMTPlugin(sharedState)
+        new ProverPlugin(sharedState)
     |]) 
     
     do sharedState.Add("Common", new Dictionary<string, obj>())
@@ -28,6 +29,8 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
     member x.CAS = x.GetPlugin<CASPlugin> "CAS"
 
     member x.SMT = x.GetPlugin<SMTPlugin> "SMT"
+
+    member x.Prover = x.GetPlugin<ProverPlugin> "Prover"
 
     member x.Prompt(text:string) = x.PromptAsync(text) |> Async.AwaitTask |> Async.RunSynchronously |> Seq.map (fun m -> m.Content) |> Seq.reduce (+)
 

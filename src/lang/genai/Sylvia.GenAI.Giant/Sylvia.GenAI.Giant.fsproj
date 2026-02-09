@@ -13,6 +13,7 @@
     <Compile Include="SymbolsPlugin.fs" />
     <Compile Include="CASPlugin.fs" />
     <Compile Include="SMTPlugin.fs" />
+    <Compile Include="ProverPlugin.fs" />
     <Compile Include="LLMResponse.fs" />
     <Compile Include="LLMSession.fs" />
   </ItemGroup>

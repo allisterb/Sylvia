@@ -57,6 +57,14 @@ module PredCalculus =
    
     /// forall x (N1 ||| N2) P = ((forall x N1 P) |&| (forall x N2 P))
     let split_range_forall' (x:TermVar<'t>) (N1:Pred<'t>) (N2:Pred<'t>) (P:Pred<'t>) = id_ax pred_calculus (forall (x, (N1 + N2), P) == ((forall(x, N1, P) * (forall (x, N2, P)))))
+    
+        (* Module information members *)
+
+    type private IModuleTypeLocator = interface end
+    
+    let Type = match typeof<IModuleTypeLocator>.DeclaringType with | NonNull m -> m | _ -> failwith "Failed to locate module type."
+    
+    
     (*
   
    
