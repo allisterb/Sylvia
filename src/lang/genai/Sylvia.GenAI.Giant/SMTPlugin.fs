@@ -14,10 +14,13 @@ open Sylvia.Z3
 type SMTPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:string) as this =
     inherit LLMPlugin("SMT", sharedState, ?id=id)
     let models = new List<Microsoft.Z3.Model>()
+    let proofs = new List<string>()
     do
         this.State.Add("Models", models)
 
     member x.Models = models
+
+    member x.Proofs = proofs
 
     [<KernelFunction("check_bool_sat")>]
     [<Description("Check if a set of boolean formulas is satisfiable.")>]
@@ -45,18 +48,49 @@ type SMTPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:str
         | Ok status -> status |> sprintf "%A" |> log_kernel_func_ret logger
         | Error error -> log_kernel_func_ret logger error
 
+    [<KernelFunction("get_bool_model")>]
+    [<Description("Get a model or interpretation that satisifies a boolean formula.")>]
+    member x.GetBoolModel([<ParamArray>] constraints:string array, logger:ILogger | null) : string =
+        let s = new Z3Solver()
+        match get_bool_model s constraints with
+        | Ok model -> 
+            models.Add(s.Model())
+            proofs.Add(s.Solver.Proof.ToString())
+            model 
+            |> Seq.map (fun (v,e) -> sprintf "%A=%A\n" v e) 
+            |> Seq.reduce (+)
+            |> log_kernel_func_ret logger
+        | Error error -> log_kernel_func_ret logger error
+
     [<KernelFunction("get_int_model")>]
     [<Description("Get a model or interpretation that satisifies a set of integer constraints.")>]
     member x.GetIntModel([<ParamArray>] constraints:string array, logger:ILogger | null) : string =
         let s = new Z3Solver()
         match get_int_model s constraints with
         | Ok model -> 
-            x.Models.Add(s.Model())
+            models.Add(s.Model())
+            proofs.Add(s.Solver.Proof.ToString())
             model 
             |> Seq.map (fun (v,e) -> sprintf "%A=%A\n" v e) 
             |> Seq.reduce (+)
             |> log_kernel_func_ret logger
         | Error error -> log_kernel_func_ret logger error
+
+    [<KernelFunction("get_real_model")>]
+    [<Description("Get a model or interpretation that satisifies a set of real constraints.")>]
+    member x.GetReaslModel([<ParamArray>] constraints:string array, logger:ILogger | null) : string =
+        let s = new Z3Solver()
+        match get_real_model s constraints with
+        | Ok model -> 
+            models.Add(s.Model())
+            proofs.Add(s.Solver.Proof.ToString())
+            model 
+            |> Seq.map (fun (v,e) -> sprintf "%A=%A\n" v e) 
+            |> Seq.reduce (+)
+            |> log_kernel_func_ret logger
+        | Error error -> log_kernel_func_ret logger error
+
+
         
         
             

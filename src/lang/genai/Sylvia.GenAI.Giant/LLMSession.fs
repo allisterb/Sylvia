@@ -78,13 +78,14 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
 
     member x.Solve(prompt: string) =
         let r = x.Prompt(prompt)    
-        let model = 
+        let m, p = 
             if x.SMT.Models.Count > lastModelIndex then
                 let m = x.SMT.Models.[lastModelIndex]
+                let p = x.SMT.Proofs.[lastModelIndex]
                 lastModelIndex <- lastModelIndex + 1
-                Some m
-            else None
-        {Text = r; Model = model}
+                Some m, Some p
+            else None, None
+        {Text = r; Model = m; ModelProof=p}
     
     static member val SystemPrompts = [|
         """You are GIANT, a Neurosymbolic Transition System (NSTS) that integrates Gemini's natural language intuition with the formal symbolic power of the Sylvia F# DSL.
@@ -134,5 +135,6 @@ and LLMProof = {
 
 and LLMModel = {
     Text: string | null
-    Model: Microsoft.Z3.Model option     
+    Model: Microsoft.Z3.Model option   
+    ModelProof: string option
 }

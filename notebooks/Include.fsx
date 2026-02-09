@@ -88,7 +88,7 @@ Formatter.Register<LLMProof>(
         let formalHtml =
             match proof.Proof with
             | Some p ->
-                let encoded = p.Log
+                let encoded = System.Net.WebUtility.HtmlEncode(p.Log)
                 // Use <pre><code> so whitespace and structure are preserved
                 $"<pre class=\"llmproof-formal\"><code>{encoded}</code></pre>"
             | None ->
@@ -116,6 +116,86 @@ Formatter.Register<LLMProof>(
                         "</div>" +
                         "<div class=\"llmproof-panel llmproof-formal-panel\">" +
                         "<h2>Formal Proof</h2>" +
+                            formalHtml +
+                             "</div>" +
+                             "</div>"
+
+        writer.Write(html)
+    ),
+    HtmlFormatter.MimeType
+)
+
+Formatter.Register<LLMModel>(
+    (fun (m: LLMModel) (writer: System.IO.TextWriter) ->
+        // Convert LLM intuitive markdown -> HTML
+        let intuitionHtml =
+            if System.String.IsNullOrWhiteSpace(m.Text) then
+                "<p><em>No LLM intuition available.</em></p>"
+            else
+                Markdown.ToHtml(m.Text)
+
+        let encode = System.Net.WebUtility.HtmlEncode
+
+        // Build model values display (compact at top of the panel)
+        let valuesHtml =
+            match m.Model with
+            | Some model ->
+                Sylvia.Z3.get_model model
+                |> Array.map (fun (name, value) ->
+                    let n = encode name
+                    let v = encode value
+                    $"<div class=\"llmmodel-item\"><span class=\"llmmodel-name\">{n}</span>=<span class=\"llmmodel-val-inline\">{v}</span></div>")
+                |> String.concat ""
+            | None -> "<div class=\"llmmodel-no-values\"><em>No model values.</em></div>"
+
+        // Build proof display (use preformatted block, preserve whitespace)
+        let proofHtml =
+            // Handle both null/empty and present text. Assumes ModelProof is string | null.
+            // If ModelProof was changed to option<string>, update matching accordingly.
+            let proofText =
+                try
+                    match box m.ModelProof with
+                    | null -> null
+                    | :? string as s -> s
+                    | _ -> m.ModelProof.ToString()
+                with _ -> null
+
+            if System.String.IsNullOrWhiteSpace(proofText) then
+                "<p><em>No solver proof available.</em></p>"
+            else
+                let encoded = encode proofText
+                $"<pre class=\"llmmodel-proof\"><code>{encoded}</code></pre>"
+
+        // Inline CSS tuned to fit in a Jupyter notebook cell.
+        // The formal panel is column-flexed so values sit on top and proof takes remaining space (scrollable).
+        let style =
+            "<style>" +
+            ".llmmodel-container{display:flex;flex-direction:row;gap:12px;width:100%;box-sizing:border-box;}" +
+            ".llmmodel-panel{flex:1 1 50%;min-width:0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.04);max-height:60vh;}" +
+            ".llmmodel-panel h2{margin-top:0;font-size:1rem;color:#333;}" +
+            ".llmmodel-intuition{overflow:auto;}" +
+            ".llmmodel-formal{display:flex;flex-direction:column;overflow:hidden;}" +
+            ".llmmodel-values{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;font-family:Menlo,Consolas,\"DejaVu Sans Mono\",monospace;font-size:0.9rem;}" +
+            ".llmmodel-item{background:#f6f8fa;padding:6px 8px;border-radius:4px;border:1px solid #eee;}" +
+            ".llmmodel-name{color:#0b5fff;font-weight:700;margin-right:6px;}" +
+            ".llmmodel-val-inline{color:#111;}" +
+            ".llmmodel-proof{background:#f7f7f9;padding:10px;border-radius:4px;overflow:auto;white-space:pre;font-family:Menlo,Consolas,\"DejaVu Sans Mono\",monospace;font-size:0.9rem;border:1px solid #eee;flex:1 1 auto;}" +
+            ".llmmodel-no-values{color:#666;font-style:italic;}" +
+            "@media (max-width:700px){.llmmodel-container{flex-direction:column;}}" +
+            "</style>"
+
+        let formalHtml =
+            $"<div class=\"llmmodel-values\">{valuesHtml}</div><div class=\"llmmodel-proof-wrap\">{proofHtml}</div>"
+
+        let html =
+            style +
+            "<div class=\"llmmodel-container\">" +
+              "<div class=\"llmmodel-panel llmmodel-intuition\">" +
+                "<h2>LLM Intuition</h2>" +
+                    intuitionHtml +
+                        "</div>" +
+                        "<div class=\"llmmodel-panel llmmodel-formal\">" +
+                        "<h2>SMT Model & Solver Proof</h2>" +
                             formalHtml +
                              "</div>" +
                              "</div>"

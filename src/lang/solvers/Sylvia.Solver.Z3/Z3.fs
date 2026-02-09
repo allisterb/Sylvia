@@ -1,6 +1,7 @@
 ﻿namespace Sylvia
 
 open System
+open System.Collections.Generic
 open System.Runtime.CompilerServices
 
 open FSharp.Quotations
@@ -18,7 +19,8 @@ type Z3ModelResult =
 
 type Z3Solver(?nonLinear:bool, ?logic:string) =
     let nl = defaultArg nonLinear false
-    let ctx = new Context()
+    let settings = new Dictionary<string, string>([new KeyValuePair<string, string>("proof", "true")])    
+    let ctx = new Context(settings)
     let sp = ctx.MkParams();
     let op = ctx.MkParams()
     let solver = 
@@ -301,7 +303,7 @@ module Z3 =
         |> List.map(fun c -> c.Name, match  m.[c] with | ConstResult c -> c  | _ -> failwith "This not a constant result.")
         
 
-    let internal get_model (m:Model) = 
+    let get_model (m:Model) = 
         m.Decls |> Array.map(fun c -> c.Name.ToString(), 
                                                         match  m.[c] with 
                                                         | ConstResult c -> c.ToString()  

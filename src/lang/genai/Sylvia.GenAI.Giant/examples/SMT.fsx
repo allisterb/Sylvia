@@ -43,3 +43,4 @@ get_bool_model [
     "forall(islander, IsKnave(islander) ==> not TellsTruth(islander))"
     "exists(islander, IsKnave(islander) && not TellsTruth(islander))"
 ]
+
