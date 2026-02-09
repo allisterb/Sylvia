@@ -13,7 +13,7 @@ open Sylvia.Z3
 
 type SMTPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:string) as this =
     inherit LLMPlugin("SMT", sharedState, ?id=id)
-    let models = new Stack<Microsoft.Z3.Model>()
+    let models = new List<Microsoft.Z3.Model>()
     do
         this.State.Add("Models", models)
 
@@ -25,7 +25,7 @@ type SMTPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:str
         let s = new Z3Solver()
         match check_bool_sat s formulas with
         | Ok status -> 
-            x.Models.Push(s.Model())
+            x.Models.Add(s.Model())
             status |> sprintf "%A" |> log_kernel_func_ret logger
         | Error error -> log_kernel_func_ret logger error
         
@@ -51,7 +51,7 @@ type SMTPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:str
         let s = new Z3Solver()
         match get_int_model s constraints with
         | Ok model -> 
-            x.Models.Push(s.Model())
+            x.Models.Add(s.Model())
             model 
             |> Seq.map (fun (v,e) -> sprintf "%A=%A\n" v e) 
             |> Seq.reduce (+)

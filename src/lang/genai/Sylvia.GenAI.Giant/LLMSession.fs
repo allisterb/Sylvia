@@ -5,6 +5,7 @@ open System.Collections.Generic
 
 open Google.GenAI.Types
 
+open Sylvia
 open Sylvia.GenAI.Gemini
 
 type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj>>) =
@@ -21,6 +22,12 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
             
     member val SharedState = sharedState
     
+    member val LastProofIndex = 0 with get, set
+
+    member val LastModelIndex = 0 with get, set
+
+    member val LastExprIndex = 0 with get, set
+
     member x.GetPlugin<'t when 't :> LLMPlugin>(name) = 
         match x.plugins.Find(fun p -> p.Name = name && p :? 't) with | NonNull plugin -> plugin :?> 't | Null -> failwith "coul"
 
@@ -42,6 +49,16 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
                 | Null -> failwith "Image must have either ImageBytes or GcsUri"
         x.ImagePromptAsync(text, imageData) |> Async.AwaitTask |> Async.RunSynchronously |> Seq.map (fun m -> m.Content) |> Seq.reduce (+)
         
+    member x.Prove(prompt: string) =
+        let r = x.Prompt(prompt)    
+        let proof = 
+            if x.Prover.Proofs.Count > x.LastProofIndex then
+                let proofId = x.Prover.Proofs.Keys |> Seq.skip x.LastProofIndex |> Seq.head
+                x.LastProofIndex <- x.LastProofIndex + 1
+                Some x.Prover.Proofs.[proofId]
+            else None
+        {Text = r; Proof = proof}
+
     static member SystemPrompts = [|
         """You are GIANT, a Neurosymbolic Transition System (NSTS) that integrates Gemini's natural language intuition with the formal symbolic power of the Sylvia F# DSL.
 Your objective is to provide bi-directional integration between informal reasoning and formal logic to evaluate symbolic expressions and construct verifiable proofs and solutions.
@@ -72,6 +89,9 @@ You have access to Computer Algebra System (CAS), Satifiability Modulo Theories 
         """
     |]
 
-
+and LLMProof = {
+    Text: string | null
+    Proof: Proof option     
+}  
 
 

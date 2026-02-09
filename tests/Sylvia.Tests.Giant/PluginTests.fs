@@ -41,7 +41,8 @@ type PluginTests() =
     [<Fact>]
     member this.``Can start proof`` ()  =
         let llm = new LLMSession()  
-        let r1 = llm.Prompt("Create proof of the propositional calculus theorem p ∨ q = q ∨ p")
+        let r1 = llm.Prove("Create proof of the propositional calculus theorem p ∨ q = q ∨ p")
         Assert.NotEmpty llm.SharedState 
+        Assert.True r1.Proof.IsSome
        
 
