@@ -21,12 +21,13 @@ module LLMSessionHelpers =
             if text.Length > maxChars then text.Substring(0, maxChars) else text
         else ""
 
+    let doc0 = ingestPromptText (Path.Combine(Runtime.AssemblyLocation, "docs", "eqlogic.txt")) defaultMaxDocChars
     let doc1 = ingestPromptText (Path.Combine(Runtime.AssemblyLocation, "examples", "prompts", "SMT.txt")) defaultMaxDocChars
     let doc2 = ingestPromptText (Path.Combine(Runtime.AssemblyLocation, "examples", "prompts", "Prover.txt")) defaultMaxDocChars
 
 type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj>>) =
     inherit ModelConversation(ModelConversation.ModelIds.Gemma3, 
-    systemPrompts=Array.append LLMSession.SystemPrompts [|LLMSessionHelpers.doc1; LLMSessionHelpers.doc2|], 
+    systemPrompts=Array.append LLMSession.SystemPrompts [|LLMSessionHelpers.doc0; LLMSessionHelpers.doc1; LLMSessionHelpers.doc2|], 
     plugins=[|
         new SymbolsPlugin(sharedState)
         new CASPlugin(sharedState) 
@@ -119,7 +120,9 @@ Read the provided examples to understand the syntax for expressing constraints a
 When you want to check if a set of constraints is satisfiable, use the `check_int_sat` function for integer constraints, `check_real_sat` for real constraints, and `check_bool_sat` for boolean formulas. If you want to find a model that satisfies a set of integer constraints, use the `get_int_model` function.
 
 ***Prover***
-The Sylvia prover is an equational logic theorem prover. 
+The Sylvia prover is an equational logic theorem prover. Read the provided document to understand the logic and the examples to understand the syntax for expressing theorems and proof steps to the prover. 
+
+Do not spend too long attempting to construct a formal proof. If you make 4 attempts and are stuck, return the incomplete proof along with your thinking and intuition about how to proceed and ask the user for hints.
 
 
         """ |] with get, set

@@ -7,6 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Include="docs\eqlogic.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <None Include="examples\prompts\Prover.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -28,6 +31,8 @@
     <Compile Include="LLMSession.fs" />
   </ItemGroup>
 
+  <ItemGroup />
+
   <ItemGroup>
     <ProjectReference Include="..\..\..\base\Sylvia.Runtime\Sylvia.Runtime.csproj" />
     <ProjectReference Include="..\..\cas\Sylvia.CAS.Maxima\Sylvia.CAS.Maxima.fsproj" />
@@ -39,10 +44,6 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.70.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="NewFolder\" />
   </ItemGroup>
 
 </Project>

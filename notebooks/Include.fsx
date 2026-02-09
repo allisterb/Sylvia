@@ -13,6 +13,8 @@
 #r "nuget: Unquote, 7.0.1"
 #r "nuget: Sylvia.Arithmetic, 0.2.8"
 #r "nuget: Markdig, 0.44.0"
+#r "nuget: Serilog.Extensions.Logging, 10.0.0"
+#r "nuget: Serilog.Sinks.File, 7.0.0"
 
 #r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/Expect.NETStandard.dll"
 #r "../ext/FunScript/src/main/FunScript/bin/Debug/netstandard2.0/FunScript.dll"
@@ -44,13 +46,17 @@ open Sylvia.GenAI.Gemini
 
 open Markdig
 
+Runtime.InitializeWithFileLogging("Sylvia", "Jupyter")
+
+ModelConversation.config <- Runtime.LoadConfigFile("testappsettings.json")
+
+ImageGenerator.config <- Runtime.LoadConfigFile("testappsettings.json")
+
 if System.OperatingSystem.IsWindows() then 
     Maxima.init "C:\\MathTools\\maxima-5.49.0\\bin\\maxima.bat"
 else
     Maxima.init "/usr/lib/maxima/5.47.0/binary-gcl/maxima"
 
-ModelConversation.config <- Runtime.LoadConfigFile("testappsettings.json")
-ImageGenerator.config <- Runtime.LoadConfigFile("testappsettings.json")
 
 Formatter.Register<Image>(
         (fun (image: Image) (writer: System.IO.TextWriter) ->

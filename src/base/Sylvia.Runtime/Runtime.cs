@@ -1,17 +1,18 @@
 namespace Sylvia;
 
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Serilog;
+using Serilog.Extensions.Logging;
 using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Text;
 using System.Reflection;
+using System.Text;
 using System.Threading;
-
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 public abstract class Runtime
 {
@@ -97,8 +98,18 @@ public abstract class Runtime
         }
     }
 
-    public static void Initialize(string toolname, string logname, bool debug) => Initialize(toolname, logname, debug, NullLoggerFactory.Instance, NullLoggerProvider.Instance);
+    public static void Initialize(string toolname, string logname, bool debug = false) => Initialize(toolname, logname, debug, NullLoggerFactory.Instance, NullLoggerProvider.Instance);
         
+    public static void InitializeWithFileLogging(string toolname, string logname, bool debug = false)
+    {        
+        var logger = new LoggerConfiguration()
+             .Enrich.FromLogContext()
+             .WriteTo.File(Path.Combine(Runtime.AssemblyLocation, "Sylvia.log"))
+             .CreateLogger();
+        var lf = new SerilogLoggerFactory(logger);
+        var lp = new SerilogLoggerProvider(logger, false);        
+        Initialize(toolname, logname, debug, lf, lp);
+    }
     [DebuggerStepThrough]
     public static void Info(string messageTemplate, params object[] args) => logger.LogInformation(messageTemplate, args);
 
@@ -287,7 +298,7 @@ public abstract class Runtime
     #endregion
 
     #region Fields
-    public static ILogger logger = NullLogger.Instance;   
+    public static Microsoft.Extensions.Logging.ILogger logger = NullLogger.Instance;   
     public static ILoggerFactory loggerFactory = NullLoggerFactory.Instance;
     public static ILoggerProvider loggerProvider = NullLoggerProvider.Instance; 
     protected static object __lock = new object();
