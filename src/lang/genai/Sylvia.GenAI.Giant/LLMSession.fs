@@ -56,7 +56,7 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
 
     member x.Prover = x.GetPlugin<ProverPlugin> "Prover"
 
-    member x.Prompt(text:string) = x.PromptAsync(text) |> Async.AwaitTask |> Async.RunSynchronously |> Seq.map (fun m -> m.Content) |> Seq.reduce (+)
+    member x.Prompt(text:string, [<ParamArray>] content: obj array) = x.PromptAsync(text, content) |> Async.AwaitTask |> Async.RunSynchronously |> Seq.map (fun m -> m.Content) |> Seq.reduce (+)
 
     member x.ImagePrompt(text:string, image:Image) =
         let imageData = 
@@ -68,28 +68,28 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
                 | Null -> failwith "Image must have either ImageBytes or GcsUri"
         x.ImagePromptAsync(text, imageData) |> Async.AwaitTask |> Async.RunSynchronously |> Seq.map (fun m -> m.Content) |> Seq.reduce (+)
         
-    member x.Prove(prompt: string) =
-        let r = x.Prompt(prompt)    
+    member x.Prove(prompt: string,  [<ParamArray>] content: obj array) =
+        let r = x.Prompt(prompt, content)    
         let proof = 
             if x.Prover.Proofs.Count > lastProofIndex then
                 let proofId = x.Prover.Proofs.Keys |> Seq.skip lastProofIndex |> Seq.head
-                lastProofIndex <- lastProofIndex + 1
+                lastProofIndex <-  x.Prover.Proofs.Count
                 Some x.Prover.Proofs.[proofId]
             else None
         {Text = r; Proof = proof}
 
-    member x.Solve(prompt: string) =
-        let r = x.Prompt(prompt)    
+    member x.Solve(prompt: string,  [<ParamArray>] content: obj array) =
+        let r = x.Prompt(prompt, content)    
         let m = 
             if x.SMT.Models.Count > lastModelIndex then
                 let m = x.SMT.Models.[lastModelIndex]           
-                lastModelIndex <- lastModelIndex + 1
+                lastModelIndex <- x.SMT.Models.Count
                 Some m
             else None
         let up = 
             if x.SMT.Proofs.Count > lastModelProofIndex then
                 let p = x.SMT.Proofs.[lastModelProofIndex]           
-                lastModelProofIndex <- lastModelProofIndex + 1
+                lastModelProofIndex <- x.SMT.Proofs.Count
                 Some p
             else None
         {Text = r; Model = m; ModelProof=up}
@@ -117,15 +117,16 @@ You operate on two parallel tracks:
 *   Treat tool outputs as the ground truth.
 *   Define any function symbols like f(x) using tool calls. The variables in the function should be introduced before function definition.
 *   **Expression Syntax:** When calling tools, ALL mathematical expressions must be formatted in standard infix notation. specifically, use the caret symbol `^` for exponentiation (e.g., write `x^2` for x squared, NOT `x**2` or `pow(x, 2)`). All boolean expressions should use the following logical operators: `&&&` for AND, `|||` for OR, `-` for NOT, `==` for equality, `!=` for inequality, and `==>` for implication.
-
+*   **Ouput** Always return mathematical and logical expressions to the user as LaTex, using standard operator symbols.
 You have access to Computer Algebra System (CAS), Satifiability Modulo Theories (SMT) solver, and theorem prover tools via Sylvia. You must use these tools to formalize your reasoning.
 Read the provided examples to understand how to use the different tools.
 **Tools**
 
 ***Solver***
-The Solver plugin uses Microsoft's Z3 SMT solver to check the satisfiability of logical formulas and constraints, and to find models that satisfy them. Read the following documents to understand how to use it:
-Read the provided examples to understand the syntax for expressing constraints and queries to the SMT solver. 
+The Solver plugin uses Microsoft's Z3 SMT solver to check the satisfiability of logical formulas and constraints, and to find models that satisfy them.
 When you want to check if a set of constraints is satisfiable, use the `check_int_sat` function for integer constraints, `check_real_sat` for real constraints, and `check_bool_sat` for boolean formulas. If you want to find a model that satisfies a set of integer constraints, use the `get_int_model` function.
+Read the provided examples to understand the syntax for expressing constraints and queries to the SMT solver. 
+
 
 ***Prover***
 The Sylvia prover is an equational logic theorem prover. Read the provided document to understand the logic and the examples to understand the syntax for expressing theorems and proof steps to the prover. 

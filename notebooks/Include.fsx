@@ -147,7 +147,7 @@ Formatter.Register<LLMModel>(
             with _ -> None
 
         // If a proof is present that means the solver returned UNSAT; show proof instead of model values.
-        let formalHtml =            
+        let formalHtml, title =            
             match m.Model with
             | Some model ->
                 // get_model returns (name, value) pairs; escape for HTML and render as compact chips
@@ -158,14 +158,14 @@ Formatter.Register<LLMModel>(
                         let v = encode value
                         $"<div class=\"llmmodel-item\"><span class=\"llmmodel-name\">{n}</span>=<span class=\"llmmodel-val-inline\">{v}</span></div>")
                     |> String.concat ""
-                $"<div class=\"llmmodel-values\">{valuesHtml}</div><div class=\"llmmodel-proof-wrap\"></div>"
+                $"<div class=\"llmmodel-values\">{valuesHtml}</div><div class=\"llmmodel-proof-wrap\"></div>", "SMT Model"
             | None ->
                 match proofTextOpt with
                 | Some proofText ->
                     // Display UNSAT notice and the proof in a scrollable pre block.
                     let encodedProof = encode proofText
-                    $"<div class=\"llmmodel-unsat\"> <strong>Solver result: UNSATISFIABLE</strong></div><div class=\"llmmodel-proof-wrap\"><pre class=\"llmmodel-proof\"><code>{encodedProof}</code></pre></div>"
-                | None ->  $"<div class=\"llmmodel-unsat\"> <strong>Solver result: UNSATISFIABLE</strong></div>"
+                    $"<div class=\"llmmodel-unsat\"> <strong>UNSATISFIABLE</strong></div><div class=\"llmmodel-proof-wrap\"><pre class=\"llmmodel-proof\"><code>{encodedProof}</code></pre></div>", "SMT Result"
+                | None ->  $"<div class=\"llmmodel-unsat\"> <strong>UNSATISFIABLE</strong></div>", "SMT Result"
                 
 
         // Inline CSS tuned to fit in a Jupyter notebook cell.

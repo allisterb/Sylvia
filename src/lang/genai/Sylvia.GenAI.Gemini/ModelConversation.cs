@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
-
+using Google.GenAI.Types;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -101,12 +101,51 @@ public class ModelConversation : Runtime
         messages.AddAssistantMessage(sb.ToString());
     }
 
-    public async Task<List<ChatMessageContent>> PromptAsync(string prompt)
+    public async Task<List<ChatMessageContent>> PromptAsync(string prompt, params object[] content)
     {
         var messageItems = new ChatMessageContentItemCollection()
         {
             new Microsoft.SemanticKernel.TextContent(prompt)
         };
+        if (content is not null)
+        {
+            foreach (var item in content)
+            {
+                if (item is string s)
+                {
+                    messageItems.Add(new Microsoft.SemanticKernel.TextContent(s));
+                }
+                else if (item is byte[] b)
+                {
+                    messageItems.Add(new ImageContent(b, "image/png"));
+                }
+                else if (item is Image image)
+                {
+                    if (image.ImageBytes is not null)
+                    {
+                        messageItems.Add(new ImageContent(image.ImageBytes, image.MimeType ?? "image/png"));
+                    }
+                    else if (image.GcsUri is not null)
+                    {
+#pragma warning disable SYSLIB0014 // Type or member is obsolete
+                        var wc = new System.Net.WebClient();
+#pragma warning restore SYSLIB0014 // Type or member is obsolete
+                        var data = wc.DownloadData(image.GcsUri);
+                        {
+                            messageItems.Add(new ImageContent(image.ImageBytes, image.MimeType ?? "image/png"));
+                        }
+                    }
+                    else
+                    {
+                        throw new ArgumentException("Image content must have either ImageBytes or GcsUri.");
+                    }
+                }
+                else
+                {
+                    throw new ArgumentException($"Unsupported content type {item.GetType()}");
+                }
+            }
+        }
         messages.AddUserMessage(messageItems);
         List<ChatMessageContent> response = new List<ChatMessageContent>();      
         foreach(var m in await chat.GetChatMessageContentsAsync(messages, promptExecutionSettings, kernel))
