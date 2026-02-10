@@ -26,8 +26,8 @@ public class ModelConversation : Runtime
                 .AddProvider(loggerProvider)
             );
         var apiKey = config?["Model:ApiKey"] ?? throw new Exception();
-        chat = new GoogleAIGeminiChatCompletionService(this.modelId, apiKey, loggerFactory: loggerFactory);
-            //.UsingChatHistoryReducer(new ChatHistoryTruncationReducer(16, 24));            
+        chat = new GoogleAIGeminiChatCompletionService(this.modelId, apiKey, loggerFactory: loggerFactory)
+            .UsingChatHistoryReducer(new ChatHistoryTruncationReducer(16, 24));            
         chatClient = chat.AsChatClient();      
         if (this.embeddingModelId is not null)
         {
