@@ -100,16 +100,31 @@ public abstract class Runtime
 
     public static void Initialize(string toolname, string logname, bool debug = false) => Initialize(toolname, logname, debug, NullLoggerFactory.Instance, NullLoggerProvider.Instance);
         
-    public static void InitializeWithFileLogging(string toolname, string logname, bool debug = false)
+    public static void WithFileLogging(string toolname, string logname, bool debug = false)
     {        
         var logger = new LoggerConfiguration()
              .Enrich.FromLogContext()
-             .WriteTo.File(Path.Combine(Runtime.AssemblyLocation, "Sylvia.log"))
+             .MinimumLevel.Is(debug ? Serilog.Events.LogEventLevel.Verbose : Serilog.Events.LogEventLevel.Information)    
+             .WriteTo.File(Path.Combine(AssemblyLocation, toolname + "-" + logname + ".log"))
              .CreateLogger();
         var lf = new SerilogLoggerFactory(logger);
         var lp = new SerilogLoggerProvider(logger, false);        
         Initialize(toolname, logname, debug, lf, lp);
     }
+
+    public static void WithFileAndConsoleLogging(string toolname, string logname, bool debug = false)
+    {
+        var logger = new LoggerConfiguration()
+             .Enrich.FromLogContext()
+             .MinimumLevel.Is(debug ? Serilog.Events.LogEventLevel.Verbose : Serilog.Events.LogEventLevel.Information)
+             .WriteTo.File(Path.Combine(AssemblyLocation, toolname + "-" + logname + ".log"))
+             .WriteTo.Console()
+             .CreateLogger();
+        var lf = new SerilogLoggerFactory(logger);
+        var lp = new SerilogLoggerProvider(logger, false);
+        Initialize(toolname, logname, debug, lf, lp);
+    }
+
     [DebuggerStepThrough]
     public static void Info(string messageTemplate, params object[] args) => logger.LogInformation(messageTemplate, args);
 

@@ -37,20 +37,27 @@
 
 #nowarn "3391"
 
+open System
+
 open Google.GenAI.Types
 open Microsoft.DotNet.Interactive.Formatting
+open Markdig
 
 open Sylvia
 open Sylvia.CAS
 open Sylvia.GenAI.Gemini    
+open Sylvia.GenAI.Giant
 
-open Markdig
-
-Runtime.InitializeWithFileLogging("Sylvia", "Jupyter")
+Runtime.WithFileLogging("Sylvia", "Jupyter")
 
 ModelConversation.config <- Runtime.LoadConfigFile("testappsettings.json")
 
 ImageGenerator.config <- Runtime.LoadConfigFile("testappsettings.json")
+
+let insideVSCode = 
+    let ev = System.Environment.GetEnvironmentVariables(EnvironmentVariableTarget.Process)
+    ev.Contains("VSCODE_IPC_HOOK") || ev.Contains("VSCODE_HANDLES_UNCAUGHT_ERRORS")
+
 
 if System.OperatingSystem.IsWindows() then 
     Maxima.init "C:\\MathTools\\maxima-5.49.0\\bin\\maxima.bat"
@@ -73,7 +80,7 @@ Formatter.Register<Image>(
         HtmlFormatter.MimeType
     )
 
-open Sylvia.GenAI.Giant
+
 Formatter.Register<LLMProof>(
     (fun (proof: LLMProof) (writer: System.IO.TextWriter) ->
         // Convert LLM-provided markdown/intuitive text to HTML (Markdig)
@@ -128,6 +135,25 @@ Formatter.Register<LLMProof>(
 Formatter.Register<LLMModel>(
     (fun (m: LLMModel) (writer: System.IO.TextWriter) ->
         // Convert LLM intuitive markdown -> HTML
+
+        // MathJax header that loads MathJax via require (if available) and configures '$' as inline delimiters.
+        // Uses a fallback to append a script tag when require is not available.
+        // This header is inserted before cell HTML so LaTeX in the output (Markdown -> HTML) is rendered.
+        let mathJaxHeader = 
+            if not insideVSCode then "" else
+                    "<script type=\"text/javascript\">" +
+                    "(function(){ " +
+                    "if(typeof window === 'undefined') return; " +
+                    "try { " +
+                    "  if(window.MathJax && window.MathJax.tex && window.MathJax.tex.inlineMath) return; " +
+                    "} catch(e) {} " +
+                    "window.MathJax = { tex: { inlineMath: [['$','$']], displayMath: [['$$','$$']] }, options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] } }; " +
+                    "if(typeof require !== 'undefined') { " +
+                    "  try { require(['https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js']); } catch(e) { " +
+                    "    var s = document.createElement('script'); s.type='text/javascript'; s.src='https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'; document.head.appendChild(s); } " +
+                    "} else { var s = document.createElement('script'); s.type='text/javascript'; s.src='https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'; document.head.appendChild(s); } " +
+                    "})();" +
+                    "</script>\n"        
         let intuitionHtml =
             if System.String.IsNullOrWhiteSpace(m.Text) then
                 "<p><em>No LLM intuition available.</em></p>"
@@ -158,7 +184,7 @@ Formatter.Register<LLMModel>(
                         let v = encode value
                         $"<div class=\"llmmodel-item\"><span class=\"llmmodel-name\">{n}</span>=<span class=\"llmmodel-val-inline\">{v}</span></div>")
                     |> String.concat ""
-                $"<div class=\"llmmodel-values\">{valuesHtml}</div><div class=\"llmmodel-proof-wrap\"></div>", "SMT Model"
+                $"<div class=\"llmmodel-values\">\n{valuesHtml}</div><div class=\"llmmodel-proof-wrap\"></div>", "SMT Model"
             | None ->
                 match proofTextOpt with
                 | Some proofText ->
@@ -188,6 +214,7 @@ Formatter.Register<LLMModel>(
             "</style>"
 
         let html =
+            mathJaxHeader +
             style +
             "<div class=\"llmmodel-container\">" +
               "<div class=\"llmmodel-panel llmmodel-intuition\">" +
@@ -195,7 +222,7 @@ Formatter.Register<LLMModel>(
                     intuitionHtml +
                         "</div>" +
                         "<div class=\"llmmodel-panel llmmodel-formal\">" +
-                        "<h2>SMT Solver Result</h2>" +
+                        "<h2>" + title + "</h2>" +
                             formalHtml +
                              "</div>" +
                              "</div>"

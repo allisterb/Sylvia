@@ -16,8 +16,6 @@
 #r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\extra\\FunScript.Bindings.JSXGraph\\bin\\Debug\\netstandard2.0\\FunScript.Bindings.Base.dll"
 #r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\extra\\FunScript.Bindings.JSXGraph\\bin\\Debug\\netstandard2.0\\FunScript.Bindings.JSXGraph.dll"
 
-#r "C:\\Users\\Allister\\.nuget\\packages\\sylvia.arithmetic\\0.2.8\\lib\netstandard2.0\\Sylvia.Provider.Arithmetic.Runtime.dll"
-#r "C:\\Projects\\Sylvia\\src\\base\\Sylvia.Collections\\bin\\Debug\\netstandard2.0\\Sylvia.Collections.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\core\\Sylvia.Expressions\\bin\\Debug\\net10.0\\Sylvia.Expressions.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\core\\Sylvia.Prover\\bin\\Debug\\net10.0\\Sylvia.Prover.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\CAS\\Sylvia.CAS.Maxima\\bin\\Debug\\net10.0\\MathNet.Symbolics.dll"
