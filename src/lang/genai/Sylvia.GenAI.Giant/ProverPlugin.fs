@@ -34,18 +34,18 @@ type ProverPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:
     member x.ListTheories(logger:ILogger | null) : string =
         theories.Keys |> Seq.reduce (fun acc k -> acc + "\n" + k) |> log_kernel_func_ret logger
 
-    [<KernelFunction("list_rules")>]
-    [<Description("List the admissible and derived rules for a given theory.")>]
-    member x.ListRules(theory:string, logger:ILogger | null) : string =
+    [<KernelFunction("describe_rules")>]
+    [<Description("Describe the admissible and derived rules for a given theory.")>]
+    member x.DescribeRules(theory:string, logger:ILogger | null) : string =
         let admissible = 
             match admissibleRules.TryGetValue(theory) with
-            | true, rules -> rules |> Seq.map (fun r -> sprintf "Admissible: %s (%s)" r.Name r.Description)
-            | false, _ -> Seq.empty
+            | true, rules -> rules |> Seq.map (fun r -> r.ToString() + "\n") |> Seq.reduce (+)
+            | false, _ -> ""
         let derived = 
             match derivedRules.TryGetValue(theory) with
-            | true, rules -> rules |> Seq.map (fun r -> sprintf "Derived: %s (%s)" r.Name r.Description)
-            | false, _ -> Seq.empty
-        Seq.append admissible derived |> Seq.reduce (fun acc r -> acc + "\n" + r) |> log_kernel_func_ret logger
+            | true, rules -> rules |> Seq.map (fun r -> r.ToString() + "\n") |> Seq.reduce (+)
+            | false, _ -> ""
+        $"***Admissible Rules***:\n{admissible}***Derived Rules***:\n{derived}" |> log_kernel_func_ret logger
 
     [<KernelFunction("proof")>]
     [<Description("Create a proof of a theorem using the specified theory.")>]

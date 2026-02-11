@@ -606,18 +606,27 @@ module Proof =
         | Equals(_, _) -> Define theory f
         | _ -> failwithf "The expression %s is not an identity." (theory.PrintFormula f)
 
-type ModuleDerivedRule = {
-    Name:string
-    Description:string
-    Parameters: ParameterInfo array
-    Method: MethodInfo
-}
 
 type ModuleAdmissibleRule = {
     Name:string
     Description:string
     Property:PropertyInfo
 }
+with
+     override x.ToString () : string=           
+          $"Method: {x.Name}\nDescription: {x.Description}"
+
+type ModuleDerivedRule = {
+    Name:string
+    Description:string
+    Parameters: ParameterInfo array
+    Method: MethodInfo
+}
+with
+     override x.ToString() : string= 
+          let m = if x.Parameters.Length = 0 then x.Method.Name else x.Method.Name + "(" + (x.Parameters |> Array.map(fun p -> p.Name |> function | NonNull _p -> _p |  _ -> "") |> String.concat ", ") + ")"
+          $"Method: {m}\nDescription: {x.Description}"
+
 
 module ProofModules =
 
