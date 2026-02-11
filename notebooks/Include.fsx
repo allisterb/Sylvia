@@ -48,7 +48,7 @@ open Sylvia.CAS
 open Sylvia.GenAI.Gemini    
 open Sylvia.GenAI.Giant
 
-Runtime.WithFileLogging("Sylvia", "Jupyter")
+Runtime.WithFileLogging("Sylvia", "Notebook", true, Runtime.CurentDirectory)
 
 ModelConversation.config <- Runtime.LoadConfigFile("testappsettings.json")
 
@@ -57,7 +57,6 @@ ImageGenerator.config <- Runtime.LoadConfigFile("testappsettings.json")
 let insideVSCode = 
     let ev = System.Environment.GetEnvironmentVariables(EnvironmentVariableTarget.Process)
     ev.Contains("VSCODE_IPC_HOOK") || ev.Contains("VSCODE_HANDLES_UNCAUGHT_ERRORS")
-
 
 if System.OperatingSystem.IsWindows() then 
     Maxima.init "C:\\MathTools\\maxima-5.49.0\\bin\\maxima.bat"

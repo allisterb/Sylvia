@@ -10,8 +10,7 @@ public class TestsRuntime : Runtime
     static TestsRuntime()
     {
         config = LoadConfigFile("testappsettings.json");
-        Runtime.WithFileAndConsoleLogging("Sylvia", "Tests", true);
-          
+        Runtime.WithFileAndConsoleLogging("Sylvia", "Tests", true);          
     }    
     static protected IConfigurationRoot config;
 }

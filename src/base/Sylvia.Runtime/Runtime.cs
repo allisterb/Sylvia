@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Serilog;
+using Serilog.Core;
 using Serilog.Extensions.Logging;
 using System;
 using System.Diagnostics;
@@ -100,24 +101,26 @@ public abstract class Runtime
 
     public static void Initialize(string toolname, string logname, bool debug = false) => Initialize(toolname, logname, debug, NullLoggerFactory.Instance, NullLoggerProvider.Instance);
         
-    public static void WithFileLogging(string toolname, string logname, bool debug = false)
+    public static void WithFileLogging(string toolname, string logname, bool debug, string? logdir = null)
     {        
+        var filePath= logdir is null ? Path.Combine(AssemblyLocation, toolname + "-" + logname + ".log") : Path.Combine(logdir, toolname + "-" + logname + ".log");
         var logger = new LoggerConfiguration()
              .Enrich.FromLogContext()
              .MinimumLevel.Is(debug ? Serilog.Events.LogEventLevel.Verbose : Serilog.Events.LogEventLevel.Information)    
-             .WriteTo.File(Path.Combine(AssemblyLocation, toolname + "-" + logname + ".log"))
+             .WriteTo.File(filePath)
              .CreateLogger();
         var lf = new SerilogLoggerFactory(logger);
         var lp = new SerilogLoggerProvider(logger, false);        
         Initialize(toolname, logname, debug, lf, lp);
     }
 
-    public static void WithFileAndConsoleLogging(string toolname, string logname, bool debug = false)
+    public static void WithFileAndConsoleLogging(string toolname, string logname, bool debug, string? logdir = null)
     {
+        var filePath = logdir is null ? Path.Combine(AssemblyLocation, toolname + "-" + logname + ".log") : Path.Combine(logdir, toolname + "-" + logname + ".log");
         var logger = new LoggerConfiguration()
              .Enrich.FromLogContext()
              .MinimumLevel.Is(debug ? Serilog.Events.LogEventLevel.Verbose : Serilog.Events.LogEventLevel.Information)
-             .WriteTo.File(Path.Combine(AssemblyLocation, toolname + "-" + logname + ".log"))
+             .WriteTo.File(filePath)
              .WriteTo.Console()
              .CreateLogger();
         var lf = new SerilogLoggerFactory(logger);
