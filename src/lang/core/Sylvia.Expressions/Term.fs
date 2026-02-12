@@ -35,6 +35,10 @@ type Term<'t when 't: equality> (expr:Expr<'t>, ?h:TermHistory) =
 
     override a.ToString() = a.Display
 
+    static member GetNameAndSymbol(name:string) = 
+        let s = name.Split(':')
+        if s.Length = 1 then s[0], s[0] else s[0], s[1]
+        
     static member op_Implicit (l:Term<'t>):Expr<'t> = l.Expr
  
     static member (==) (l:Term<'t>, r:Term<'t>) = <@ %l.Expr = %r.Expr @> |> Prop
@@ -45,9 +49,12 @@ type Term<'t when 't: equality> (expr:Expr<'t>, ?h:TermHistory) =
 
 and [<AbstractClass>] TermVar<'t when 't: equality>(n: string) = 
     inherit Term<'t>(Expr.Var(Var(n, typeof<'t>)) |> expand_as<'t>)
-    override x.Display = sprintf "{%A}" n
-    member x.Name = n
-    member x.Var = match x.Expr with | Var v -> v | _ -> failwith ""
+    let var = Var(n, typeof<'t>)
+    let name, symbol = Term<'t>.GetNameAndSymbol n          
+    member val Name = name
+    member val Symbol = symbol
+    member val Var = var
+    override x.Display = symbol
     
 and IndexVar(expr: Expr<int>) = 
     inherit Term<int>(expr)

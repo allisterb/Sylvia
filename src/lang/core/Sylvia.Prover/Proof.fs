@@ -614,7 +614,7 @@ type ModuleAdmissibleRule = {
 }
 with
      override x.ToString () : string=           
-          $"Method: {x.Name}\nDescription: {x.Description}"
+          $"Rule: {x.Name}. Description: {x.Description}."
 
 type ModuleDerivedRule = {
     Name:string
@@ -624,8 +624,8 @@ type ModuleDerivedRule = {
 }
 with
      override x.ToString() : string= 
-          let m = if x.Parameters.Length = 0 then x.Method.Name else x.Method.Name + "(" + (x.Parameters |> Array.map(fun p -> p.Name |> function | NonNull _p -> _p |  _ -> "") |> String.concat ", ") + ")"
-          $"Method: {m}\nDescription: {x.Description}"
+          let m = if x.Parameters.Length = 0 then x.Method.Name else x.Method.Name + " " +  (x.Parameters |> Array.map(fun p -> p.Name |> function | NonNull _p -> _p |  _ -> "") |> String.concat " ") 
+          $"Rule: {m}. Description: {x.Description}."
 
 
 module ProofModules =

@@ -421,5 +421,5 @@ FodyWeavers.xsd
 */**/appsettings.json
 */**/testappsettings.json
 */**/*.log
-
+*/**/*.csv
 src/lang/genai/Sylvia.GenAI.Giant/docs/**/*.pdf

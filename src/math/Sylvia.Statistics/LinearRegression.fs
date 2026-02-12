@@ -30,11 +30,17 @@ module Data =
     
     let frame (file:CsvFile) = new Frame(file)
 
-    let samples (cols:seq<string>) (f:CsvFile) =
-        let n = Seq.length cols - 1
+    let samples (cols:seq<obj>) (f:CsvFile) =
+        let _cols = cols |> Seq.map(
+            function 
+            | :? string as s -> s 
+            | :? realvar as v -> v.Name
+            | :? CsvField as cf -> cf.Label
+            | _ -> failwithf "Column names must be strings.") |> Seq.toArray 
+        let n = Seq.length _cols - 1
         let df = frame f
-        let x = cols |> Seq.take (Seq.length cols - 1) |> Seq.toArray |> df.Sel in
-        let y = cols |> Seq.last 
+        let x = _cols |> Seq.take (Seq.length cols - 1) |> Seq.toArray |> df.Sel in
+        let y = _cols |> Seq.last 
         Seq.zip (seq {for r in x -> seq {for i in 0 .. n - 1 -> r.[i]}}) (seq {for r in df.[y] -> r})
 
 type LinearRegressionModel(eqn:ScalarVarMap<real>, samples: (real array*real) array, ?var_changes:ScalarVarMap<real> array) =
