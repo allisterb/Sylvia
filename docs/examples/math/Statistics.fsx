@@ -1,7 +1,5 @@
 #load "Include.fsx"
 
-open MathNet.Numerics
-
 open Sylvia
 open RealNumbers
 open LinearRegression
@@ -12,16 +10,17 @@ let b0,b1,b2 = realconst3 "beta_0" "beta_1" "beta_2"
 let vote1data = csv_file "C:\\Projects\\Sylvia\\data\\woolridge\\vote1.csv" |> with_all_field_types<real>
 let voteA, shareA = realvar2 "voteA" "shareA"
 let vote1 = vote1data |> samples [voteA; shareA] |> lr (voteA == b0 + b1 * shareA)
+vote1
 vote1[50]
 
-"C:\Users\Allister\Documents\School\EC2020\gretlfiles\wooldridge\wage1.csv" |> csv_file |> with_all_field_types<real> |> csv_fields
+"C:\\Projects\\Sylvia\\data\\woolridge\\wage1.csv" |> csv_file |> with_all_field_types<real> |> csv_fields
 let y,x = realvar2 "y" "x"
 
 
 let salary,roe,salarydol,roedol = realvar4 "salary" "roe" "salarydol" "roedol"
 let wage, educ, exper = realvar3 "wage" "educ" "exper"
 
-let w =  csv_file "C:\Users\Allister\Documents\School\EC2020\gretlfiles\wooldridge\wage1.csv"
+let w =  csv_file "C:\\Projects\\Sylvia\\data\\woolridge\\wage1.csv"
 csv_fields w
 
 let wage1 = 
@@ -40,14 +39,14 @@ let b3 = realconst "beta_3"
 let lw = realvar "lw"
 let wage3 = w |> samples [educ; exper; tenure; wage] |> lr (wage == b0 + b1*educ + b2*exper + b3*tenure) |> change_vars [lw == ln wage]
 
-let ceosal1 = csv_file "C:\Users\Allister\Downloads\gretlfiles\wooldridge\ceosal1.csv" |> with_all_field_types<float>
+let ceosal1 = csv_file "C:\\Projects\\Sylvia\\data\\woolridge\\eosal1.csv" |> with_all_field_types<float>
 let ceo1 = ceosal1 |> samples [roe; salary] |> lr (salary == b0 + b1 * roe)
 ceo1
 
 
 let EARNINGS,S,EXP = realvar3  "EARNINGS" "S" "EXP"
 let eawe21 = 
-    csv_file "C:\\Users\Allister\\Downloads\\EAWE21.csv"
+    csv_file "C:\\Projects\\Sylvia\\data\\woolridge\\EAWE21.csv"
     |> with_all_field_types<real>
 
 let m1 = eawe21 |> samples [S; EARNINGS] |> lr (EARNINGS == b0 + b1 * S)

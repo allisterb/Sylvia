@@ -14,19 +14,20 @@ type ProverPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:
     inherit LLMPlugin("Prover", sharedState, ?id=id)
     let proofs = new Dictionary<string, Proof>()
     let theories = new Dictionary<string, Theory>()
+    let axioms = new Dictionary<string, string array>()
     let admissibleRules = new Dictionary<string, ModuleAdmissibleRule array>()
     let derivedRules = new Dictionary<string, ModuleDerivedRule array>()    
     do
         Proof.LogLevel <- 0
         theories.Add("prop_calculus", PropCalculus.prop_calculus)
         theories.Add("pred_calculus", PredCalculus.pred_calculus)
+        axioms.Add("prop_calculus", PropCalculus.Axioms)
         admissibleRules.Add("prop_calculus", ProofModules.getModuleAdmissibleRules(PropCalculus.Type))
         admissibleRules.Add("pred_calculus", ProofModules.getModuleAdmissibleRules(PredCalculus.Type))
         derivedRules.Add("prop_calculus", ProofModules.getModuleDerivedRules(PropCalculus.Type))
         derivedRules.Add("pred_calculus", ProofModules.getModuleDerivedRules(PredCalculus.Type))
         this.State.Add("Proofs", proofs)
       
-
     member x.Proofs = proofs
 
     [<KernelFunction("list_theories")>]
@@ -34,6 +35,13 @@ type ProverPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:
     member x.ListTheories(logger:ILogger | null) : string =
         theories.Keys |> Seq.reduce (fun acc k -> acc + "\n" + k) |> log_kernel_func_ret logger
 
+    [<KernelFunction("describe_axioms")>]
+    [<Description("Describe the axioms for a given theory.")>]
+    member x.DescribeAxioms(theory:string, logger:ILogger | null) : string =
+        match axioms.TryGetValue(theory) with
+        | true, ax -> ax |> Seq.map (fun a -> $"Axiom: {a}\n") |> Seq.reduce (+) |> sprintf "***Axioms ***:\n%s" |> log_kernel_func_ret logger
+        | false, _ -> log_kernel_func_ret logger $"No axioms found for theory: {theory}"
+    
     [<KernelFunction("describe_rules")>]
     [<Description("Describe the admissible and derived rules for a given theory.")>]
     member x.DescribeRules(theory:string, logger:ILogger | null) : string =

@@ -990,3 +990,20 @@ module PropCalculus =
     type private IModuleTypeLocator = interface end
     
     let Type = match typeof<IModuleTypeLocator>.DeclaringType with | NonNull m -> m | _ -> failwith "Failed to locate module type."
+
+    let Axioms = [|
+        "true = p = p"    
+        "false = not true"
+        "p <> q = not (p = q)"
+        "(p = q) = r = p = (q = r)"
+        "(p ∨ q) ∨ r = p ∨ (q ∨ r)"
+        "p = q = q = p"
+        "p ∨ q = q ∨ p"
+        "p ∨ (q = r) = (p ∨ q) = (p ∨ r)"  
+        "not (p = q) = not p = q"
+        "p ∨ p = p"
+        "p ∨ not p"
+        "p ∧ q = p = q = p ∨ q"
+        "p ⇒ q = ((p ∨ q) = q)"
+        "(e = f) ⇒ E(e) = E(f)"
+    |]

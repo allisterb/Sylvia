@@ -13,6 +13,11 @@ type DerivedRuleAttribute(description:string) =
     inherit Attribute()
     member val Description = description
 
+[<AttributeUsage(AttributeTargets.All)>]
+type AxiomAttribute(description:string) =
+    inherit Attribute()
+    member val Description = description
+
 module Descriptions =
     /// Text description of a formula pattern.
     type PatternDescription = PatternDescription of string * string with
