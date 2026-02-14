@@ -11,11 +11,11 @@ module Tactics =
         let proof = match rule with | Derive(_,p,_) -> p | _ ->  failwith "This rule is not a derived rule."
         let l = 
             match proof.Stmt with 
-            | Equals(l, r) when sequal r <@ true @> -> l
+            | Equals(l, True)  -> l
             | _ -> failwith "This theorem is not an identity with the constant true."
         let theory = proof.Theory
-        let true_id = ident theory (prop <@(true = true) = true@>) [Apply commute]
-        let stmt = <@@ (%%l:bool) = (true = true) @@>
+        let true_id = ident theory ((T == T) == T) [Apply commute]
+        let stmt = <@@ (%%l:bool) = (%%T.Expr = %%T.Expr) @@>
         let p = Proof(stmt, proof.Theory, ApplyRight true_id :: proof.Steps, true) in 
         Theorem(stmt, p) |> Ident
 
@@ -24,7 +24,7 @@ module Tactics =
         let proof = t.Proof
         let theory = proof.Theory
         let expr = proof.Stmt
-        let stmt = <@@ (%%expr) = true @@>
+        let stmt = <@@ (%%expr) = %%T.Expr @@>
         let p = Proof(stmt, theory, (expr |> ident |> Apply) :: proof.Steps, true) in 
         Theorem(stmt, p) |> Ident 
 
@@ -33,7 +33,7 @@ module Tactics =
         let proof = match rule with | Derive(_,p,_) -> p | _ ->  failwith "This rule is not a derived rule."
         let theory = proof.Theory
         let expr = proof.Stmt
-        let stmt = <@@ (%%expr) = true @@>
+        let stmt = <@@ (%%expr) = %%T.Expr @@>
         let p = Proof(stmt, theory, (expr |> ident |> Apply) :: proof.Steps, true) in 
         Theorem(stmt, p) |> Ident 
 
