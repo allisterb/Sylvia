@@ -13,13 +13,13 @@ open Sylvia.GenAI.Gemini
 
 module LLMSessionHelpers =
     
-    let defaultMaxDocChars = 3000
+    let defaultMaxDocChars = 30000
     
     let ingestPromptText (path:string) (maxChars:int) : string =
         if File.Exists(path) then
             let text = File.ReadAllText(path)
             if text.Length > maxChars then text.Substring(0, maxChars) else text
-        else ""
+        else failwithf "File not found: %s" path
 
     let doc0 = ingestPromptText (Path.Combine(Runtime.AssemblyLocation, "docs", "eqlogic.txt")) defaultMaxDocChars
     let doc1 = ingestPromptText (Path.Combine(Runtime.AssemblyLocation, "examples", "prompts", "SMT.txt")) defaultMaxDocChars

@@ -18,7 +18,7 @@ module ProofParsers =
     
     let private isMathChar = function | '\u03C0' | '\u221E' | '\u29DD' -> true | _ -> false
     let private isIdentifierFirstChar c = isLetter c || isMathChar c
-    let private isIdentifierChar c = isLetter c || isDigit c || isMathChar c || c = '_'
+    let private isIdentifierChar c = isLetter c || isDigit c || isMathChar c || c = '_' || c = '\''
 
     // -------------------------------------------------------------------------
     // RuleApplication Parser
