@@ -740,37 +740,7 @@ module PropCalculus =
         def_true p |> Commute |> apply_right
         ident_eq ( p * q ) |> apply_left |> branch_right
     ]
-
-    /// p ∨ (p ⇒ q)
-    [<DerivedRule "p ∨ (p ⇒ q)">]
-    let or_implies (p:Prop) (q:Prop) = theorem prop_calculus ( (p + (p ==> q)) == T ) [
-        def_implies |> apply_right |> branch_left
-        distrib |> apply_left
-        left_assoc |> apply_left |> branch_left
-        idemp_or p |> apply_left
-        ident_eq ((p + q) == (p + q)) |> apply
-    ]
-
-    /// p ⇒ p
-    [<DerivedRule "p ⇒ p">]
-    let reflex_implies p = theorem prop_calculus ( p ==> p ) [
-        def_implies |> apply
-    ]
-        
-    /// p ⇒ true
-    [<DerivedRule "p ⇒ true">]
-    let implies_true p = theorem prop_calculus (p ==> T) [
-        def_implies |> apply
-        zero_or p |> apply_left
-    ]
-
-    /// false ⇒ p
-    [<DerivedRule "false ⇒ p">]
-    let conseq_false (p:Prop) = theorem prop_calculus (F ==> p) [
-        def_implies |> apply
-        ident_or p |> CommuteL |> Lemma'
-    ]
-
+  
     /// (true ⇒ p) = p
     [<DerivedRule "(true ⇒ p) = p">]
     let ident_conseq_true p = ident prop_calculus ((T ==> p) == p) [
@@ -804,73 +774,7 @@ module PropCalculus =
         left_assoc |> apply
         commute |> apply
     ]
-
-    /// (p ∧ q) ⇒ p
-    [<DerivedRule "(p ∧ q) ⇒ p">]
-    let strengthen_and p q = theorem prop_calculus ((p * q) ==> p) [
-        ident_eq ( ((p * q ) ==> p) ) |> apply
-        def_implies |> apply
-        commute |> apply_left
-        absorb_or p q |> Lemma'
-    ]
     
-    /// p ⇒ p ∨ q 
-    [<DerivedRule "p ⇒ p ∨ q">]
-    let weaken_or p q = theorem prop_calculus ( p ==> (p + q) ) [
-        ident_eq ( (p ==> (p + q)) ) |> apply
-        def_implies |> apply
-        left_assoc |> apply_left
-        idemp_or p |> apply_left
-    ]
-
-    /// p ∧ q ⇒ p ∨ q
-    [<DerivedRule "p ∧ q ⇒ p ∨ q">]
-    let weaken_and_or (p:Prop) (q:Prop) = theorem prop_calculus ( p * q ==> p + q ) [
-        def_implies |> apply_left
-        commute |> apply_left |> branch_left
-        distrib |> apply_left |> branch_left
-        commute |> apply
-        idemp_or p |> apply
-        distrib |> apply_left |> branch_right
-        idemp_and p |> apply
-        distrib |> apply
-        distrib |> apply_right |> branch_left
-        distrib |> apply_left
-        idemp_or p |> apply_left
-        distrib |> apply_left
-        commute_or q p |> apply_left
-        idemp_and ( p + q ) |> apply_left
-        commute |> apply_left |> branch_left
-        distrib |> apply_left |> branch_left
-        idemp_and q |> apply_left
-        absorb_or q p |> CommuteL |> apply_left
-        commute |> apply_right |> branch_left
-        left_assoc |> apply_left
-        idemp_or q |> apply_left
-    ]
-
-    /// (p ∨ (q ∧ r)) ⇒ (p ∨ q)
-    [<DerivedRule "(p ∨ (q ∧ r)) ⇒ (p ∨ q)">]
-    let weaken_or_and (p:Prop) q r = theorem prop_calculus ( (p + (q * r)) ==> (p + q) ) [
-        distrib |> apply_left
-        strengthen_and ( p + q ) ( p + r ) |> Lemma
-    ]
-
-    /// (p ∧ q) ⇒ (p ∧ (q ∨ r))
-    [<DerivedRule "(p ∧ q) ⇒ (p ∧ (q ∨ r))">]
-    let weaken_and_and_or p (q:Prop) (r:Prop) = theorem prop_calculus ((p * q)  ==> (p * (q + r)) ) [
-        distrib |> apply_right
-        weaken_or ( p * q ) ( p * r ) |> Lemma
-    ]
-
-    /// p ∧ (p ⇒ q) ⇒ q
-    [<DerivedRule "p ∧ (p ⇒ q) ⇒ q">]
-    let modus_ponens p q = theorem prop_calculus ( p * (p ==> q) ==> q ) [
-        ident_and_implies p q |> apply_left
-        commute_and p q |> apply
-        strengthen_and q p |> Lemma
-    ]
-
     /// (p ⇒ r) ∧ (q ⇒ r) = (p ∨ q ⇒ r)
     [<DerivedRule "(p ⇒ r) ∧ (q ⇒ r) = (p ∨ q ⇒ r)">]
     let case_analysis_1 p q r = ident prop_calculus (( p ==> r) * (q ==> r) == (p + q  ==> r) ) [
@@ -914,16 +818,113 @@ module PropCalculus =
         commute |> apply_right
         ident_eq_and_or_not p q |> apply_left
     ]
+        
+    (* Theorems *)
 
+    /// p ∨ (p ⇒ q)
+    [<Theorem "p ∨ (p ⇒ q)">]
+    let or_implies (p:Prop) (q:Prop) = theorem prop_calculus ( (p + (p ==> q)) == T ) [
+        def_implies |> apply_right |> branch_left
+        distrib |> apply_left
+        left_assoc |> apply_left |> branch_left
+        idemp_or p |> apply_left
+        ident_eq ((p + q) == (p + q)) |> apply
+    ]
+
+    /// p ⇒ p
+    [<Theorem "p ⇒ p">]
+    let reflex_implies p = theorem prop_calculus ( p ==> p ) [
+        def_implies |> apply
+    ]
+        
+    /// p ⇒ true
+    [<Theorem "p ⇒ true">]
+    let implies_true p = theorem prop_calculus (p ==> T) [
+        def_implies |> apply
+        zero_or p |> apply_left
+    ]
+
+    /// false ⇒ p
+    [<Theorem "false ⇒ p">]
+    let conseq_false (p:Prop) = theorem prop_calculus (F ==> p) [
+        def_implies |> apply
+        ident_or p |> CommuteL |> Lemma'
+    ]
+
+    /// (p ∧ q) ⇒ p
+    [<Theorem "(p ∧ q) ⇒ p">]
+    let strengthen_and p q = theorem prop_calculus ((p * q) ==> p) [
+        ident_eq ( ((p * q ) ==> p) ) |> apply
+        def_implies |> apply
+        commute |> apply_left
+        absorb_or p q |> Lemma'
+    ]
+    
+    /// p ⇒ p ∨ q 
+    [<Theorem "p ⇒ p ∨ q">]
+    let weaken_or p q = theorem prop_calculus ( p ==> (p + q) ) [
+        ident_eq ( (p ==> (p + q)) ) |> apply
+        def_implies |> apply
+        left_assoc |> apply_left
+        idemp_or p |> apply_left
+    ]
+
+    /// p ∧ q ⇒ p ∨ q
+    [<Theorem "p ∧ q ⇒ p ∨ q">]
+    let weaken_and_or (p:Prop) (q:Prop) = theorem prop_calculus ( p * q ==> p + q ) [
+        def_implies |> apply_left
+        commute |> apply_left |> branch_left
+        distrib |> apply_left |> branch_left
+        commute |> apply
+        idemp_or p |> apply
+        distrib |> apply_left |> branch_right
+        idemp_and p |> apply
+        distrib |> apply
+        distrib |> apply_right |> branch_left
+        distrib |> apply_left
+        idemp_or p |> apply_left
+        distrib |> apply_left
+        commute_or q p |> apply_left
+        idemp_and ( p + q ) |> apply_left
+        commute |> apply_left |> branch_left
+        distrib |> apply_left |> branch_left
+        idemp_and q |> apply_left
+        absorb_or q p |> CommuteL |> apply_left
+        commute |> apply_right |> branch_left
+        left_assoc |> apply_left
+        idemp_or q |> apply_left
+    ]
+
+    /// (p ∨ (q ∧ r)) ⇒ (p ∨ q)
+    [<Theorem "(p ∨ (q ∧ r)) ⇒ (p ∨ q)">]
+    let weaken_or_and (p:Prop) q r = theorem prop_calculus ( (p + (q * r)) ==> (p + q) ) [
+        distrib |> apply_left
+        strengthen_and ( p + q ) ( p + r ) |> Lemma
+    ]
+
+    /// (p ∧ q) ⇒ (p ∧ (q ∨ r))
+    [<Theorem "(p ∧ q) ⇒ (p ∧ (q ∨ r))">]
+    let weaken_and_and_or p (q:Prop) (r:Prop) = theorem prop_calculus ((p * q)  ==> (p * (q + r)) ) [
+        distrib |> apply_right
+        weaken_or ( p * q ) ( p * r ) |> Lemma
+    ]
+
+    /// p ∧ (p ⇒ q) ⇒ q
+    [<Theorem "p ∧ (p ⇒ q) ⇒ q">]
+    let modus_ponens p q = theorem prop_calculus ( p * (p ==> q) ==> q ) [
+        ident_and_implies p q |> apply_left
+        commute_and p q |> apply
+        strengthen_and q p |> Lemma
+    ]
     /// (p ⇒ q) ∧ (q ⇒ p) ⇒ (p == q)
-    [<DerivedRule "(p ⇒ q) ∧ (q ⇒ p) ⇒ (p == q)">]
+    [<Theorem "(p ⇒ q) ∧ (q ⇒ p) ⇒ (p == q)">]
     let antisymm_implies p q = theorem prop_calculus ((p ==> q) * (q ==> p) ==> (p == q)) [
         mutual_implication' p q |> apply_left  
         reflex_implies ( p == q ) |> Lemma
     ]
 
     /// (p ⇒ q) ∧ (q ⇒ r) ⇒ (p ⇒ r)
-    [<DerivedRule "(p ⇒ q) ∧ (q ⇒ r) ⇒ (p ⇒ r)">]
+    [<Theorem "(p ⇒ q) ∧ (q ⇒ r) ⇒ (p ⇒ r)">]
     let trans_implies p q r = theorem prop_calculus ((p ==> q) * (q ==> r) ==> (p ==> r)) [
         rshunt |> apply
         commute |> apply_left
@@ -938,7 +939,7 @@ module PropCalculus =
     ]
 
     /// (p == q) ∧ (q ⇒ r) ⇒ (p ⇒ r)
-    [<DerivedRule "(p == q) ∧ (q ⇒ r) ⇒ (p ⇒ r)">]
+    [<Theorem "(p == q) ∧ (q ⇒ r) ⇒ (p ⇒ r)">]
     let trans_implies_eq (p:Prop) (q:Prop) (r:Prop) = theorem prop_calculus ((p == q) * (q ==> r) ==> (p ==> r)) [
         mutual_implication' p q |> Commute |> apply_left
         rshunt |> apply
@@ -958,8 +959,9 @@ module PropCalculus =
         strengthen_and r ( p * q ) |> Lemma
     ]
 
+
     /// p ⇒ (q ⇒ p)
-    [<DerivedRule "p ⇒ (q ⇒ p)">]
+    [<Theorem "p ⇒ (q ⇒ p)">]
     let trans_implies_implies p q = theorem prop_calculus (p ==> (q ==> p)) [
         def_implies |> apply_right
         def_implies |> apply
@@ -972,7 +974,7 @@ module PropCalculus =
     ]
 
     /// (p ⇒ q) ⇒ ((p ∨ r) ⇒ (q ∨ r)
-    [<DerivedRule "(p ⇒ q) ⇒ ((p ∨ r) ⇒ (q ∨ r)">]
+    [<Theorem "(p ⇒ q) ⇒ ((p ∨ r) ⇒ (q ∨ r)">]
     let mono_or (p:PropVar) (q:Prop) (r:PropVar) = theorem prop_calculus ((p ==> q) ==> ((p + r) ==> (q + r))) [
         def_implies |> apply_right
         commute_or_or p r q r |> apply_left |> branch_right
@@ -983,7 +985,7 @@ module PropCalculus =
         commute |> apply_right
         def_implies' p q |> Commute |> apply_right
         weaken_or ( p ==> q ) r |> Lemma
-    ]
+    ]        
     
     (* Module information members *)
 

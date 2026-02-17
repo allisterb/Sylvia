@@ -14,7 +14,7 @@ type DerivedRuleAttribute(description:string) =
     member val Description = description
 
 [<AttributeUsage(AttributeTargets.All)>]
-type AxiomAttribute(description:string) =
+type TheoremAttribute(description:string) =
     inherit Attribute()
     member val Description = description
 

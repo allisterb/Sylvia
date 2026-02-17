@@ -3,7 +3,7 @@
 open FSharp.Quotations
 open Formula
 
-/// Tactics are functions that transform a theorem using valid logical rules into another theorem.
+/// Tactics are functions that transform a theorem using valid logical rules into another theorem, or a rule into aanother rule, or a theorem into a rule.
 module Tactics = 
     
     /// The constant true is a theorem.
