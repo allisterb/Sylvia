@@ -211,12 +211,37 @@ Formatter.Register<LLMModel>(
             ".llmmodel-unsat{background:#fff4f4;border:1px solid #ffd4d6;padding:8px;border-radius:4px;margin-bottom:8px;color:#a30000;}" +
             "@media (max-width:700px){.llmmodel-container{flex-direction:column;}}" +
             "</style>"
+        // Extend tab-specific styles and keep left/right layout
+        let tabsStyle =
+            """
+            <style>
+            .llmmodel-left{flex:1 1 50%;min-width:0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.04);max-height:60vh;display:flex;flex-direction:column;}
+            .llmmodel-right{flex:1 1 50%;min-width:0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.04);max-height:60vh;display:flex;flex-direction:column;overflow:hidden}
+            .llmmodel-tab-headers{display:flex;gap:8px;margin-bottom:8px}
+            .llmmodel-tabbtn{background:#f6f8fa;border:1px solid #eee;padding:6px 10px;border-radius:4px;cursor:pointer}
+            .llmmodel-tabbtn.active{background:#0b5fff;color:#fff}
+            .llmmodel-left-tabpanel{display:none;flex:1 1 auto;overflow:auto}
+            .llmmodel-left-tabpanel.active{display:block}
+            .llmmodel-thoughts-pre{white-space:pre-wrap;word-break:break-word;font-family:Menlo,Consolas,monospace;background:#f7f7f9;padding:8px;border-radius:4px;border:1px solid #eee}
+            @media (max-width:700px){.llmmodel-container{flex-direction:column}.llmmodel-right{max-height:none}}
+            </style>
+            """
 
+        // Buttons only switch content inside the left panel
+    
+        
+        
         // Create a unique id for this output cell so multiple outputs won't interfere
         let uid = System.Guid.NewGuid().ToString("N")
         let tabIntId = "llmmodel-intuition-" + uid
         let tabThoughtsId = "llmmodel-thoughts-" + uid
         let tabFormalId = "llmmodel-formal-" + uid
+
+        let tabButton leftPanelTarget label active =
+            let cls = if active then "llmmodel-tabbtn active" else "llmmodel-tabbtn"
+            let js =
+                "(function(){var root=document.getElementById('" + uid + "'); var panels=root.querySelectorAll('.llmmodel-left-tabpanel'); panels.forEach(function(p){p.classList.remove('active')}); root.querySelector('#" + leftPanelTarget + "').classList.add('active'); var btns=root.querySelectorAll('.llmmodel-tabbtn'); btns.forEach(function(b){b.classList.remove('active')}); this.classList.add('active'); }).call(this)"
+            "<button class=\"" + cls + "\" onclick=\"" + js + "\">" + label + "</button>"
 
         let hasThoughts =
             match m.Thoughts with
@@ -227,6 +252,22 @@ Formatter.Register<LLMModel>(
             match m.Thoughts with
             | Some t -> "<div class=\"llmmodel-thoughts\"><pre class=\"llmmodel-thoughts-pre\">" + Markdown.ToHtml(encode t) + "</pre></div>"
             | None -> ""
+        let leftButtons =
+            tabButton tabIntId "Intuition" true + (if hasThoughts then tabButton tabThoughtsId "Thoughts" false else "")
+
+        let leftPanels =
+            "<div id=\"" + tabIntId + "\" class=\"llmmodel-left-tabpanel active\">" +
+                "<h2>LLM Intuition</h2>" + intuitionHtml + "</div>" + (if hasThoughts then "<div id=\"" + tabThoughtsId + "\" class=\"llmmodel-left-tabpanel\">" + thoughtsHtml + "</div>" else "")
+
+        let leftHtml =
+            "<div class=\"llmmodel-left\">" +
+                "<div class=\"llmmodel-tab-headers\">" + leftButtons + "</div>" +
+                leftPanels + "</div>"
+
+        let rightHtml =
+            "<div class=\"llmmodel-right\">" +
+                "<h2>" + title + "</h2>" + formalHtml + "</div>"
+        
 
         // Extend tab-specific styles
         let tabsStyle =
@@ -262,6 +303,9 @@ Formatter.Register<LLMModel>(
                                         "<div class=\"llmmodel-formal\">" +
                                             "<h2>" + title + "</h2>" + formalHtml + "</div>" + "</div>"
 
+        
+        let html = mathJaxHeader + style + tabsStyle + "<div class=\"llmmodel-container\" id=\"" + uid + "\" style=\"display:flex;gap:12px;width:100%;box-sizing:border-box;\">" + leftHtml + rightHtml + "</div>"
+        (*
         let html =
             mathJaxHeader +
             style + tabsStyle 
@@ -269,7 +313,7 @@ Formatter.Register<LLMModel>(
             "<div class=\"llmmodel-container\" id=\"" + uid + "\">" +
                 "<div class=\"llmmodel-tab-headers\">" + tabButtons + "</div>" +
                 "<div class=\"llmmodel-tabpanels\">" + panels + "</div>" + "</div>"
-
+                *)
         writer.Write(html)
     ),
     HtmlFormatter.MimeType
