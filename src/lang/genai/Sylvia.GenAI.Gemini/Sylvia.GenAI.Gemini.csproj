@@ -6,11 +6,11 @@
     <NoWarn>$(NoWarn);SKEXP0001,SKEXP0010;SKEXP0120</NoWarn>
   </PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="Google.GenAI" Version="0.11.0" />
-		<PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.2.0" />
-		<PackageReference Include="Microsoft.Extensions.AI" Version="10.2.0" />
-		<PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.70.0" />
-		<PackageReference Include="Microsoft.SemanticKernel.Core" Version="1.70.0" />
+		<PackageReference Include="Google.GenAI" Version="1.0.0" />
+		<PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.3.0" />
+		<PackageReference Include="Microsoft.Extensions.AI" Version="10.3.0" />
+		<PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.71.0" />
+		<PackageReference Include="Microsoft.SemanticKernel.Core" Version="1.71.0" />
 		<PackageReference Include="Microsoft.SemanticKernel.Connectors.Google" Version="1.70.0-alpha" />
 		<PackageReference Include="Microsoft.SemanticKernel.Connectors.InMemory" Version="1.70.0-preview" />
 		<PackageReference Include="Microsoft.KernelMemory.Core" Version="0.98.250508.3" />

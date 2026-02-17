@@ -6,6 +6,7 @@ open System.IO
 open System.Text
 open System.Text.RegularExpressions
   
+  open Microsoft.SemanticKernel
 open Google.GenAI.Types
 
 open Sylvia
@@ -42,11 +43,26 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
     let mutable lastModelProofIndex = 0
 
     let mutable lastExprIndex = 0
-                                 
+                         
+    let getMessageText(m: ChatMessageContent) = m.Content
+
+    let getMessageThoughtsText(m: ChatMessageContent) =         
+        let ttc = 
+            match m.Metadata with
+             | NonNull md when md.ContainsKey("ThoughtsTokenCount") -> 
+                 match md.["ThoughtsTokenCount"] with
+                 | NonNull x -> x :?> int
+                 | _ -> 0
+             | _ -> 0
+           
+        if ttc > 0 then m.Items |> Seq.map(fun i -> notnull(i.ToString())) |> Seq.filter(fun i -> i <> notnull m.Content) |> Seq.reduce (+) else ""
+            
     new() = new LLMSession(new Dictionary<string, Dictionary<string, obj>>())
                    
     member val SharedState = sharedState
-            
+    
+    member internal x._Prompt(text:string, content: obj array) = x.PromptAsync(text, content) |> Async.AwaitTask |> Async.RunSynchronously 
+
     member x.GetPlugin<'t when 't :> LLMPlugin>(name) = 
         x.plugins.Find(fun p -> p.Name = name && p :? 't) |> function | NonNull plugin -> plugin :?> 't | Null -> failwithf "Could not find plugin %s." name
 
@@ -79,7 +95,9 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
         {Text = r; Proof = proof}
 
     member x.Solve(prompt: string,  [<ParamArray>] content: obj array) =
-        let r = x.Prompt(prompt, content)    
+        let r = x._Prompt(prompt, content)    
+        let text = r |> Seq.map (fun m -> notnull m.Content) |> Seq.reduce (+)  
+        let thoughts = r |> Seq.map (fun m -> getMessageThoughtsText m) |> Seq.reduce (fun acc t -> if t <> "" then acc + "\n" + t else acc)
         let m = 
             if x.SMT.Models.Count > lastModelIndex then
                 let m = x.SMT.Models.[lastModelIndex]           
@@ -92,7 +110,7 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
                 lastModelProofIndex <- x.SMT.Proofs.Count
                 Some p
             else None
-        {Text = r; Model = m; ModelProof=up}
+        {Text = text; Thoughts = (if thoughts = "" then None else Some thoughts); Model = m; ModelProof=up}
     
     static member val SystemPrompts = [|
         """You are GIANT, a Neurosymbolic Transition System (NSTS) that integrates Gemini's natural language intuition with the formal symbolic power of the Sylvia F# DSL.
@@ -143,6 +161,7 @@ and LLMProof = {
 
 and LLMModel = {
     Text: string | null
+    Thoughts: string option 
     Model: Microsoft.Z3.Model option   
     ModelProof: string option
 }

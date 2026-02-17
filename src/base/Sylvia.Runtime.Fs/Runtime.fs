@@ -118,3 +118,5 @@ module FsRuntime =
 
     // Strings
     let empty (s:string) = String.IsNullOrEmpty s
+
+    let notnull (s:string | null) = s |> function | NonNull _s -> _s | _ -> ""

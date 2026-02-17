@@ -24,7 +24,7 @@
 #r "../ext/FunScript/src/extra/FunScript.Bindings.JSXGraph/bin/Debug/netstandard2.0/FunScript.Bindings.JSXGraph.dll"
 #r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/MathNet.Symbolics.dll"
 
-#r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/Sylvia.Runtime.dll"
+#r "../src/lang/genai/Sylvia.GenAI.Giant/bin/Debug/net10.0/Sylvia.Runtime.dll"
 #r "../src/base/Sylvia.Collections/bin/Debug/netstandard2.0/Sylvia.Collections.dll"
 #r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/Sylvia.Expressions.dll"
 #r "../src/lang/core/Sylvia.Prover/bin/Debug/net10.0/Sylvia.Prover.dll"
@@ -212,19 +212,63 @@ Formatter.Register<LLMModel>(
             "@media (max-width:700px){.llmmodel-container{flex-direction:column;}}" +
             "</style>"
 
+        // Create a unique id for this output cell so multiple outputs won't interfere
+        let uid = System.Guid.NewGuid().ToString("N")
+        let tabIntId = "llmmodel-intuition-" + uid
+        let tabThoughtsId = "llmmodel-thoughts-" + uid
+        let tabFormalId = "llmmodel-formal-" + uid
+
+        let hasThoughts =
+            match m.Thoughts with
+            | Some t when not (System.String.IsNullOrWhiteSpace t) -> true
+            | _ -> false
+
+        let thoughtsHtml =
+            match m.Thoughts with
+            | Some t -> "<div class=\"llmmodel-thoughts\"><pre class=\"llmmodel-thoughts-pre\">" + Markdown.ToHtml(encode t) + "</pre></div>"
+            | None -> ""
+
+        // Extend tab-specific styles
+        let tabsStyle =
+            """
+            <style>
+            .llmmodel-tab-headers{display:flex;gap:8px;margin-bottom:8px}
+            .llmmodel-tabbtn{background:#f6f8fa;border:1px solid #eee;padding:6px 10px;border-radius:4px;cursor:pointer}
+            .llmmodel-tabbtn.active{background:#0b5fff;color:#fff}
+            .llmmodel-tabpanel{display:none}
+            .llmmodel-thoughts-pre{white-space:pre-wrap;word-break:break-word;font-family:Menlo,Consolas,monospace;background:#f7f7f9;padding:8px;border-radius:4px;border:1px solid #eee}
+            </style>
+            """
+
+        let tabButton onClick label active =
+            let cls = if active then "llmmodel-tabbtn active" else "llmmodel-tabbtn"
+            // inline onclick toggles panels within this output root
+            let js =
+                "(function(){var root=document.getElementById('" + uid + "'); var panels=root.querySelectorAll('.llmmodel-tabpanel'); panels.forEach(function(p){p.style.display='none'}); root.querySelector('#" + onClick + "').style.display='block'; var btns=root.querySelectorAll('.llmmodel-tabbtn'); btns.forEach(function(b){b.classList.remove('active')}); this.classList.add('active'); }).call(this)"
+            "<button class=\"" + cls + "\" onclick=\"" + js + "\">" + label + "</button>"
+
+        let tabButtons =
+            tabButton tabIntId "Intuition" true +
+            (if hasThoughts then tabButton tabThoughtsId "Thoughts" false else "") +
+            tabButton tabFormalId (if title = null then "Formal" else title) false
+
+        let panels =
+            "<div id=\"" + tabIntId + "\" class=\"llmmodel-tabpanel\" style=\"display:block\">" +
+                "<div class=\"llmmodel-intuition\">" +
+                    "<h2>LLM Intuition</h2>" + intuitionHtml + "</div>" +
+                        "</div>" +
+                                    (if hasThoughts then "<div id=\"" + tabThoughtsId + "\" class=\"llmmodel-tabpanel\">" + thoughtsHtml + "</div>" else "") +
+                                    "<div id=\"" + tabFormalId + "\" class=\"llmmodel-tabpanel\">" +
+                                        "<div class=\"llmmodel-formal\">" +
+                                            "<h2>" + title + "</h2>" + formalHtml + "</div>" + "</div>"
+
         let html =
             mathJaxHeader +
-            style +
-            "<div class=\"llmmodel-container\">" +
-              "<div class=\"llmmodel-panel llmmodel-intuition\">" +
-                "<h2>LLM Intuition</h2>" +
-                    intuitionHtml +
-                        "</div>" +
-                        "<div class=\"llmmodel-panel llmmodel-formal\">" +
-                        "<h2>" + title + "</h2>" +
-                            formalHtml +
-                             "</div>" +
-                             "</div>"
+            style + tabsStyle 
+            +
+            "<div class=\"llmmodel-container\" id=\"" + uid + "\">" +
+                "<div class=\"llmmodel-tab-headers\">" + tabButtons + "</div>" +
+                "<div class=\"llmmodel-tabpanels\">" + panels + "</div>" + "</div>"
 
         writer.Write(html)
     ),

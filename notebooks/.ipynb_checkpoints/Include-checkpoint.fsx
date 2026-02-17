@@ -12,6 +12,9 @@
 #r "nuget: Microsoft.DotNet.Interactive.Formatting, 1.0.0-beta.24568.1"
 #r "nuget: Unquote, 7.0.1"
 #r "nuget: Sylvia.Arithmetic, 0.2.8"
+#r "nuget: Markdig, 0.44.0"
+#r "nuget: Serilog.Extensions.Logging, 10.0.0"
+#r "nuget: Serilog.Sinks.File, 7.0.0"
 
 #r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/Expect.NETStandard.dll"
 #r "../ext/FunScript/src/main/FunScript/bin/Debug/netstandard2.0/FunScript.dll"
@@ -21,7 +24,7 @@
 #r "../ext/FunScript/src/extra/FunScript.Bindings.JSXGraph/bin/Debug/netstandard2.0/FunScript.Bindings.JSXGraph.dll"
 #r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/MathNet.Symbolics.dll"
 
-#r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/Sylvia.Runtime.dll"
+#r "../src/lang/genai/Sylvia.GenAI.Giant/bin/Debug/net10.0/Sylvia.Runtime.dll"
 #r "../src/base/Sylvia.Collections/bin/Debug/netstandard2.0/Sylvia.Collections.dll"
 #r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/Sylvia.Expressions.dll"
 #r "../src/lang/core/Sylvia.Prover/bin/Debug/net10.0/Sylvia.Prover.dll"
@@ -34,20 +37,32 @@
 
 #nowarn "3391"
 
+open System
+
 open Google.GenAI.Types
 open Microsoft.DotNet.Interactive.Formatting
+open Markdig
 
 open Sylvia
 open Sylvia.CAS
 open Sylvia.GenAI.Gemini    
+open Sylvia.GenAI.Giant
+
+Runtime.WithFileLogging("Sylvia", "Notebook", true, Runtime.CurentDirectory)
+
+ModelConversation.config <- Runtime.LoadConfigFile("testappsettings.json")
+
+ImageGenerator.config <- Runtime.LoadConfigFile("testappsettings.json")
+
+let insideVSCode = 
+    let ev = System.Environment.GetEnvironmentVariables(EnvironmentVariableTarget.Process)
+    ev.Contains("VSCODE_IPC_HOOK") || ev.Contains("VSCODE_HANDLES_UNCAUGHT_ERRORS")
 
 if System.OperatingSystem.IsWindows() then 
     Maxima.init "C:\\MathTools\\maxima-5.49.0\\bin\\maxima.bat"
-else
-    Maxima.init "/usr/lib/maxima/5.47.0/binary-gcl/maxima"
+//else
+//    Maxima.init "/usr/lib/maxima/5.47.0/binary-gcl/maxima"
 
-ModelConversation.config <- Runtime.LoadConfigFile("testappsettings.json")
-ImageGenerator.config <- Runtime.LoadConfigFile("testappsettings.json")
 
 Formatter.Register<Image>(
         (fun (image: Image) (writer: System.IO.TextWriter) ->
@@ -63,3 +78,197 @@ Formatter.Register<Image>(
         ),
         HtmlFormatter.MimeType
     )
+
+
+Formatter.Register<LLMProof>(
+    (fun (proof: LLMProof) (writer: System.IO.TextWriter) ->
+        // Convert LLM-provided markdown/intuitive text to HTML (Markdig)
+        let intuitionHtml =
+            if System.String.IsNullOrWhiteSpace(proof.Text) then
+                "<p><em>No LLM intuition available.</em></p>"
+            else
+                // Markdig converts markdown to HTML
+                Markdown.ToHtml(proof.Text)
+
+        // Convert the formal Proof object to HTML-safe text and place in a scrollable code block
+        let formalHtml =
+            match proof.Proof with
+            | Some p ->
+                let encoded = System.Net.WebUtility.HtmlEncode(p.Log)
+                // Use <pre><code> so whitespace and structure are preserved
+                $"<pre class=\"llmproof-formal\"><code>{encoded}</code></pre>"
+            | None ->
+                "<p><em>No formal proof available.</em></p>"
+
+        // Inline CSS tuned to fit inside a Jupyter notebook cell.
+        // Panels are side-by-side on wide screens and stacked on narrow screens.
+        // Each panel scrolls internally (max-height: 60vh) so the notebook cell stays compact.
+        let style =
+            "<style>" +
+            ".llmproof-container{display:flex;flex-direction:row;gap:12px;width:100%;box-sizing:border-box;}" +
+            ".llmproof-panel{flex:1 1 50%;min-width:0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.04);overflow:auto;max-height:60vh;}" +
+            ".llmproof-panel h2{margin-top:0;font-size:1rem;color:#333;}" +
+            ".llmproof-formal{background:#f7f7f9;padding:10px;border-radius:4px;overflow:auto;white-space:pre;font-family:Menlo,Consolas,\"DejaVu Sans Mono\",monospace;font-size:0.9rem;border:1px solid #eee;}" +
+            ".llmproof-intuition pre,.llmproof-intuition code{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,\"Helvetica Neue\",Arial;}" +
+            "@media (max-width:700px){.llmproof-container{flex-direction:column;}}" +
+            "</style>"
+
+        let html =
+            style +
+            "<div class=\"llmproof-container\">" +
+              "<div class=\"llmproof-panel llmproof-intuition\">" +
+                "<h2>LLM Intuition</h2>" +
+                    intuitionHtml +
+                        "</div>" +
+                        "<div class=\"llmproof-panel llmproof-formal-panel\">" +
+                        "<h2>Formal Proof</h2>" +
+                            formalHtml +
+                             "</div>" +
+                             "</div>"
+
+        writer.Write(html)
+    ),
+    HtmlFormatter.MimeType
+)
+
+Formatter.Register<LLMModel>(
+    (fun (m: LLMModel) (writer: System.IO.TextWriter) ->
+        // Convert LLM intuitive markdown -> HTML
+
+        // MathJax header that loads MathJax via require (if available) and configures '$' as inline delimiters.
+        // Uses a fallback to append a script tag when require is not available.
+        // This header is inserted before cell HTML so LaTeX in the output (Markdown -> HTML) is rendered.
+        let mathJaxHeader = 
+            if not insideVSCode then "" else
+                    "<script type=\"text/javascript\">" +
+                    "(function(){ " +
+                    "if(typeof window === 'undefined') return; " +
+                    "try { " +
+                    "  if(window.MathJax && window.MathJax.tex && window.MathJax.tex.inlineMath) return; " +
+                    "} catch(e) {} " +
+                    "window.MathJax = { tex: { inlineMath: [['$','$']], displayMath: [['$$','$$']] }, options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] } }; " +
+                    "if(typeof require !== 'undefined') { " +
+                    "  try { require(['https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js']); } catch(e) { " +
+                    "    var s = document.createElement('script'); s.type='text/javascript'; s.src='https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'; document.head.appendChild(s); } " +
+                    "} else { var s = document.createElement('script'); s.type='text/javascript'; s.src='https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'; document.head.appendChild(s); } " +
+                    "})();" +
+                    "</script>\n"        
+        let intuitionHtml =
+            if System.String.IsNullOrWhiteSpace(m.Text) then
+                "<p><em>No LLM intuition available.</em></p>"
+            else
+                Markdown.ToHtml(m.Text)
+
+        let encode = System.Net.WebUtility.HtmlEncode
+
+        // Helper to safely extract ModelProof as string if present (handles null or empty)
+        let proofTextOpt =
+            try
+                match box m.ModelProof with
+                | null -> None
+                | :? string as s when System.String.IsNullOrWhiteSpace(s) -> None
+                | :? string as s -> Some s
+                | _ -> None
+            with _ -> None
+
+        // If a proof is present that means the solver returned UNSAT; show proof instead of model values.
+        let formalHtml, title =            
+            match m.Model with
+            | Some model ->
+                // get_model returns (name, value) pairs; escape for HTML and render as compact chips
+                let valuesHtml =
+                    Sylvia.Z3.get_model model
+                    |> Array.map (fun (name, value) ->
+                        let n = encode name
+                        let v = encode value
+                        $"<div class=\"llmmodel-item\"><span class=\"llmmodel-name\">{n}</span>=<span class=\"llmmodel-val-inline\">{v}</span></div>")
+                    |> String.concat ""
+                $"<div class=\"llmmodel-values\">\n{valuesHtml}</div><div class=\"llmmodel-proof-wrap\"></div>", "SMT Model"
+            | None ->
+                match proofTextOpt with
+                | Some proofText ->
+                    // Display UNSAT notice and the proof in a scrollable pre block.
+                    let encodedProof = encode proofText
+                    $"<div class=\"llmmodel-unsat\"> <strong>UNSATISFIABLE</strong></div><div class=\"llmmodel-proof-wrap\"><pre class=\"llmmodel-proof\"><code>{encodedProof}</code></pre></div>", "SMT Result"
+                | None ->  $"<div class=\"llmmodel-unsat\"> <strong>UNSATISFIABLE</strong></div>", "SMT Result"
+                
+
+        // Inline CSS tuned to fit in a Jupyter notebook cell.
+        // The formal panel is column-flexed so values sit on top and proof takes remaining space (scrollable).
+        let style =
+            "<style>" +
+            ".llmmodel-container{display:flex;flex-direction:row;gap:12px;width:100%;box-sizing:border-box;}" +
+            ".llmmodel-panel{flex:1 1 50%;min-width:0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.04);max-height:60vh;}" +
+            ".llmmodel-panel h2{margin-top:0;font-size:1rem;color:#333;}" +
+            ".llmmodel-intuition{overflow:auto;}" +
+            ".llmmodel-formal{display:flex;flex-direction:column;overflow:hidden;}" +
+            ".llmmodel-values{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;font-family:Menlo,Consolas,\"DejaVu Sans Mono\",monospace;font-size:0.9rem;}" +
+            ".llmmodel-item{background:#f6f8fa;padding:6px 8px;border-radius:4px;border:1px solid #eee;}" +
+            ".llmmodel-name{color:#0b5fff;font-weight:700;margin-right:6px;}" +
+            ".llmmodel-val-inline{color:#111;}" +
+            ".llmmodel-proof{background:#f7f7f9;padding:10px;border-radius:4px;overflow:auto;white-space:pre;font-family:Menlo,Consolas,\"DejaVu Sans Mono\",monospace;font-size:0.9rem;border:1px solid #eee;flex:1 1 auto;}" +
+            ".llmmodel-no-values{color:#666;font-style:italic;}" +
+            ".llmmodel-unsat{background:#fff4f4;border:1px solid #ffd4d6;padding:8px;border-radius:4px;margin-bottom:8px;color:#a30000;}" +
+            "@media (max-width:700px){.llmmodel-container{flex-direction:column;}}" +
+            "</style>"
+
+        // Create a unique id for this output cell so multiple outputs won't interfere
+        let uid = System.Guid.NewGuid().ToString("N")
+        let tabIntId = "llmmodel-intuition-" + uid
+        let tabThoughtsId = "llmmodel-thoughts-" + uid
+        let tabFormalId = "llmmodel-formal-" + uid
+
+        let hasThoughts =
+            match m.Thoughts with
+            | Some t when not (System.String.IsNullOrWhiteSpace t) -> true
+            | _ -> false
+
+        let thoughtsHtml =
+            match m.Thoughts with
+            | Some t -> "<div class=\"llmmodel-thoughts\"><pre class=\"llmmodel-thoughts-pre\">" + encode t + "</pre></div>"
+            | None -> ""
+
+        // Extend tab-specific styles
+        let tabsStyle =
+            """
+            .llmmodel-tab-headers{display:flex;gap:8px;margin-bottom:8px}
+            .llmmodel-tabbtn{background:#f6f8fa;border:1px solid #eee;padding:6px 10px;border-radius:4px;cursor:pointer}
+            .llmmodel-tabbtn.active{background:#0b5fff;color:#fff}
+            .llmmodel-tabpanel{display:none}
+            .llmmodel-thoughts-pre{white-space:pre-wrap;word-break:break-word;font-family:Menlo,Consolas,monospace;background:#f7f7f9;padding:8px;border-radius:4px;border:1px solid #eee}
+            """
+
+        let tabButton onClick label active =
+            let cls = if active then "llmmodel-tabbtn active" else "llmmodel-tabbtn"
+            // inline onclick toggles panels within this output root
+            let js =
+                "(function(){var root=document.getElementById('" + uid + "'); var panels=root.querySelectorAll('.llmmodel-tabpanel'); panels.forEach(function(p){p.style.display='none'}); root.querySelector('#" + onClick + "').style.display='block'; var btns=root.querySelectorAll('.llmmodel-tabbtn'); btns.forEach(function(b){b.classList.remove('active')}); this.classList.add('active'); }).call(this)"
+            "<button class=\"" + cls + "\" onclick=\"" + js + "\">" + label + "</button>"
+
+        let tabButtons =
+            tabButton tabIntId "Intuition" true +
+            (if hasThoughts then tabButton tabThoughtsId "Thoughts" false else "") +
+            tabButton tabFormalId (if title = null then "Formal" else title) false
+
+        let panels =
+            "<div id=\"" + tabIntId + "\" class=\"llmmodel-tabpanel\" style=\"display:block\">" +
+                "<div class=\"llmmodel-intuition\">" +
+                    "<h2>LLM Intuition</h2>" + intuitionHtml + "</div>" +
+                        "</div>" +
+                                    (if hasThoughts then "<div id=\"" + tabThoughtsId + "\" class=\"llmmodel-tabpanel\">" + thoughtsHtml + "</div>" else "") +
+                                    "<div id=\"" + tabFormalId + "\" class=\"llmmodel-tabpanel\">" +
+                                        "<div class=\"llmmodel-formal\">" +
+                                            "<h2>" + title + "</h2>" + formalHtml + "</div>" + "</div>"
+
+        let html =
+            mathJaxHeader +
+            style + tabsStyle 
+            +
+            "<div class=\"llmmodel-container\" id=\"" + uid + "\">" +
+                "<div class=\"llmmodel-tab-headers\">" + tabButtons + "</div>" +
+                "<div class=\"llmmodel-tabpanels\">" + panels + "</div>" + "</div>"
+
+        writer.Write(html)
+    ),
+    HtmlFormatter.MimeType
+)

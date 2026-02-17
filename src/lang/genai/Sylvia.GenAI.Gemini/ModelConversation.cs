@@ -41,7 +41,7 @@ public class ModelConversation : Runtime
             ThinkingConfig = new GeminiThinkingConfig()
             {
                 ThinkingBudget = 1024,
-                ThinkingLevel = "medium",
+                //ThinkingLevel = "medium",
                 IncludeThoughts = true,
             }
         };
