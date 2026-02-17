@@ -24,7 +24,7 @@
 #r "../ext/FunScript/src/extra/FunScript.Bindings.JSXGraph/bin/Debug/netstandard2.0/FunScript.Bindings.JSXGraph.dll"
 #r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/MathNet.Symbolics.dll"
 
-#r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/Sylvia.Runtime.dll"
+#r "../src/lang/genai/Sylvia.GenAI.Giant/bin/Debug/net10.0/Sylvia.Runtime.dll"
 #r "../src/base/Sylvia.Collections/bin/Debug/netstandard2.0/Sylvia.Collections.dll"
 #r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/Sylvia.Expressions.dll"
 #r "../src/lang/core/Sylvia.Prover/bin/Debug/net10.0/Sylvia.Prover.dll"
@@ -87,44 +87,75 @@ Formatter.Register<LLMProof>(
             if System.String.IsNullOrWhiteSpace(proof.Text) then
                 "<p><em>No LLM intuition available.</em></p>"
             else
-                // Markdig converts markdown to HTML
                 Markdown.ToHtml(proof.Text)
+
+        // Extract Thoughts field if present
+        let thoughtsHtml =
+            match proof.Thoughts with
+            | Some s when (not (String.IsNullOrWhiteSpace(s))) -> Markdown.ToHtml(s)
+            | _ -> ""
+            
 
         // Convert the formal Proof object to HTML-safe text and place in a scrollable code block
         let formalHtml =
             match proof.Proof with
             | Some p ->
                 let encoded = System.Net.WebUtility.HtmlEncode(p.Log)
-                // Use <pre><code> so whitespace and structure are preserved
                 $"<pre class=\"llmproof-formal\"><code>{encoded}</code></pre>"
             | None ->
                 "<p><em>No formal proof available.</em></p>"
 
-        // Inline CSS tuned to fit inside a Jupyter notebook cell.
-        // Panels are side-by-side on wide screens and stacked on narrow screens.
-        // Each panel scrolls internally (max-height: 60vh) so the notebook cell stays compact.
+        // Unique id for this output cell
+        let uid = System.Guid.NewGuid().ToString("N")
+        let tabIntId = "llmproof-intuition-" + uid
+        let tabThoughtsId = "llmproof-thoughts-" + uid
+
+        let hasThoughts =
+            match proof.Thoughts with
+            | Some s when (not (String.IsNullOrWhiteSpace(s))) -> true
+            | _ -> false
+
+        // CSS for layout and tabs
         let style =
             "<style>" +
             ".llmproof-container{display:flex;flex-direction:row;gap:12px;width:100%;box-sizing:border-box;}" +
-            ".llmproof-panel{flex:1 1 50%;min-width:0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.04);overflow:auto;max-height:60vh;}" +
+            ".llmproof-left{flex:1 1 50%;min-width:0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.04);max-height:60vh;display:flex;flex-direction:column;}" +
+            ".llmproof-right{flex:1 1 50%;min-width:0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.04);max-height:60vh;display:flex;flex-direction:column;overflow:hidden;}" +
+            ".llmproof-tab-headers{display:flex;gap:8px;margin-bottom:8px;}" +
+            ".llmproof-tabbtn{background:#f6f8fa;border:1px solid #eee;padding:6px 10px;border-radius:4px;cursor:pointer;}" +
+            ".llmproof-tabbtn.active{background:#0b5fff;color:#fff;}" +
+            ".llmproof-left-tabpanel{display:none;flex:1 1 auto;overflow:auto;}" +
+            ".llmproof-left-tabpanel.active{display:block;}" +
+            ".llmproof-thoughts-pre{white-space:pre-wrap;word-break:break-word;font-family:Menlo,Consolas,monospace;background:#f7f7f9;padding:8px;border-radius:4px;border:1px solid #eee;}" +
             ".llmproof-panel h2{margin-top:0;font-size:1rem;color:#333;}" +
-            ".llmproof-formal{background:#f7f7f9;padding:10px;border-radius:4px;overflow:auto;white-space:pre;font-family:Menlo,Consolas,\"DejaVu Sans Mono\",monospace;font-size:0.9rem;border:1px solid #eee;}" +
-            ".llmproof-intuition pre,.llmproof-intuition code{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,\"Helvetica Neue\",Arial;}" +
-            "@media (max-width:700px){.llmproof-container{flex-direction:column;}}" +
+            "@media (max-width:700px){.llmproof-container{flex-direction:column}.llmproof-right{max-height:none}}" +
             "</style>"
 
-        let html =
-            style +
-            "<div class=\"llmproof-container\">" +
-              "<div class=\"llmproof-panel llmproof-intuition\">" +
-                "<h2>LLM Intuition</h2>" +
-                    intuitionHtml +
-                        "</div>" +
-                        "<div class=\"llmproof-panel llmproof-formal-panel\">" +
-                        "<h2>Formal Proof</h2>" +
-                            formalHtml +
-                             "</div>" +
-                             "</div>"
+        // Tab buttons for left panel
+        let tabButton leftPanelTarget label active =
+            let cls = if active then "llmproof-tabbtn active" else "llmproof-tabbtn"
+            let js =
+                "(function(){var root=document.getElementById('" + uid + "'); var panels=root.querySelectorAll('.llmproof-left-tabpanel'); panels.forEach(function(p){p.classList.remove('active')}); root.querySelector('#" + leftPanelTarget + "').classList.add('active'); var btns=root.querySelectorAll('.llmproof-tabbtn'); btns.forEach(function(b){b.classList.remove('active')}); this.classList.add('active'); }).call(this)"
+            "<button class=\"" + cls + "\" onclick=\"" + js + "\">" + label + "</button>"
+
+        let leftButtons =
+            tabButton tabIntId "Intuition" true +
+            (if hasThoughts then tabButton tabThoughtsId "Thoughts" false else "")
+
+        let leftPanels =
+            "<div id=\"" + tabIntId + "\" class=\"llmproof-left-tabpanel active\">" + "<h2>LLM Intuition</h2>" + intuitionHtml + "</div>" +
+            (if hasThoughts then "<div id=\"" + tabThoughtsId + "\" class=\"llmproof-left-tabpanel\"><h2>LLM Thoughts</h2>" + thoughtsHtml + "</div>" else "")
+
+        let leftHtml =
+            "<div class=\"llmproof-left\">" +
+                "<div class=\"llmproof-tab-headers\">" + leftButtons + "</div>" +
+                leftPanels + "</div>"
+
+        let rightHtml =
+            "<div class=\"llmproof-right\">" +
+                "<h2>Formal Proof</h2>" + formalHtml + "</div>"
+
+        let html = style + "<div class=\"llmproof-container\" id=\"" + uid + "\">" + leftHtml + rightHtml + "</div>"
 
         writer.Write(html)
     ),
@@ -158,7 +189,7 @@ Formatter.Register<LLMModel>(
                 Markdown.ToHtml(m.Text)
         let thoughtsHtml =
             match m.Thoughts with
-            | Some t when not (System.String.IsNullOrWhiteSpace t) -> Markdown.ToHtml(t)
+            | Some t when not (System.String.IsNullOrWhiteSpace t) -> Markdown.ToHtml t
             | _ -> "<p><em>No LLM thoughts available.</em></p>"
 
         // Helper to safely extract ModelProof as string if present (handles null or empty)
@@ -232,10 +263,10 @@ Formatter.Register<LLMModel>(
 
         let leftButtons =
             tabButton tabIntId "Intuition" true +
-            (if hasThoughts then tabButton tabThoughtsId "Thoughts" false else "")
+            (if hasThoughts then tabButton tabThoughtsId "Thinking" false else "")
 
         let leftPanels =
-            "<div id=\"" + tabIntId + "\" class=\"llmmodel-left-tabpanel active\">" + "<h2>LLM Intuition</h2>" + intuitionHtml + "</div>" + (if hasThoughts then "<div id=\"" + tabThoughtsId + "\" class=\"llmmodel-left-tabpanel\"><h2>LLM Thoughts</h2>" + thoughtsHtml + "</div>" else "")
+            "<div id=\"" + tabIntId + "\" class=\"llmmodel-left-tabpanel active\">" + "<h2>LLM Intuition</h2>" + intuitionHtml + "</div>" + (if hasThoughts then "<div id=\"" + tabThoughtsId + "\" class=\"llmmodel-left-tabpanel\"><h2>LLM Thinking</h2>" + thoughtsHtml + "</div>" else "")
 
         let leftHtml =
             "<div class=\"llmmodel-left\">" +

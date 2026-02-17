@@ -85,14 +85,16 @@ type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj
         x.ImagePromptAsync(text, imageData) |> Async.AwaitTask |> Async.RunSynchronously |> Seq.map (fun m -> m.Content) |> Seq.reduce (+)
         
     member x.Prove(prompt: string,  [<ParamArray>] content: obj array) =
-        let r = x.Prompt(prompt, content)    
+        let r = x._Prompt(prompt, content)   
+        let text = r |> Seq.map (fun m -> notnull m.Content) |> Seq.reduce (+)  
+        let thoughts = r |> Seq.map (fun m -> getMessageThoughtsText m) |> Seq.reduce (fun acc t -> if t <> "" then acc + "\n" + t else acc)
         let proof = 
             if x.Prover.Proofs.Count > lastProofIndex then
                 let proofId = x.Prover.Proofs.Keys |> Seq.skip lastProofIndex |> Seq.head
                 lastProofIndex <-  x.Prover.Proofs.Count
                 Some x.Prover.Proofs.[proofId]
             else None
-        {Text = r; Proof = proof}
+        {Text = text; Thoughts = (if thoughts = "" then None else Some thoughts); Proof = proof}
 
     member x.Solve(prompt: string,  [<ParamArray>] content: obj array) =
         let r = x._Prompt(prompt, content)    
@@ -156,6 +158,7 @@ Do not spend too long attempting to construct a formal proof. If you make 4 atte
 
 and LLMProof = {
     Text: string | null
+    Thoughts: string option
     Proof: Proof option     
 }  
 
