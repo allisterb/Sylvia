@@ -400,7 +400,7 @@ module PropCalculus =
         
     /// p ∧ q ∧ r == (p == q == r == (p ∨ q) = (q ∨ r) = (r ∨ p) = (p ∨ q ∨ r))
     [<DerivedRule "p ∧ q ∧ r == (p == q == r == (p ∨ q) = (q ∨ r) = (r ∨ p) = (p ∨ q ∨ r))">]
-    let ident_and_eq_all p q r = ident prop_calculus ( (p * q * r) == (p == q == r == (p + q) == (q + r) == (r + p) == (p + q + r)) ) [
+    let ident_and_eq_all p q r = ident prop_calculus ((p * q * r) == (p == q == r == (p + q) == (q + r) == (r + p) == (p + q + r))) [
         golden_rule' p q |> apply_left
         golden_rule' ( (p == q) == (p + q) ) r |> apply_left 
         commute_or ( ((p == q) == (p + q)) ) r |> apply_left
@@ -413,7 +413,7 @@ module PropCalculus =
         commute_or r ( p + q ) |> apply_left
         left_assoc_eq ( p == q ) r ( p + q ) |> apply_left
         left_assoc |> apply_left
-        left_assoc_eq ( p == q == r == (p + q) ) ( q + r ) ( r + p ) |> apply_left
+        left_assoc_eq ( p == q == r == (p + q) ) ( q + r ) ( r + p ) |> apply
     ]
     
     /// p ∧ q ∧ r == p ∧ (q ∧ r)
@@ -666,7 +666,7 @@ module PropCalculus =
 
     /// p ⇒ q == (p ∨ q = q)
     [<DerivedRule "p ⇒ q = (p ∨ q == q)">]
-    let def_implies' p q = id_ax prop_calculus ( (p ==> q) == (p + q == q) )
+    let def_implies' (p:Prop) (q:Prop) = id_ax prop_calculus ( (p ==> q) == (p + q == q) )
 
     /// p ⇒ q == (-p ∨ q)
     [<DerivedRule "p ⇒ q = (-p ∨ q)">]
@@ -679,7 +679,7 @@ module PropCalculus =
 
     /// p ⇒ q == ((p ∧ q) = p)
     [<DerivedRule "p ⇒ q = ((p ∧ q) = p)">]
-    let ident_implies_eq_and_eq p q = ident prop_calculus ( p ==> q == ((p * q) = p) ) [
+    let ident_implies_eq_and_eq p q = ident prop_calculus (p ==> q == ((p * q) == p)) [
         def_implies |> apply_left
         commute |> apply
         right_assoc |> apply
@@ -730,7 +730,7 @@ module PropCalculus =
 
     /// p ⇒ (q == r) = ((p ⇒ q) = (p ⇒ r))
     [<DerivedRule "p ⇒ (q = r) = ((p ⇒ q) = (p ⇒ r))">]
-    let distrib_implies_eq_implies p q r = ident prop_calculus ( p ==> (q == r) == ((p ==> q) = (p ==> r))) [
+    let distrib_implies_eq_implies p q r = ident prop_calculus ( p ==> (q == r) == ((p ==> q) == (p ==> r))) [
         distrib_implies_eq_and p q r |> apply_left
         ident_implies_eq_and_eq p q |> apply_left |> branch_right
         ident_implies_eq_and_eq p r |> apply_right |> branch_right

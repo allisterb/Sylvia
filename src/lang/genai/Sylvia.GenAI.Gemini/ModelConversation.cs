@@ -38,6 +38,12 @@ public class ModelConversation : Runtime
             ModelId = this.modelId,
             FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(autoInvoke: true),
             ToolCallBehavior = GeminiToolCallBehavior.AutoInvokeKernelFunctions,
+            ThinkingConfig = new GeminiThinkingConfig()
+            {
+                ThinkingBudget = 1024,
+                ThinkingLevel = "medium",
+                IncludeThoughts = true,
+            }
         };
         Info("Using Google Gemini model {0}.", this.modelId);
         builder.Services

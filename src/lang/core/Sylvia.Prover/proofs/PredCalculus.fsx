@@ -7,7 +7,37 @@ open PredCalculus
 
 let p,q,r = boolvar3 "p" "q" "r"
 
-proof prop_calculus ((p * q) == (q * p)) [
+//ident_and_eq_all p p q
+proof prop_calculus ((p * q * r) == (p == q == r == (p + q) == (q + r) == (r + p) == (p + q + r))) [
+    golden_rule' p q |> apply_left
+    golden_rule' ( (p == q) == (p + q) ) r |> apply_left 
+    commute_or ( ((p == q) == (p + q)) ) r |> apply_left
+    distrib_or_eq r ( p == q ) ( p + q ) |> apply_left
+    distrib_or_eq r p q |> apply_left
+    right_assoc_eq ( p == q ) ( p + q ) r |> apply_left
+    commute_eq ( p + q ) r |> apply_left
+    commute_or r q |> apply_left
+    commute_eq ( r + p ) ( q + r ) |> apply_left
+    commute_or r ( p + q ) |> apply_left
+    left_assoc_eq ( p == q ) r ( p + q ) |> apply_left
+    left_assoc |> apply_left
+    left_assoc_eq ( p == q == r == (p + q) ) ( q + r ) ( r + p ) |> apply
+]
+
+((p ==> q) == ((p * q) == p))
+
+ident prop_calculus ((p ==> q) == ((p * q) = p)) [
+        def_implies |> apply_left
+        commute |> apply
+        right_assoc |> apply
+        commute |> apply_right |> branch_right 
+        left_assoc |> apply_right 
+    ]
+
+proof prop_calculus ((p * q) ==> (p * (q + r)) == F) [
+    ident_implies_eq_and_eq (p * q) (p * (q + r)) |> apply
+]
+proof prop_calculus ((p &&& q) == (q * p)) [
     golden_rule' p q |> apply_left
     golden_rule' q p |> apply_right
     commute_or q p |> apply_right

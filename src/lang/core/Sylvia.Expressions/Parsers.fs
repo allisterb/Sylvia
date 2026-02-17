@@ -25,7 +25,7 @@ module TermParsers =
     
     let private isMathChar = function | '\u03C0' | '\u221E' | '\u29DD' -> true | _ -> false
     let private isIdentifierFirstChar c = isLetter c || isMathChar c
-    let private isIdentifierChar c = isLetter c || isDigit c || isMathChar c || c = '_'
+    let private isIdentifierChar c = isLetter c || isDigit c || isMathChar c || c = '_' || c = '\''
 
     // -------------------------------------------------------------------------
     // Integer Expression Parser
@@ -238,9 +238,14 @@ module TermParsers =
                 
         opp.AddOperator(InfixOperator("==", ws, 1, Associativity.Left, fun l r -> _equal (expand_as<bool> l) (expand_as<bool> r)))        
         opp.AddOperator(InfixOperator("!=", ws, 1, Associativity.Left, fun l r -> _notequal (expand_as<bool> l) (expand_as<bool> r)))
+        opp.AddOperator(InfixOperator("<>", ws, 1, Associativity.Left, fun l r -> _notequal (expand_as<bool> l) (expand_as<bool> r)))
         opp.AddOperator(InfixOperator("==>", ws, 2, Associativity.Right, fun l r -> _implies (expand_as<bool> l) (expand_as<bool> r)))
-        opp.AddOperator(InfixOperator("+", ws, 3, Associativity.Left, fun l r -> _or (expand_as<bool> l) (expand_as<bool> r)))        
+        opp.AddOperator(InfixOperator("+", ws, 3, Associativity.Left, fun l r -> _or (expand_as<bool> l) (expand_as<bool> r)))      
+        opp.AddOperator(InfixOperator("||", ws, 3, Associativity.Left, fun l r -> _or (expand_as<bool> l) (expand_as<bool> r)))     
+        opp.AddOperator(InfixOperator("|||", ws, 3, Associativity.Left, fun l r -> _or (expand_as<bool> l) (expand_as<bool> r))) 
         opp.AddOperator(InfixOperator("*", ws, 4, Associativity.Left, fun l r -> _and (expand_as<bool> l) (expand_as<bool> r)))
+        opp.AddOperator(InfixOperator("&&", ws, 4, Associativity.Left, fun l r -> _and (expand_as<bool> l) (expand_as<bool> r)))
+        opp.AddOperator(InfixOperator("&&&", ws, 4, Associativity.Left, fun l r -> _and (expand_as<bool> l) (expand_as<bool> r)))
         opp.AddOperator(PrefixOperator("-", ws, 5, true, fun l -> _not (expand_as<bool> l)))
         exprRef := opp.ExpressionParser
         expr

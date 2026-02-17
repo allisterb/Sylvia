@@ -17,10 +17,10 @@ module EquationalLogic =
     
     (* Axioms *)
 
-
     /// true = p = p
     let (|DefTrue|_|) =
         function
+        | True -> pattern_desc "Definition of true" <@fun x -> x = x = true @> |> Some
         | Equals(True, Equals(a1, a2)) when sequal a1 a2 -> pattern_desc "Definition of true" <@fun x -> x = x = true @> |> Some
         | _ -> None
 

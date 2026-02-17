@@ -42,11 +42,7 @@ type Term<'t when 't: equality> (expr:Expr<'t>, ?h:TermHistory) =
     static member op_Implicit (l:Term<'t>):Expr<'t> = l.Expr
  
     static member (==) (l:Term<'t>, r:Term<'t>) = <@ %l.Expr = %r.Expr @> |> Prop
-
-    static member (==) (l:Term<'t>, r:'t) = let r' = exprv r in <@ %l.Expr = %r' @> |> Prop
     
-    static member (==) (l:'t, r:Term<'t>) = let l' = exprv l in <@ %l' = %r.Expr @> |> Prop
-
 and [<AbstractClass>] TermVar<'t when 't: equality>(n: string) = 
     inherit Term<'t>(Expr.Var(Var(n, typeof<'t>)) |> expand_as<'t>)
     let var = Var(n, typeof<'t>)
@@ -107,8 +103,6 @@ and Scalar<'t when 't: equality and 't :> ValueType and 't :> IEquatable<'t>> (e
     static member NegOne = typeof<'t> |> neg_one_val |> expand_as<'t> |> Scalar<'t>
 
     static member op_Implicit (l:Scalar<'t>):Expr<'t> = l.Expr
-
-    static member op_Implicit (l:'t):Scalar<'t> = Scalar (exprv l)
 
     static member op_Implicit (l:int):Scalar<real> = let v = real l in Scalar (exprv v)
 
@@ -283,9 +277,9 @@ and Scalar<'t when 't: equality and 't :> ValueType and 't :> IEquatable<'t>> (e
 
     static member (==) (l:Scalar<'t>, r:Scalar<'t>) = ScalarEquation<'t>(l, r)
 
-    static member (==) (l:Scalar<'t>, r:'t) = ScalarEquation<'t>(l, r |> exprv |> Scalar<'t>)
+    static member (==) (l:Scalar<'t>, r:'t) = if typeof<'t> <> typeof<bool> then ScalarEquation<'t>(l, r |> exprv |> Scalar<'t>) else failwith "Use logical equality (==) for boolean scalars."
 
-    static member (==) (l:'t, r:Scalar<'t>) = ScalarEquation<'t>(l |> exprv |> Scalar<'t>, r)
+    static member (==) (l:'t, r:Scalar<'t>) = if typeof<'t> <> typeof<bool> then ScalarEquation<'t>(l |> exprv |> Scalar<'t>, r) else failwith "Use logical equality (==) for boolean scalars." 
 
     static member (==) (l:ScalarVar<'t>, r:Scalar<'t>) = ScalarVarMap<'t>(l, r)
 
@@ -531,26 +525,25 @@ and Prop (expr:Expr<bool>) =
 
     static member (~-) (l:#Prop) = Prop <@ not %l.Expr @>
         
-    static member (*) (l:Prop, r:Prop) = Prop <@ %l.Expr && %r.Expr @>
+    static member (*) (l:#Prop, r:#Prop) = Prop <@ %l.Expr && %r.Expr @>
+    
+    static member (+) (l:#Prop, r:#Prop) = Prop <@ %l.Expr || %r.Expr @>
 
-    [<Symbol "∨">]
-    static member (+) (l:Prop, r:Prop) = Prop <@ %l.Expr || %r.Expr @>
+    static member (==) (l:#Prop, r:#Prop) = Prop <@ %l.Expr = %r.Expr @>
+    
+    static member (!=) (l:#Prop, r:#Prop) = Prop <@ %l.Expr <> %r.Expr @>
 
-    static member (==) (l:Prop, r:Prop) = Prop <@ %l.Expr = %r.Expr @>
+    static member (==>) (l:#Prop, r:#Prop) = Prop <@ %l.Expr ===> %r.Expr @>
 
-    static member (!=) (l:Prop, r:Prop) = Prop <@ %l.Expr <> %r.Expr @>
-
-    static member (==>) (l:Prop, r:Prop) = Prop <@ %l.Expr ===> %r.Expr @>
-
-    static member (<==) (l:Prop, r:Prop) = Prop <@ %r.Expr <=== %l.Expr @>
+    static member (<==) (l:#Prop, r:#Prop) = Prop <@ %r.Expr <=== %l.Expr @>
 
     override x.Display = src expr
 
-    static member op_Implicit(l:Prop) : Expr<bool> = l.Expr
+    static member op_Implicit(l:#Prop) : Expr<bool> = l.Expr
 
     static member op_Implicit (l:Expr<bool>):Prop = Prop l
 
-    static member op_Explicit(l:Prop) : Expr<bool> = l.Expr
+    static member op_Explicit(l:#Prop) : Expr<bool> = l.Expr
 
 and PropVar(n: string) =
     inherit Prop(Expr.Var(Var(n, typeof<bool>)) |> expand_as<bool>)
