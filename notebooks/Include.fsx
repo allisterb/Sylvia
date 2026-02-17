@@ -24,7 +24,7 @@
 #r "../ext/FunScript/src/extra/FunScript.Bindings.JSXGraph/bin/Debug/netstandard2.0/FunScript.Bindings.JSXGraph.dll"
 #r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/MathNet.Symbolics.dll"
 
-#r "../src/lang/genai/Sylvia.GenAI.Giant/bin/Debug/net10.0/Sylvia.Runtime.dll"
+#r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/Sylvia.Runtime.dll"
 #r "../src/base/Sylvia.Collections/bin/Debug/netstandard2.0/Sylvia.Collections.dll"
 #r "../src/lang/core/Sylvia.Expressions/bin/Debug/net10.0/Sylvia.Expressions.dll"
 #r "../src/lang/core/Sylvia.Prover/bin/Debug/net10.0/Sylvia.Prover.dll"
@@ -133,33 +133,33 @@ Formatter.Register<LLMProof>(
 
 Formatter.Register<LLMModel>(
     (fun (m: LLMModel) (writer: System.IO.TextWriter) ->
-        // Convert LLM intuitive markdown -> HTML
-
-        // MathJax header that loads MathJax via require (if available) and configures '$' as inline delimiters.
-        // Uses a fallback to append a script tag when require is not available.
-        // This header is inserted before cell HTML so LaTeX in the output (Markdown -> HTML) is rendered.
+        // MathJax header for LaTeX rendering
         let mathJaxHeader = 
             if not insideVSCode then "" else
-                    "<script type=\"text/javascript\">" +
-                    "(function(){ " +
-                    "if(typeof window === 'undefined') return; " +
-                    "try { " +
-                    "  if(window.MathJax && window.MathJax.tex && window.MathJax.tex.inlineMath) return; " +
-                    "} catch(e) {} " +
-                    "window.MathJax = { tex: { inlineMath: [['$','$']], displayMath: [['$$','$$']] }, options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] } }; " +
-                    "if(typeof require !== 'undefined') { " +
-                    "  try { require(['https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js']); } catch(e) { " +
-                    "    var s = document.createElement('script'); s.type='text/javascript'; s.src='https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'; document.head.appendChild(s); } " +
-                    "} else { var s = document.createElement('script'); s.type='text/javascript'; s.src='https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'; document.head.appendChild(s); } " +
-                    "})();" +
-                    "</script>\n"        
+                "<script type=\"text/javascript\">" +
+                "(function(){ " +
+                "if(typeof window === 'undefined') return; " +
+                "try { " +
+                "  if(window.MathJax && window.MathJax.tex && window.MathJax.tex.inlineMath) return; " +
+                "} catch(e) {} " +
+                "window.MathJax = { tex: { inlineMath: [['$','$']], displayMath: [['$$','$$']] }, options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] } }; " +
+                "if(typeof require !== 'undefined') { " +
+                "  try { require(['https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js']); } catch(e) { " +
+                "    var s = document.createElement('script'); s.type='text/javascript'; s.src='https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'; document.head.appendChild(s); } " +
+                "} else { var s = document.createElement('script'); s.type='text/javascript'; s.src='https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'; document.head.appendChild(s); } " +
+                "})();" +
+                "</script>\n"
+
+        let encode = System.Net.WebUtility.HtmlEncode
         let intuitionHtml =
             if System.String.IsNullOrWhiteSpace(m.Text) then
                 "<p><em>No LLM intuition available.</em></p>"
             else
                 Markdown.ToHtml(m.Text)
-
-        let encode = System.Net.WebUtility.HtmlEncode
+        let thoughtsHtml =
+            match m.Thoughts with
+            | Some t when not (System.String.IsNullOrWhiteSpace t) -> Markdown.ToHtml(t)
+            | _ -> "<p><em>No LLM thoughts available.</em></p>"
 
         // Helper to safely extract ModelProof as string if present (handles null or empty)
         let proofTextOpt =
@@ -175,7 +175,6 @@ Formatter.Register<LLMModel>(
         let formalHtml, title =            
             match m.Model with
             | Some model ->
-                // get_model returns (name, value) pairs; escape for HTML and render as compact chips
                 let valuesHtml =
                     Sylvia.Z3.get_model model
                     |> Array.map (fun (name, value) ->
@@ -187,21 +186,33 @@ Formatter.Register<LLMModel>(
             | None ->
                 match proofTextOpt with
                 | Some proofText ->
-                    // Display UNSAT notice and the proof in a scrollable pre block.
                     let encodedProof = encode proofText
                     $"<div class=\"llmmodel-unsat\"> <strong>UNSATISFIABLE</strong></div><div class=\"llmmodel-proof-wrap\"><pre class=\"llmmodel-proof\"><code>{encodedProof}</code></pre></div>", "SMT Result"
                 | None ->  $"<div class=\"llmmodel-unsat\"> <strong>UNSATISFIABLE</strong></div>", "SMT Result"
-                
 
-        // Inline CSS tuned to fit in a Jupyter notebook cell.
-        // The formal panel is column-flexed so values sit on top and proof takes remaining space (scrollable).
+        // Unique id for this output cell
+        let uid = System.Guid.NewGuid().ToString("N")
+        let tabIntId = "llmmodel-intuition-" + uid
+        let tabThoughtsId = "llmmodel-thoughts-" + uid
+
+        let hasThoughts =
+            match m.Thoughts with
+            | Some t when not (System.String.IsNullOrWhiteSpace t) -> true
+            | _ -> false
+
+        // CSS for layout and tabs
         let style =
             "<style>" +
             ".llmmodel-container{display:flex;flex-direction:row;gap:12px;width:100%;box-sizing:border-box;}" +
-            ".llmmodel-panel{flex:1 1 50%;min-width:0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.04);max-height:60vh;}" +
+            ".llmmodel-left{flex:1 1 50%;min-width:0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.04);max-height:60vh;display:flex;flex-direction:column;}" +
+            ".llmmodel-right{flex:1 1 50%;min-width:0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.04);max-height:60vh;display:flex;flex-direction:column;overflow:hidden;}" +
+            ".llmmodel-tab-headers{display:flex;gap:8px;margin-bottom:8px;}" +
+            ".llmmodel-tabbtn{background:#f6f8fa;border:1px solid #eee;padding:6px 10px;border-radius:4px;cursor:pointer;}" +
+            ".llmmodel-tabbtn.active{background:#0b5fff;color:#fff;}" +
+            ".llmmodel-left-tabpanel{display:none;flex:1 1 auto;overflow:auto;}" +
+            ".llmmodel-left-tabpanel.active{display:block;}" +
+            ".llmmodel-thoughts-pre{white-space:pre-wrap;word-break:break-word;font-family:Menlo,Consolas,monospace;background:#f7f7f9;padding:8px;border-radius:4px;border:1px solid #eee;}" +
             ".llmmodel-panel h2{margin-top:0;font-size:1rem;color:#333;}" +
-            ".llmmodel-intuition{overflow:auto;}" +
-            ".llmmodel-formal{display:flex;flex-direction:column;overflow:hidden;}" +
             ".llmmodel-values{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;font-family:Menlo,Consolas,\"DejaVu Sans Mono\",monospace;font-size:0.9rem;}" +
             ".llmmodel-item{background:#f6f8fa;padding:6px 8px;border-radius:4px;border:1px solid #eee;}" +
             ".llmmodel-name{color:#0b5fff;font-weight:700;margin-right:6px;}" +
@@ -209,111 +220,33 @@ Formatter.Register<LLMModel>(
             ".llmmodel-proof{background:#f7f7f9;padding:10px;border-radius:4px;overflow:auto;white-space:pre;font-family:Menlo,Consolas,\"DejaVu Sans Mono\",monospace;font-size:0.9rem;border:1px solid #eee;flex:1 1 auto;}" +
             ".llmmodel-no-values{color:#666;font-style:italic;}" +
             ".llmmodel-unsat{background:#fff4f4;border:1px solid #ffd4d6;padding:8px;border-radius:4px;margin-bottom:8px;color:#a30000;}" +
-            "@media (max-width:700px){.llmmodel-container{flex-direction:column;}}" +
+            "@media (max-width:700px){.llmmodel-container{flex-direction:column}.llmmodel-right{max-height:none}}" +
             "</style>"
-        // Extend tab-specific styles and keep left/right layout
-        let tabsStyle =
-            """
-            <style>
-            .llmmodel-left{flex:1 1 50%;min-width:0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.04);max-height:60vh;display:flex;flex-direction:column;}
-            .llmmodel-right{flex:1 1 50%;min-width:0;border:1px solid #ddd;border-radius:6px;padding:10px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.04);max-height:60vh;display:flex;flex-direction:column;overflow:hidden}
-            .llmmodel-tab-headers{display:flex;gap:8px;margin-bottom:8px}
-            .llmmodel-tabbtn{background:#f6f8fa;border:1px solid #eee;padding:6px 10px;border-radius:4px;cursor:pointer}
-            .llmmodel-tabbtn.active{background:#0b5fff;color:#fff}
-            .llmmodel-left-tabpanel{display:none;flex:1 1 auto;overflow:auto}
-            .llmmodel-left-tabpanel.active{display:block}
-            .llmmodel-thoughts-pre{white-space:pre-wrap;word-break:break-word;font-family:Menlo,Consolas,monospace;background:#f7f7f9;padding:8px;border-radius:4px;border:1px solid #eee}
-            @media (max-width:700px){.llmmodel-container{flex-direction:column}.llmmodel-right{max-height:none}}
-            </style>
-            """
 
-        // Buttons only switch content inside the left panel
-    
-        
-        
-        // Create a unique id for this output cell so multiple outputs won't interfere
-        let uid = System.Guid.NewGuid().ToString("N")
-        let tabIntId = "llmmodel-intuition-" + uid
-        let tabThoughtsId = "llmmodel-thoughts-" + uid
-        let tabFormalId = "llmmodel-formal-" + uid
-
+        // Tab buttons for left panel
         let tabButton leftPanelTarget label active =
             let cls = if active then "llmmodel-tabbtn active" else "llmmodel-tabbtn"
             let js =
                 "(function(){var root=document.getElementById('" + uid + "'); var panels=root.querySelectorAll('.llmmodel-left-tabpanel'); panels.forEach(function(p){p.classList.remove('active')}); root.querySelector('#" + leftPanelTarget + "').classList.add('active'); var btns=root.querySelectorAll('.llmmodel-tabbtn'); btns.forEach(function(b){b.classList.remove('active')}); this.classList.add('active'); }).call(this)"
             "<button class=\"" + cls + "\" onclick=\"" + js + "\">" + label + "</button>"
 
-        let hasThoughts =
-            match m.Thoughts with
-            | Some t when not (System.String.IsNullOrWhiteSpace t) -> true
-            | _ -> false
-
-        let thoughtsHtml =
-            match m.Thoughts with
-            | Some t -> "<div class=\"llmmodel-thoughts\"><pre class=\"llmmodel-thoughts-pre\">" + Markdown.ToHtml(encode t) + "</pre></div>"
-            | None -> ""
         let leftButtons =
-            tabButton tabIntId "Intuition" true + (if hasThoughts then tabButton tabThoughtsId "Thoughts" false else "")
+            tabButton tabIntId "Intuition" true +
+            (if hasThoughts then tabButton tabThoughtsId "Thoughts" false else "")
 
         let leftPanels =
-            "<div id=\"" + tabIntId + "\" class=\"llmmodel-left-tabpanel active\">" +
-                "<h2>LLM Intuition</h2>" + intuitionHtml + "</div>" + (if hasThoughts then "<div id=\"" + tabThoughtsId + "\" class=\"llmmodel-left-tabpanel\">" + thoughtsHtml + "</div>" else "")
+            "<div id=\"" + tabIntId + "\" class=\"llmmodel-left-tabpanel active\">" + "<h2>LLM Intuition</h2>" + intuitionHtml + "</div>" + (if hasThoughts then "<div id=\"" + tabThoughtsId + "\" class=\"llmmodel-left-tabpanel\"><h2>LLM Thoughts</h2>" + thoughtsHtml + "</div>" else "")
 
         let leftHtml =
             "<div class=\"llmmodel-left\">" +
-                "<div class=\"llmmodel-tab-headers\">" + leftButtons + "</div>" +
-                leftPanels + "</div>"
+                "<div class=\"llmmodel-tab-headers\">" + leftButtons + "</div>" + leftPanels + "</div>"
 
         let rightHtml =
             "<div class=\"llmmodel-right\">" +
                 "<h2>" + title + "</h2>" + formalHtml + "</div>"
-        
 
-        // Extend tab-specific styles
-        let tabsStyle =
-            """
-            <style>
-            .llmmodel-tab-headers{display:flex;gap:8px;margin-bottom:8px}
-            .llmmodel-tabbtn{background:#f6f8fa;border:1px solid #eee;padding:6px 10px;border-radius:4px;cursor:pointer}
-            .llmmodel-tabbtn.active{background:#0b5fff;color:#fff}
-            .llmmodel-tabpanel{display:none}
-            .llmmodel-thoughts-pre{white-space:pre-wrap;word-break:break-word;font-family:Menlo,Consolas,monospace;background:#f7f7f9;padding:8px;border-radius:4px;border:1px solid #eee}
-            </style>
-            """
+        let html = mathJaxHeader + style + "<div class=\"llmmodel-container\" id=\"" + uid + "\">" + leftHtml + rightHtml + "</div>"
 
-        let tabButton onClick label active =
-            let cls = if active then "llmmodel-tabbtn active" else "llmmodel-tabbtn"
-            // inline onclick toggles panels within this output root
-            let js =
-                "(function(){var root=document.getElementById('" + uid + "'); var panels=root.querySelectorAll('.llmmodel-tabpanel'); panels.forEach(function(p){p.style.display='none'}); root.querySelector('#" + onClick + "').style.display='block'; var btns=root.querySelectorAll('.llmmodel-tabbtn'); btns.forEach(function(b){b.classList.remove('active')}); this.classList.add('active'); }).call(this)"
-            "<button class=\"" + cls + "\" onclick=\"" + js + "\">" + label + "</button>"
-
-        let tabButtons =
-            tabButton tabIntId "Intuition" true +
-            (if hasThoughts then tabButton tabThoughtsId "Thoughts" false else "") +
-            tabButton tabFormalId (if title = null then "Formal" else title) false
-
-        let panels =
-            "<div id=\"" + tabIntId + "\" class=\"llmmodel-tabpanel\" style=\"display:block\">" +
-                "<div class=\"llmmodel-intuition\">" +
-                    "<h2>LLM Intuition</h2>" + intuitionHtml + "</div>" +
-                        "</div>" +
-                                    (if hasThoughts then "<div id=\"" + tabThoughtsId + "\" class=\"llmmodel-tabpanel\">" + thoughtsHtml + "</div>" else "") +
-                                    "<div id=\"" + tabFormalId + "\" class=\"llmmodel-tabpanel\">" +
-                                        "<div class=\"llmmodel-formal\">" +
-                                            "<h2>" + title + "</h2>" + formalHtml + "</div>" + "</div>"
-
-        
-        let html = mathJaxHeader + style + tabsStyle + "<div class=\"llmmodel-container\" id=\"" + uid + "\" style=\"display:flex;gap:12px;width:100%;box-sizing:border-box;\">" + leftHtml + rightHtml + "</div>"
-        (*
-        let html =
-            mathJaxHeader +
-            style + tabsStyle 
-            +
-            "<div class=\"llmmodel-container\" id=\"" + uid + "\">" +
-                "<div class=\"llmmodel-tab-headers\">" + tabButtons + "</div>" +
-                "<div class=\"llmmodel-tabpanels\">" + panels + "</div>" + "</div>"
-                *)
         writer.Write(html)
     ),
     HtmlFormatter.MimeType
