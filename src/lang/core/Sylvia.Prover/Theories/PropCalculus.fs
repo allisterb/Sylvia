@@ -474,7 +474,7 @@ module PropCalculus =
     ]
 
     /// p ∧ -p == false
-    [<DerivedRule "p ∧ -p == false">]
+    [<DerivedRule "p ∧ -p = false">]
     let contr p = ident prop_calculus ( p * -p == F) [
         golden_rule |> apply_left
         excluded_middle |> apply_right |> branch_left
@@ -799,7 +799,7 @@ module PropCalculus =
     ]
 
     /// (p ⇒ q) ∧ (q ⇒ p) = (p == q)
-    [<DerivedRule "(p ⇒ q) ∧ (q ⇒ p) = (p == q)">]
+    [<DerivedRule "(p ⇒ q) ∧ (q ⇒ p) = (p = q)">]
     let mutual_implication' (p:Prop) (q:Prop) = ident prop_calculus (((p ==> q) * (q ==> p)) == (p == q)) [
         right_assoc |> apply
         ident_implies_not_or p q |> apply_left

@@ -16,15 +16,15 @@ module LLMSessionHelpers =
     
     let defaultMaxDocChars = 30000
     
-    let ingestPromptText (path:string) (maxChars:int) : string =
+    let ingestPromptText (path:string) (skipLines:int) (maxChars:int) : string =
         if File.Exists(path) then
-            let text = File.ReadAllText(path)
+            let text = File.ReadAllLines(path) |> Array.skip skipLines |> Array.map ((+) Environment.NewLine) |> Array.reduce (+)
             if text.Length > maxChars then text.Substring(0, maxChars) else text
-        else failwithf "File not found: %s" path
+        else failwithf "Prompt file not found: %s" path
 
-    let doc0 = ingestPromptText (Path.Combine(Runtime.AssemblyLocation, "docs", "eqlogic.txt")) defaultMaxDocChars
-    let doc1 = ingestPromptText (Path.Combine(Runtime.AssemblyLocation, "examples", "prompts", "SMT.txt")) defaultMaxDocChars
-    let doc2 = ingestPromptText (Path.Combine(Runtime.AssemblyLocation, "examples", "prompts", "Prover.txt")) defaultMaxDocChars
+    let doc0 = ingestPromptText (Path.Combine(Runtime.AssemblyLocation, "docs", "eqlogic.txt")) 0 defaultMaxDocChars
+    let doc1 = ingestPromptText (Path.Combine(Runtime.AssemblyLocation, "examples", "SMT.fsx")) 4 defaultMaxDocChars
+    let doc2 = ingestPromptText (Path.Combine(Runtime.AssemblyLocation, "examples", "Prover.fsx")) 4 defaultMaxDocChars
 
 type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj>>) =
     inherit ModelConversation(ModelConversation.ModelIds.Gemma3, 
