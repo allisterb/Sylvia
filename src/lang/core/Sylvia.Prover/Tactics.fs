@@ -24,7 +24,7 @@ module Tactics =
         let proof = t.Proof
         let theory = proof.Theory
         let expr = proof.Stmt
-        let stmt = <@@ (%%expr) = %%T.Expr @@>
+        let stmt = <@@ (%%expr:bool) = %%T.Expr @@>
         let p = Proof(stmt, theory, (expr |> ident |> Apply) :: proof.Steps, true) in 
         Theorem(stmt, p) |> Ident 
 
@@ -33,7 +33,7 @@ module Tactics =
         let proof = match rule with | Derive(_,p,_) -> p | _ ->  failwith "This rule is not a derived rule."
         let theory = proof.Theory
         let expr = proof.Stmt
-        let stmt = <@@ (%%expr) = %%T.Expr @@>
+        let stmt = <@@ (%%expr:bool) = %%T.Expr @@>
         let p = Proof(stmt, theory, (expr |> ident |> Apply) :: proof.Steps, true) in 
         Theorem(stmt, p) |> Ident 
 

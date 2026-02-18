@@ -65,7 +65,7 @@ module ProofParsers =
                             // Theorems (Methods that return Theorem)
                             let paramCount = theorem.Method.GetParameters().Length
                             parseArgs paramCount |>> fun args ->
-                                 let argsArray = args |> Array.map (fun e -> e |> expand_as<bool> :> obj)
+                                 let argsArray = args |> Array.map (fun e -> e |> expand_as<bool> |> Prop :> obj)
                                  match theorem.Method.Invoke(null, argsArray) with
                                  | :? Theorem as th -> taut th
                                  | _ -> failwith "Theorem method did not return a Theorem."

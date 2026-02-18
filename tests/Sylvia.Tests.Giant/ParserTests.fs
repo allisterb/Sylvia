@@ -21,6 +21,8 @@ module TestRules =
     [<DerivedRule("Test Derived Rule")>]
     let rule2 (e:Expr) = Admit(sprintf "rule2(%s)" (src e), fun _ -> e)
 
+    [<Theorem("Test Derived Rule")>]
+    let modus_ponens p q = PropCalculus.modus_ponens p q
     (* Module information members *)
 
     type private IModuleTypeLocator = interface end
@@ -32,6 +34,10 @@ open Helper
 type ParserTests() =
     inherit TestsRuntime()
 
+    let admissible = ProofModules.getModuleAdmissibleRules TestRules.Type
+    let derived = ProofModules.getModuleDerivedRules TestRules.Type
+    let theorems = ProofModules.getModuleTheorems TestRules.Type
+    
     [<Fact>]
     member this.``Can parse simple prop`` () =
         let p = parseProp<bool> "p ==> q"
@@ -60,6 +66,14 @@ type ParserTests() =
         let ra = ProofParsers.parseRuleApp<int> admissible derived [||] [||] "rule2 (p || q) |> apply_right"
         match ra with
         | Ok(ApplyRight(r)) when r.Name.Contains("rule2") && r.Name.Contains("p") && r.Name.Contains("q") -> ()
+        | _ -> failwithf "Unexpected RuleApplication structure: %A" ra
+
+    [<Fact>]
+    member this.``Can parse theorem use`` () =
+
+        let ra = ProofParsers.parseRuleApp<bool> admissible derived theorems [||] "modus_ponens p q |> apply_right"
+        match ra with
+        | Ok(ApplyRight(r)) when r.Name.Contains("Substitute") && r.Name.Contains("q") -> ()
         | _ -> failwithf "Unexpected RuleApplication structure: %A" ra
 
     [<Fact>]

@@ -7,12 +7,12 @@ open PredCalculus
 
 let p,q,r = boolvar3 "p" "q" "r"
 
-proof prop_calculus ((!!(!!p)) == p) [
-    apply collect
-    def_false p |> Commute |> apply
-    not_false |> apply
-    //not_false |> Truth |> apply
-    ]
+proof prop_calculus ((p * p) == p) [
+        apply_left golden_rule
+        apply right_assoc
+        idemp_or p |> Taut' |> apply_right
+        //apply commute 
+    ] 
 //ident_and_eq_all p p q
 proof prop_calculus ((p * q * r) == (p == q == r == (p + q) == (q + r) == (r + p) == (p + q + r))) [
     golden_rule' p q |> apply_left

@@ -113,13 +113,13 @@ module PropCalculus =
     [<Tactic("If A is a theorem then replace A with T.")>]
     let Taut :Theorem->Rule=  
         let ieq p = 
-            let stmt = <@@ ((%%p) = true) = (%%p) @@> in Theorem(stmt, Proof (stmt, prop_calculus, [apply_left commute; apply right_assoc], true)) |> Ident  
+            let stmt = <@@ ((%%p) = %T.Expr) = (%%p) @@> in Theorem(stmt, Proof (stmt, prop_calculus, [apply_left commute; apply right_assoc], true)) |> Ident  
         Tactics.Taut ieq
     
     /// If A = B is a theorem then replace (A = B) with T.
     [<Tactic("If A = B is a theorem then replace (A = B) with T.")>]
     let Taut' t = 
-        let ieq p = Theorem(<@@ ((%%p) = true) = (%%p) @@>, Proof (<@@ (%%p = true) = %%p @@>, prop_calculus, [apply_left commute; apply right_assoc], true)) |> Ident 
+        let ieq p = Theorem(<@@ ((%%p) = %T.Expr) = (%%p) @@>, Proof (<@@ (%%p = %T.Expr) = %%p @@>, prop_calculus, [apply_left commute; apply right_assoc], true)) |> Ident 
         Tactics.Taut' ieq t
             
     /// If A = B is a theorem then so is B = A.
