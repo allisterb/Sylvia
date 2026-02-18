@@ -20,6 +20,7 @@ public class ModelConversation : Runtime
     {
         this.modelId = modelId;
         this.embeddingModelId = embeddingModelId;
+        this.systemPrompts = systemPrompts;
         IKernelBuilder builder = Kernel.CreateBuilder();
         builder.Services.AddLogging(builder =>
             builder
@@ -41,7 +42,7 @@ public class ModelConversation : Runtime
             ToolCallBehavior = GeminiToolCallBehavior.AutoInvokeKernelFunctions,
             ThinkingConfig = new GeminiThinkingConfig()
             {
-                ThinkingBudget = 1024,
+                ThinkingBudget = 10240,
                 //ThinkingLevel = "medium",
                 IncludeThoughts = true,
             }
@@ -177,6 +178,18 @@ public class ModelConversation : Runtime
         }
         return response;
     }
+
+    public void ResetContext()
+    {
+        messages.Clear();
+        if (systemPrompts is not null)
+        {
+            foreach (var systemPrompt in systemPrompts)
+            {
+                messages.AddSystemMessage(systemPrompt);
+            }
+        }
+    }
     #endregion
 
     #region Fields
@@ -195,6 +208,8 @@ public class ModelConversation : Runtime
     public readonly GeminiPromptExecutionSettings promptExecutionSettings;
 
     protected List<IPlugin> plugins = new List<IPlugin>();
+
+    protected string[]? systemPrompts;
 
     public static IConfigurationRoot? config = null;
     #endregion

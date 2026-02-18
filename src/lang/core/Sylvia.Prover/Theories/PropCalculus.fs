@@ -109,44 +109,48 @@ module PropCalculus =
      
     (* Tactics for rules *)
 
-    /// The constant true is a theorem
-    let Truth = Tactics.Truth commute
-
-    /// If A is a theorem then so is A = true.
+    /// If A is a theorem then replace A with T.
+    [<Tactic("If A is a theorem then replace A with T.")>]
     let Taut :Theorem->Rule=  
         let ieq p = 
             let stmt = <@@ ((%%p) = true) = (%%p) @@> in Theorem(stmt, Proof (stmt, prop_calculus, [apply_left commute; apply right_assoc], true)) |> Ident  
         Tactics.Taut ieq
     
-    /// If A = B is a theorem then so is (A = B) = true.
+    /// If A = B is a theorem then replace (A = B) with T.
+    [<Tactic("If A = B is a theorem then replace (A = B) with T.")>]
     let Taut' t = 
         let ieq p = Theorem(<@@ ((%%p) = true) = (%%p) @@>, Proof (<@@ (%%p = true) = %%p @@>, prop_calculus, [apply_left commute; apply right_assoc], true)) |> Ident 
         Tactics.Taut' ieq t
-        
-    let Lemma :Theorem->RuleApplication = Taut >> Truth >> Apply
-    
-    let Lemma' = Taut' >> Truth >> Apply
-
+            
     /// If A = B is a theorem then so is B = A.
+    [<Tactic("If A = B is a theorem then so is B = A.")>]
     let Commute = Tactics.Commute commute
     
     /// If (L = R) = B is a theorem then so is (R = L) = B.
+    [<Tactic("If (L = R) = B is a theorem then so is (R = L) = B.")>]
     let CommuteL = Tactics.CommuteL commute
 
     /// If A = (L = R) is a theorem then so is A = (R = L).
+    [<Tactic("If A = (L = R) is a theorem then so is A = (R = L).")>]
     let CommuteR = Tactics.CommuteR commute
 
+    [<Tactic("If A1 = (A2 =  A3) is a theorem then so is (A1 = A2) = A3.")>]
     let LeftAssoc = Tactics.LeftAssoc right_assoc
 
-    let LeftAssocRecurseLeft = Tactics.LeftAssocRecurseLeft right_assoc
+    [<Tactic("If (A1 = (A2 = A3)) = A4 is a theorem then so is ((A1 = A2) = A3) = A4.")>]
+    let LeftAssocBranchLeft = Tactics.LeftAssocRecurseLeft right_assoc
 
-    let LeftAssocRecurseRight = Tactics.LeftAssocRecurseRight right_assoc
+    [<Tactic("If A1 = (A2 = (A3 = A4)) is a theorem then so is A1 = ((A2 = A3) = A4).")>]
+    let LeftAssocBranchRight = Tactics.LeftAssocRecurseRight right_assoc
 
+    [<Tactic(" If (A1 = A2) = A3 is a theorem then so is A1 = (A2 = A3).")>]
     let RightAssoc = Tactics.RightAssoc left_assoc
 
-    let RightAssocRecurseLeft = Tactics.RightAssocRecurseLeft left_assoc
+    [<Tactic("If ((A1 = A2) = A3) = A4 is a theorem then so is (A1 = (A2 = A3)) = A4.")>]
+    let RightAssocBranchLeft = Tactics.RightAssocRecurseLeft left_assoc
 
-    let RightAssocRecurseRight = Tactics.RightAssocRecurseRight left_assoc
+    [<Tactic("If A1 = ((A2 = A3) = A4) is a theorem then so is A1 = (A2 = (A3 = A4)).")>]
+    let RightAssocBranchRight = Tactics.RightAssocRecurseRight left_assoc
 
     (* Tactics for proofs *)
     
@@ -199,8 +203,7 @@ module PropCalculus =
     [<DerivedRule "--p = p">]
     let double_negation (p:Prop) = ident prop_calculus ((!!(!!p)) == p) [
          apply collect
-         def_false p |> Commute |> apply
-         not_false |> Truth |> apply
+         def_false p |> Commute |> apply         
     ]
 
     /// -p = q = p = -q
@@ -221,7 +224,7 @@ module PropCalculus =
         commute_eq (p == q) !!p |> apply_left
         commute_eq p q |> apply_left
         left_assoc |> apply_left
-        symm_not_eq p q |> Lemma'
+        symm_not_eq p q |> Taut' |> apply
     ]
 
     /// ((p = q) = (r = s)) = ((p = r) = (q = s))
@@ -632,7 +635,7 @@ module PropCalculus =
         right_assoc |> apply_left
         commute_eq_eq ( p == q ) r ( p + q ) ( p + r ) |> apply_left
         golden_rule' p q |> LeftAssoc |> apply_left
-        golden_rule' p r |> LeftAssoc |> LeftAssocRecurseLeft |> RightAssoc |> Commute |> apply_left 
+        golden_rule' p r |> LeftAssoc |> LeftAssocBranchLeft |> RightAssoc |> Commute |> apply_left 
         golden_rule' p q |> Commute |> apply_left
         left_assoc |> apply_left
     ]
@@ -651,7 +654,7 @@ module PropCalculus =
         def_true p |> Commute |> apply_left |> branch_left
         ident_eq q |> CommuteL |> apply_left
         commute |> apply_left
-        golden_rule' p q |> Commute |> CommuteL |> LeftAssocRecurseLeft |> apply_left
+        golden_rule' p q |> Commute |> CommuteL |> LeftAssocBranchLeft |> apply_left
     ]
 
     /// p ∧ q ∧ (r ∧ s) = p ∧ r ∧ (q ∧ s) 
@@ -717,7 +720,7 @@ module PropCalculus =
         distrib_not_and p q |> Commute |> apply_right |> branch_right
         symm_eq_not_eq p ( p * q ) |> Commute |> apply_right 
         commute |> apply_right
-        ident_implies_eq_and_eq p q |> Lemma'
+        ident_implies_eq_and_eq p q |> Taut' |> apply
     ]
 
     /// p ⇒ (q == r) = ((p ∧ q) = (p ∧ r))
@@ -792,7 +795,7 @@ module PropCalculus =
     let case_analysis_2 p r = ident prop_calculus ((p ==> r) * (-p ==> r) == r) [
         case_analysis_1 p -p r |> apply
         excluded_middle |> apply_left |> branch_left
-        ident_conseq_true r |> Lemma'
+        ident_conseq_true r |> Taut' |> apply
     ]
 
     /// (p ⇒ q) ∧ (q ⇒ p) = (p == q)
@@ -848,7 +851,7 @@ module PropCalculus =
     [<Theorem "false ⇒ p">]
     let conseq_false (p:Prop) = theorem prop_calculus (F ==> p) [
         def_implies |> apply
-        ident_or p |> CommuteL |> Lemma'
+        ident_or p |> CommuteL |> Taut' |> apply
     ]
 
     /// (p ∧ q) ⇒ p
@@ -857,7 +860,7 @@ module PropCalculus =
         ident_eq ( ((p * q ) ==> p) ) |> apply
         def_implies |> apply
         commute |> apply_left
-        absorb_or p q |> Lemma'
+        absorb_or p q |> Taut' |> apply
     ]
     
     /// p ⇒ p ∨ q 
@@ -899,14 +902,14 @@ module PropCalculus =
     [<Theorem "(p ∨ (q ∧ r)) ⇒ (p ∨ q)">]
     let weaken_or_and (p:Prop) q r = theorem prop_calculus ( (p + (q * r)) ==> (p + q) ) [
         distrib |> apply_left
-        strengthen_and ( p + q ) ( p + r ) |> Lemma
+        strengthen_and ( p + q ) ( p + r ) |> Taut |> apply
     ]
 
     /// (p ∧ q) ⇒ (p ∧ (q ∨ r))
     [<Theorem "(p ∧ q) ⇒ (p ∧ (q ∨ r))">]
     let weaken_and_and_or p (q:Prop) (r:Prop) = theorem prop_calculus ((p * q)  ==> (p * (q + r)) ) [
         distrib |> apply_right
-        weaken_or ( p * q ) ( p * r ) |> Lemma
+        weaken_or ( p * q ) ( p * r ) |> Taut |> apply
     ]
 
     /// p ∧ (p ⇒ q) ⇒ q
@@ -914,13 +917,13 @@ module PropCalculus =
     let modus_ponens p q = theorem prop_calculus ( p * (p ==> q) ==> q ) [
         ident_and_implies p q |> apply_left
         commute_and p q |> apply
-        strengthen_and q p |> Lemma
+        strengthen_and q p |> Taut |> apply
     ]
     /// (p ⇒ q) ∧ (q ⇒ p) ⇒ (p == q)
     [<Theorem "(p ⇒ q) ∧ (q ⇒ p) ⇒ (p == q)">]
     let antisymm_implies p q = theorem prop_calculus ((p ==> q) * (q ==> p) ==> (p == q)) [
         mutual_implication' p q |> apply_left  
-        reflex_implies ( p == q ) |> Lemma
+        reflex_implies ( p == q ) |> Taut |> apply
     ]
 
     /// (p ⇒ q) ∧ (q ⇒ r) ⇒ (p ⇒ r)
@@ -935,7 +938,7 @@ module PropCalculus =
         commute |> apply_left
         commute |> apply_left |> branch_left
         right_assoc |> apply_left
-        strengthen_and r ( q * p ) |> Lemma
+        strengthen_and r ( q * p ) |> Taut |> apply
     ]
 
     /// (p == q) ∧ (q ⇒ r) ⇒ (p ⇒ r)
@@ -956,7 +959,7 @@ module PropCalculus =
         ident_and_implies q r |> apply_left
         left_assoc |> apply_left
         commute |> apply_left
-        strengthen_and r ( p * q ) |> Lemma
+        strengthen_and r ( p * q ) |> Taut |> apply
     ]
 
 
@@ -984,7 +987,7 @@ module PropCalculus =
         collect_or_eq r ( p + q ) q |> apply_right
         commute |> apply_right
         def_implies' p q |> Commute |> apply_right
-        weaken_or ( p ==> q ) r |> Lemma
+        weaken_or ( p ==> q ) r |> Taut |> apply
     ]        
     
     (* Module information members *)

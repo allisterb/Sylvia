@@ -17,6 +17,9 @@ type ProverPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:
     let axioms = new Dictionary<string, string array>()
     let admissibleRules = new Dictionary<string, ModuleAdmissibleRule array>()
     let derivedRules = new Dictionary<string, ModuleDerivedRule array>()    
+    let theorems = new Dictionary<string, ModuleTheorem array>()    
+    let tactics = new Dictionary<string, ModuleTactic array>()    
+    
     do
         Proof.LogLevel <- 0
         theories.Add("prop_calculus", PropCalculus.prop_calculus)
@@ -58,7 +61,7 @@ type ProverPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:
     [<KernelFunction("proof")>]
     [<Description("Create a proof of a theorem using the specified theory.")>]
     member x.Proof(theory:string, theorem:string, ruleApplications: string array, id:string, logger:ILogger | null) : string =
-       match parseProof theories admissibleRules derivedRules theory theorem ruleApplications with
+       match parseProof theories admissibleRules derivedRules theorems tactics theory theorem ruleApplications with
        | Ok proof -> 
               proofs.Add(id, proof)
               sprintf "Proof created with ID: %s.\n Proof log: %s" id proof.Log |> log_kernel_func_ret logger

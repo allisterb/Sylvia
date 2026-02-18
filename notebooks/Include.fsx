@@ -144,7 +144,7 @@ Formatter.Register<LLMProof>(
 
         let leftPanels =
             "<div id=\"" + tabIntId + "\" class=\"llmproof-left-tabpanel active\">" + "<h2>LLM Intuition</h2>" + intuitionHtml + "</div>" +
-            (if hasThoughts then "<div id=\"" + tabThoughtsId + "\" class=\"llmproof-left-tabpanel\"><h2>LLM Thoughts</h2>" + thoughtsHtml + "</div>" else "")
+            (if hasThoughts then "<div id=\"" + tabThoughtsId + "\" class=\"llmproof-left-tabpanel\"><h2>LLM Thinking</h2>" + thoughtsHtml + "</div>" else "")
 
         let leftHtml =
             "<div class=\"llmproof-left\">" +

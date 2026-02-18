@@ -247,6 +247,7 @@ module TermParsers =
         opp.AddOperator(InfixOperator("&&", ws, 4, Associativity.Left, fun l r -> _and (expand_as<bool> l) (expand_as<bool> r)))
         opp.AddOperator(InfixOperator("&&&", ws, 4, Associativity.Left, fun l r -> _and (expand_as<bool> l) (expand_as<bool> r)))
         opp.AddOperator(PrefixOperator("-", ws, 5, true, fun l -> _not (expand_as<bool> l)))
+        opp.AddOperator(PrefixOperator("not", ws, 5, true, fun l -> _not (expand_as<bool> l)))
         exprRef := opp.ExpressionParser
         expr
 

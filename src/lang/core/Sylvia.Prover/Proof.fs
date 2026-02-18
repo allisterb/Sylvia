@@ -627,8 +627,39 @@ with
           let m = if x.Parameters.Length = 0 then x.Method.Name else x.Method.Name + " " +  (x.Parameters |> Array.map(fun p -> p.Name |> function | NonNull _p -> _p |  _ -> "") |> String.concat " ") 
           $"Rule: {m}. Description: {x.Description}."
 
+type ModuleTheorem = {
+        Name: string
+        Description: string
+        Parameters: ParameterInfo array
+        Method: MethodInfo
+    }
+    with
+        override x.ToString() : string =
+            let m = if x.Parameters.Length = 0 then x.Method.Name else x.Method.Name + " " + (x.Parameters |> Array.map(fun p -> p.Name |> function | NonNull _p -> _p | _ -> "") |> String.concat " ")
+            $"Theorem: {m}. Description: {x.Description}."
+
+type ModuleTactic = {
+    Name: string
+    Description: string
+    Method: MethodInfo
+}
+with
+    override x.ToString() : string =
+        $"Tactic: {x.Name}. Description: {x.Description}."
 
 module ProofModules =
+
+    let isTheoremTactic(m:MethodInfo) =
+            if m.GetParameters().Length = 1 then
+                let p = m.GetParameters()[0]
+                if p.ParameterType = typeof<Theorem> then true else false
+            else false
+
+    let isRuleTactic(m:MethodInfo) =                        
+            if m.GetParameters().Length = 1 then
+                let p = m.GetParameters()[0]
+                if p.ParameterType = typeof<Rule> then true else false
+            else false
 
     let getModuleMethods (moduleType: Type) (methodType: Type) = 
         moduleType.GetMethods() |> Array.filter(fun m -> m.IsPublic && m.IsStatic &&  not (m.Name.StartsWith("get_")) && m.ReturnType = methodType)
@@ -651,11 +682,31 @@ module ProofModules =
             Property=p
         }) 
 
-    let getModuleDerivedRules(moduleType:Type) =
+    let getModuleDerivedRules(moduleType:Type) : ModuleDerivedRule array=
         getModuleMethods moduleType typeof<Rule> |> Array.map(fun m -> 
         {
             Name= m.Name
             Description = match m.GetCustomAttribute(typeof<DerivedRuleAttribute>, true) with | NonNull a -> (a :?> DerivedRuleAttribute).Description | Null -> "" 
+            Parameters = m.GetParameters()
+            Method = m
+        }) 
+
+    let getModuleTactics(moduleType:Type) : ModuleTactic array=
+        
+        let isTactic m = isTheoremTactic m || isRuleTactic m
+
+        getModuleMethods moduleType typeof<Rule> |> Array.filter isTactic |> Array.map(fun m -> 
+        {
+            Name= m.Name
+            Description = match m.GetCustomAttribute(typeof<TacticAttribute>, true) with | NonNull a -> (a :?> TacticAttribute).Description | Null -> "" 
+            Method = m
+        }) 
+
+    let getModuleTheorems(moduleType:Type) : ModuleTheorem array=
+        getModuleMethods moduleType typeof<Theorem> |> Array.map(fun m -> 
+        {
+            Name= m.Name
+            Description = match m.GetCustomAttribute(typeof<TheoremAttribute>, true) with | NonNull a -> (a :?> TheoremAttribute).Description | Null -> "" 
             Parameters = m.GetParameters()
             Method = m
         }) 
