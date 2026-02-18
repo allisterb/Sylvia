@@ -92,7 +92,7 @@ module TermParsers =
             (identifierStr .>>. opt (parens identifierStr)
             >>= fun (id, argOpt) ->
                 match id with
-                | "true" | "false" -> fail "reserved"
+                | "true" | "false" -> fail "The identifiers 'true' and 'false' cannot be used as symbol names."
                 | _ ->
                     match argOpt with
                     | Some arg ->
@@ -122,8 +122,7 @@ module TermParsers =
         // 3: ^
         // 2: * /
         // 1: + -
-        
-       
+               
         opp.AddOperator(InfixOperator("+", ws, 1, Associativity.Left, fun l r -> _add (expand_as<real> l) (expand_as<real> r)))
         opp.AddOperator(InfixOperator("-", ws, 1, Associativity.Left, fun l r -> _sub (expand_as<real> l) (expand_as<real> r)))
         opp.AddOperator(InfixOperator("*", ws, 2, Associativity.Left, fun l r -> _mul (expand_as<real> l) (expand_as<real> r)))
@@ -183,8 +182,8 @@ module TermParsers =
                         Expr.Application(Expr.Var(funcVar), Expr.Var(argVar))
                     | None ->
                         match id with
-                        | "true"  | "T" -> T.Expr 
-                        | "false" | "F" -> F.Expr
+                        | "T" | "true" -> T.Expr
+                        | "F" | "false" -> F.Expr 
                         | _ -> Expr.Var(Var(id, typeof<bool>)))
 
             let quantifierParser op =
@@ -236,17 +235,11 @@ module TermParsers =
         // 1: NOTEQUALS (!=)
         // 1: EQUALS (==)
                 
-        opp.AddOperator(InfixOperator("==", ws, 1, Associativity.Left, fun l r -> _equal (expand_as<bool> l) (expand_as<bool> r)))        
+        opp.AddOperator(InfixOperator("=", ws, 1, Associativity.Left, fun l r -> _equal (expand_as<bool> l) (expand_as<bool> r)))                
         opp.AddOperator(InfixOperator("!=", ws, 1, Associativity.Left, fun l r -> _notequal (expand_as<bool> l) (expand_as<bool> r)))
-        opp.AddOperator(InfixOperator("<>", ws, 1, Associativity.Left, fun l r -> _notequal (expand_as<bool> l) (expand_as<bool> r)))
-        opp.AddOperator(InfixOperator("==>", ws, 2, Associativity.Right, fun l r -> _implies (expand_as<bool> l) (expand_as<bool> r)))
-        opp.AddOperator(InfixOperator("+", ws, 3, Associativity.Left, fun l r -> _or (expand_as<bool> l) (expand_as<bool> r)))      
-        opp.AddOperator(InfixOperator("||", ws, 3, Associativity.Left, fun l r -> _or (expand_as<bool> l) (expand_as<bool> r)))     
-        opp.AddOperator(InfixOperator("|||", ws, 3, Associativity.Left, fun l r -> _or (expand_as<bool> l) (expand_as<bool> r))) 
-        opp.AddOperator(InfixOperator("*", ws, 4, Associativity.Left, fun l r -> _and (expand_as<bool> l) (expand_as<bool> r)))
-        opp.AddOperator(InfixOperator("&&", ws, 4, Associativity.Left, fun l r -> _and (expand_as<bool> l) (expand_as<bool> r)))
-        opp.AddOperator(InfixOperator("&&&", ws, 4, Associativity.Left, fun l r -> _and (expand_as<bool> l) (expand_as<bool> r)))
-        opp.AddOperator(PrefixOperator("-", ws, 5, true, fun l -> _not (expand_as<bool> l)))
+        opp.AddOperator(InfixOperator("==>", ws, 2, Associativity.Right, fun l r -> _implies (expand_as<bool> l) (expand_as<bool> r)))        
+        opp.AddOperator(InfixOperator("||", ws, 3, Associativity.Left, fun l r -> _or (expand_as<bool> l) (expand_as<bool> r)))                     
+        opp.AddOperator(InfixOperator("&&", ws, 4, Associativity.Left, fun l r -> _and (expand_as<bool> l) (expand_as<bool> r)))                
         opp.AddOperator(PrefixOperator("not", ws, 5, true, fun l -> _not (expand_as<bool> l)))
         exprRef := opp.ExpressionParser
         expr

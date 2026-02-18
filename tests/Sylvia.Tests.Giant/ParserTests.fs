@@ -19,7 +19,7 @@ module TestRules =
     let rule1 = Admit("rule1", id)
 
     [<DerivedRule("Test Derived Rule")>]
-    let rule2 (e:Expr) = Admit(sprintf "rule2(%s)" (src e), fun _ -> e)
+    let rule2 (p:Prop) = Admit(sprintf "rule2(%s)" (src p.Expr), fun _ -> p.Expr)
 
     [<Theorem("Test Derived Rule")>]
     let modus_ponens p q = PropCalculus.modus_ponens p q

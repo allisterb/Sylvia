@@ -5,6 +5,12 @@
     <LangVersion>Preview</LangVersion>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>FS0049</NoWarn>
+    <SignAssembly>True</SignAssembly>
+    <Product>Sylvia</Product>
+    <Authors>allisterb</Authors>
+    <PackageProjectUrl>https://github.com/allisterb/Sylvia</PackageProjectUrl>
+    <AssemblyVersion>0.1.0</AssemblyVersion>
+    <FileVersion>0.1.0</FileVersion>
   </PropertyGroup>
 
 

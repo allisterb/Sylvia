@@ -5,56 +5,56 @@ open Sylvia.GenAI.Giant.Examples
 (* GIANT Prover function calling examples begin here *)
 
  // true = (p = p)
-proof "prop_calculus" "T == (p == p)" []
+proof "prop_calculus" "T = (p = p)" []
 
  // (p = q) = r = p = (q = r)
-proof "prop_calculus" "(((p == q) == r) == (p == (q == r)))" []
+proof "prop_calculus" "(((p = q) = r) = (p = (q = r)))" []
 
  // p ∨ q = q ∨ p
-proof "prop_calculus" "((p + q) == (q + p))" []
+proof "prop_calculus" "((p || q) = (q || p))" []
 
  // p ∨ (q = r) = (p ∨ q) = (p ∨ r)
-proof "prop_calculus" "((p + (q == r)) == ((p + q) == (p + r)))" []
+proof "prop_calculus" "((p || (q = r)) = ((p || q) = (p || r)))" []
 
  // (p ∨ p) = p
-proof "prop_calculus" "((p + p) == p)" []
+proof "prop_calculus" "((p || p) = p)" []
 
  // (p = true) = p
-proof "prop_calculus" "((p == T) == p)" [
+proof "prop_calculus" "((p = T) = p)" [
     "commute |> apply_left"
     "right_assoc |> apply"
 ]
 
  // p = q = q = p
-proof "prop_calculus" "((p == q) == (q == p))" [
+proof "prop_calculus" "((p = q) = (q = p))" [
     "left_assoc |> apply"
 ]
 
  // p = (q = r) = p = q = r
-proof "prop_calculus" "((p == (q == r)) == ((p == q) == r))" [
+proof "prop_calculus" "((p = (q = r)) = ((p = q) = r))" [
     "right_assoc |> apply_right"
 ]
 
  // p <> q = ¬(p = q)
-proof "prop_calculus" "((p != q) == (-(p == q)))" [
+proof "prop_calculus" "((p != q) = (not (p = q)))" [
     "right_assoc |> apply"
 ]
 
  // ¬(p = q) = ¬p = q
-proof "prop_calculus" "((-(p == q)) == (-p == q))" [
+proof "prop_calculus" "((not (p = q)) = (not p = q))" [
     "right_assoc |> apply"
 ]
 
  // p ∨ ¬p = true
-proof "prop_calculus" "((p + (-p)) == T)" [
-    "ident_eq (p + (-p)) |> apply"
+proof "prop_calculus" "((p || (not p)) = T)" [
+    "ident_eq (p || (not p)) |> apply"
 ]
 
  // p ∧ q = ((p = q) = (p ∨ q))
-proof "prop_calculus" "((p * q) == (p == q == (p + q)))" []
+proof "prop_calculus" "((p && q) = (p = q = (p || q)))" []
 
  // p ∨ (p ∧ q) = p
-proof "prop_calculus" "(p + (p * q) == p)" [
+proof "prop_calculus" "(p || (p && q) = p)" [
     "golden_rule |> apply_right |> branch_left"    
     "distrib |> apply_left"
     "left_assoc_or p p q |> apply_left"
@@ -64,7 +64,7 @@ proof "prop_calculus" "(p + (p * q) == p)" [
 ]
 
  // p ∧ q = q ∧ p
-proof "prop_calculus" "((p * q) == (q * p))" [
+proof "prop_calculus" "((p && q) = (q && p))" [
     "golden_rule' p q |> apply_left"
     "golden_rule' q p |> apply_right"
     "commute_or q p |> apply_right"

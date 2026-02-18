@@ -71,6 +71,8 @@ module Examples =
     let theories = new Dictionary<string, Theory>()
     let admissibleRules = new Dictionary<string, ModuleAdmissibleRule array>()
     let derivedRules = new Dictionary<string, ModuleDerivedRule array>()    
+    let theorems = new Dictionary<string, ModuleTheorem array>()    
+    let tactics = new Dictionary<string, ModuleTactic array>()    
     do
         theories.Add("prop_calculus", PropCalculus.prop_calculus)
         theories.Add("pred_calculus", PredCalculus.pred_calculus)
@@ -78,8 +80,18 @@ module Examples =
         admissibleRules.Add("pred_calculus", ProofModules.getModuleAdmissibleRules(PredCalculus.Type))
         derivedRules.Add("prop_calculus", ProofModules.getModuleDerivedRules(PropCalculus.Type))
         derivedRules.Add("pred_calculus", ProofModules.getModuleDerivedRules(PredCalculus.Type))
+        theorems.Add("prop_calculus", ProofModules.getModuleTheorems(PropCalculus.Type))
+        theorems.Add("pred_calculus", ProofModules.getModuleTheorems(PredCalculus.Type))
+        tactics.Add("prop_calculus", ProofModules.getModuleTactics(PropCalculus.Type))
+        tactics.Add("pred_calculus", ProofModules.getModuleTactics(PredCalculus.Type))
 
     let proof (theory:string) (theorem:string) (ruleApplications: string list) =
-        match parseProof theories admissibleRules derivedRules theory theorem (List.toArray ruleApplications) with
+        let proofParser theory= 
+            match theory with        
+            | "prop_calculus" 
+            | "pred_calculus" -> parseProof<bool>
+            | _ -> failwithf "%s theory is not supported by the proof parser" theory
+        let parse = proofParser theory
+        match parse theories admissibleRules derivedRules theorems tactics theory theorem (List.toArray ruleApplications) with
         | Ok proof -> proof 
         | Error error -> failwith error

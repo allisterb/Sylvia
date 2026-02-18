@@ -3,6 +3,7 @@ namespace Sylvia
 open System.Collections.Generic
 open System.Reflection
 
+open FSharp.Quotations
 open FParsec
 
 open TermParsers
@@ -20,6 +21,19 @@ module ProofParsers =
     let private isMathChar = function | '\u03C0' | '\u221E' | '\u29DD' -> true | _ -> false
     let private isIdentifierFirstChar c = isLetter c || isMathChar c
     let private isIdentifierChar c = isLetter c || isDigit c || isMathChar c || c = '_' || c = '\''
+        
+    let private getArgTerm (e:Expr) : obj=
+         if e.Type = typeof<int> then e |> expand_as<int> :> obj
+         elif e.Type = typeof<real> then e |> expand_as<real> :> obj
+         elif e.Type = typeof<bool> then e |> expand_as<bool> :> obj
+         else failwithf "type %A not supported" e.Type
+
+    let private getArgTerm' (e:Expr) : obj=
+         if e.Type = typeof<int> then e |> expand_as<int> |> Scalar<int> :> obj
+         elif e.Type = typeof<real> then e |> expand_as<real> |> Scalar<real> :> obj
+         elif e.Type = typeof<bool> then e |> expand_as<bool> |> Prop :> obj
+         else failwithf "type %A not supported" e.Type
+
 
     // -------------------------------------------------------------------------
     // RuleApplication Parser
@@ -55,7 +69,7 @@ module ProofParsers =
                         // Derived rules (Methods)
                         let paramCount = rule.Method.GetParameters().Length
                         parseArgs paramCount |>> fun args ->
-                             let argsArray = args |> Array.map (fun e -> e |> expand_as<bool> :> obj)
+                             let argsArray = args |> Array.map getArgTerm'
                              match rule.Method.Invoke(null, argsArray) with
                              | :? Rule as r -> r
                              | _ -> failwith "Derived rule method did not return a Rule."
@@ -65,7 +79,7 @@ module ProofParsers =
                             // Theorems (Methods that return Theorem)
                             let paramCount = theorem.Method.GetParameters().Length
                             parseArgs paramCount |>> fun args ->
-                                 let argsArray = args |> Array.map (fun e -> e |> expand_as<bool> |> Prop :> obj)
+                                 let argsArray = args |> Array.map getArgTerm'
                                  match theorem.Method.Invoke(null, argsArray) with
                                  | :? Theorem as th -> taut th
                                  | _ -> failwith "Theorem method did not return a Theorem."
@@ -78,8 +92,7 @@ module ProofParsers =
                 | Some tactic ->
                     // Tactics are functions that take a rule and return a rule
                     // We need to invoke them with appropriate arguments
-                    preturn (fun rule -> tactic.Method.Invoke(null, [|rule|]) :?> Rule)
-                        
+                    preturn (fun rule -> match tactic.Method.Invoke(null, [|rule|]) with | NonNull r -> r :?> Rule | Null -> failwith "Could not retrieve tactic method")                        
                 | None -> fail (sprintf "Unknown tactic: %s" tacticName)
         
         // Pipeline operations
@@ -107,60 +120,46 @@ module ProofParsers =
         let pipe = str_ws "|>"
 
         let rec parseTactics currentRule = (pipe >>. parseRuleTactic >>= fun tacticOp -> parseTactics (tacticOp currentRule)) <|> preturn currentRule
-        // Full pipeline: Rule [ |> tactic [ |> tactic ... ] ] [ |> op1 [ |> op2 ... ] ]
+        // Full pipeline: Rule | Theorem [ |> tactic [ |> tactic ... ] ] [ |> op1 [ |> op2 ... ] ]
         parseRuleStart >>= fun rule ->     
-            (pipe >>. opRuleToApp >>= fun firstOp ->
-            let firstApp = firstOp rule
-            let rec restApp currentApp =
-                (pipe >>. opAppToApp >>= fun nextOp -> restApp (nextOp currentApp))
-                <|> preturn currentApp
-            restApp firstApp
+            (
+                pipe >>. opRuleToApp >>= fun firstOp ->
+                let firstApp = firstOp rule
+                let rec restApp currentApp =
+                    (pipe >>. opAppToApp >>= fun nextOp -> restApp (nextOp currentApp))
+                    <|> preturn currentApp
+                restApp firstApp
             )
             <|>
-             (
-             // Try to parse tactics first                          
-             parseTactics rule >>= fun ruleAfterTactics ->
-                 // Then try to parse rule operations
-                 (pipe >>. opRuleToApp >>= fun firstOp ->
-                    let firstApp = firstOp ruleAfterTactics
-                    let rec restApp currentApp =
-                        (pipe >>. opAppToApp >>= fun nextOp -> restApp (nextOp currentApp))
-                        <|> preturn currentApp
-                    restApp firstApp
-                 )                
-                <|> preturn (RuleApplication.Apply ruleAfterTactics)
-             )
+            (
+                // Try to parse tactics first                          
+                parseTactics rule >>= fun ruleAfterTactics ->
+                    // Then try to parse rule operations
+                    (pipe >>. opRuleToApp >>= fun firstOp ->
+                       let firstApp = firstOp ruleAfterTactics
+                       let rec restApp currentApp =
+                           (pipe >>. opAppToApp >>= fun nextOp -> restApp (nextOp currentApp))
+                           <|> preturn currentApp
+                       restApp firstApp
+                    )                
+                    <|> preturn (RuleApplication.Apply ruleAfterTactics)
+            )
              
-
     let parseRuleApp<'t when 't: equality and 't:comparison> (admissible: ModuleAdmissibleRule[]) (derived: ModuleDerivedRule[]) (theorems: ModuleTheorem[]) (tactics: ModuleTactic[]) text =
         match run (ruleApplicationParser<'t> admissible derived theorems tactics) text with
         | Success(result, _, _) -> Result.Ok result
-        | Failure(errorMsg, _, _) -> sprintf "Failed to parse RuleApplication: %s" errorMsg |> Result.Error
+        | Failure(errorMsg, _, _) -> sprintf "Failed to parse rule application: %s" errorMsg |> Result.Error
 
-    let parseProof (theories:Dictionary<string, Theory>) (admissibleRules: Dictionary<string, ModuleAdmissibleRule array>) (derivedRules: Dictionary<string, ModuleDerivedRule array>) 
+    let parseProof<'t when 't: equality and 't:comparison> (theories:Dictionary<string, Theory>) (admissibleRules: Dictionary<string, ModuleAdmissibleRule array>) (derivedRules: Dictionary<string, ModuleDerivedRule array>) 
         (theorems: Dictionary<string, ModuleTheorem array>) (tactics: Dictionary<string, ModuleTactic array>)
         (theory:string) (theorem:string) (ruleApplications: string array) =      
-        let parse theory theorem =
-            match theory with
-            | "prop_calculus"
-            | "pred_calculus" -> parseProp<bool> theorem
-            | _ -> failwith "not implemented"
-
-        let parseRuleApp theory ra =
-            match theory with
-            | "prop_calculus"
-            | "pred_calculus" -> 
-                let theoremsArray = if theorems.ContainsKey theory then theorems[theory] else [||]
-                let tacticsArray = if tactics.ContainsKey theory then tactics[theory] else [||]
-                parseRuleApp<bool> admissibleRules[theory] derivedRules[theory] theoremsArray tacticsArray ra
-            | _ -> failwith "not implemented"
-
-        match parse theory theorem with
+                
+        match parseProp<'t> theorem with
         | Result.Ok t ->
             if not (theories.ContainsKey theory) then
                 sprintf "Theory %A does not exist" theory |> Result.Error
             else
-                let ra = ruleApplications |> Array.map (parseRuleApp theory)
+                let ra = ruleApplications |> Array.map (parseRuleApp<'t> admissibleRules[theory] derivedRules[theory] theorems[theory] tactics[theory])
                 if ra |> Array.exists(fun r -> r.IsError) then            
                     ra 
                     |> Array.choose (function Result.Error e -> Some e | _ -> None) 
