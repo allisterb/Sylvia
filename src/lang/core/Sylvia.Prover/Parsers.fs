@@ -147,9 +147,11 @@ module ProofParsers =
             )
              
     let parseRuleApp<'t when 't: equality and 't:comparison> (admissible: ModuleAdmissibleRule[]) (derived: ModuleDerivedRule[]) (theorems: ModuleTheorem[]) (tactics: ModuleTactic[]) text =
-        match run (ruleApplicationParser<'t> admissible derived theorems tactics) text with
-        | Success(result, _, _) -> Result.Ok result
-        | Failure(errorMsg, _, _) -> sprintf "Failed to parse rule application: %s" errorMsg |> Result.Error
+        try
+            match run (ruleApplicationParser<'t> admissible derived theorems tactics) text with
+            | Success(result, _, _) -> Result.Ok result
+            | Failure(errorMsg, _, _) -> sprintf "Failed to parse rule application: %s" errorMsg |> Result.Error
+        with | exn -> Result.Error exn.Message
 
     let parseProof<'t when 't: equality and 't:comparison> (theories:Dictionary<string, Theory>) (admissibleRules: Dictionary<string, ModuleAdmissibleRule array>) (derivedRules: Dictionary<string, ModuleDerivedRule array>) 
         (theorems: Dictionary<string, ModuleTheorem array>) (tactics: Dictionary<string, ModuleTactic array>)
@@ -170,4 +172,4 @@ module ProofParsers =
                 else
                     let p = proof theories[theory] t (ra |> Array.choose (function Result.Ok r -> Some r | _ -> None) |> Array.toList) 
                     Result.Ok p                
-        | Result.Error error -> sprintf "%s" error |> Result.Error
+        | Result.Error error -> Result.Error error

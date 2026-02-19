@@ -42,7 +42,7 @@ public class ModelConversation : Runtime
             ToolCallBehavior = GeminiToolCallBehavior.AutoInvokeKernelFunctions,
             ThinkingConfig = new GeminiThinkingConfig()
             {
-                ThinkingBudget = 10240,
+                ThinkingBudget = 1024,
                 //ThinkingLevel = "medium",
                 IncludeThoughts = true,
             }
@@ -218,6 +218,7 @@ public class ModelConversation : Runtime
     public record ModelIds
     {
         public const string Gemma3 = "gemini-3-pro-preview";
+        public const string Gemma31 = "gemini-3.1-pro-preview-customtools";
     }
     #endregion
 }

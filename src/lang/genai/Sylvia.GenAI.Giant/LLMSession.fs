@@ -27,7 +27,7 @@ module LLMSessionHelpers =
     let doc2 = ingestPromptText (Path.Combine(Runtime.AssemblyLocation, "examples", "Prover.fsx")) 4 defaultMaxDocChars
 
 type LLMSession internal (sharedState: Dictionary<string, Dictionary<string, obj>>) =
-    inherit ModelConversation(ModelConversation.ModelIds.Gemma3, 
+    inherit ModelConversation(ModelConversation.ModelIds.Gemma31, 
     systemPrompts=Array.append LLMSession.SystemPrompts [|LLMSessionHelpers.doc0; LLMSessionHelpers.doc1; LLMSessionHelpers.doc2|], 
     plugins=[|
         new SymbolsPlugin(sharedState)

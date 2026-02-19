@@ -249,9 +249,11 @@ module TermParsers =
         boolExprParser<'t> .>> eof |>> (expand_as<bool> >> Prop)
 
     let parseProp<'t when 't: equality and 't : comparison> text = 
-        match run propExprParser<'t> text with
-        | Success(result, _, _) -> Result.Ok result
-        | Failure(errorMsg, _, _) -> sprintf "Failed to parse Prop: %s" errorMsg |> Result.Error
+        try
+            match run propExprParser<'t> text with
+            | Success(result, _, _) -> Result.Ok result
+            | Failure(errorMsg, _, _) -> sprintf "Failed to parse Prop: %s" errorMsg |> Result.Error
+        with | exn -> Result.Error exn.Message
 
     let parseBoolExpr<'t when 't: equality and 't : comparison> text = 
         match run boolExprParser<'t> text with
