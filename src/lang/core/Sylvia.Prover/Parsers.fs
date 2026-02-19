@@ -49,6 +49,7 @@ module ProofParsers =
         // Parse arguments for a rule/theorem (0 or more expressions)
         let parseArgs (paramCount: int) =
              parray paramCount boolExprParser<'t>
+             <|>  parray paramCount (parens boolExprParser<'t>)
 
         let taut :Theorem->Rule=  
             let ieq p = 

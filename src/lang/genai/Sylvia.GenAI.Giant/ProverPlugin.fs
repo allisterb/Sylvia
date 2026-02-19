@@ -34,6 +34,10 @@ type ProverPlugin(sharedState: Dictionary<string, Dictionary<string, obj>>, ?id:
         admissibleRules.Add("pred_calculus", ProofModules.getModuleAdmissibleRules(PredCalculus.Type))
         derivedRules.Add("prop_calculus", ProofModules.getModuleDerivedRules(PropCalculus.Type))
         derivedRules.Add("pred_calculus", ProofModules.getModuleDerivedRules(PredCalculus.Type))
+        theorems.Add("prop_calculus", ProofModules.getModuleTheorems(PropCalculus.Type))
+        theorems.Add("pred_calculus", ProofModules.getModuleTheorems(PredCalculus.Type))
+        tactics.Add("prop_calculus", ProofModules.getModuleTactics(PropCalculus.Type))
+        tactics.Add("pred_calculus", ProofModules.getModuleTactics(PredCalculus.Type))
         this.State.Add("Proofs", proofs)
       
     member x.Proofs = proofs

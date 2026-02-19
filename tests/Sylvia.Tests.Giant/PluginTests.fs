@@ -53,3 +53,9 @@ type PluginTests() =
         let r1 = llm.Solve "Find a solution to the integer formula x > 5 and x <> 6 and x < 7" 
         Assert.NotEmpty llm.SharedState 
         Assert.True r1.Model.IsSome
+
+    [<Fact>]
+    member this.``Doesnt throw``() =
+        let p,q,r = boolvar3 "p" "q" "r"
+        let k = PropCalculus.ident_and_eq_all p p q 
+        Assert.NotNull k

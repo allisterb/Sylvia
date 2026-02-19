@@ -510,7 +510,7 @@ module LogicalRules =
                 | Argument(_, c, _) -> c
                 | _ -> failwithf "The theorem %s is not a logical implication." (p.Stmt |> p.Theory.PrintFormula)
             function
-            | l when sequal l con -> <@@ true @@>
+            | l when sequal l con -> T.Expr.Raw
             | expr -> traverse expr (subst p) 
         if not p.Complete then 
                 failwithf "The proof of %A is not complete" (p.Stmt |> p.Theory.PrintFormula)  
