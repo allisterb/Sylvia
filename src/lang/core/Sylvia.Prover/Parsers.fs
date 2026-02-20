@@ -47,10 +47,8 @@ module ProofParsers =
         let upperIdentifier = many1Satisfy2L (fun c -> isLetter c && System.Char.IsUpper c) isIdentifierChar "tactic" .>> ws
 
         // Parse arguments for a rule/theorem (0 or more expressions)
-        let parseArgs (paramCount: int) =
-             parray paramCount boolExprParser<'t>
-             <|>  parray paramCount (parens boolExprParser<'t>)
-
+        let parseArgs (paramCount: int) = parray paramCount (boolExprParser<'t> <|> (parens boolExprParser<'t>))
+            
         let taut :Theorem->Rule=  
             let ieq p = 
                 let stmt = <@@ ((%%p) = true) = (%%p) @@> in Theorem(stmt, Proof (stmt, Theory.S, [apply_left Theory.S.Rules[3]; apply Theory.S.Rules[2]], true)) |> Ident  

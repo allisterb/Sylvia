@@ -12,7 +12,6 @@
     </Content>
     <Compile Include="TestsRuntime.fs" />
     <Compile Include="PluginTests.fs" />
-    <Compile Include="ParserTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

@@ -12,6 +12,13 @@ open Patterns
     
 module Display = 
    
+    let private symbolMap = Map [    
+            "not", "¬"
+            "&&", "∧"
+            "||", "∨"
+            "===>", "⇒"
+        ]
+    
     let (|SymbolDisplay|_|):obj -> string option = 
         function
         | :? MethodInfo as info when (Seq.length (info.GetCustomAttributes(typeof<SymbolAttribute>, true))) > 0 ->
@@ -33,42 +40,14 @@ module Display =
         | :? (Var list) as vars -> vars.Tail |> List.fold (fun s v -> sprintf "%s,%s" s v.Name) vars.Head.Name |> Some
         | _ -> None
 
-    let rec print_formula = 
+    let rec print_formula =         
         function
         (* Primitive terms *)
         | Const(NonNull(SymbolDisplay symbol)) -> symbol
         | Var(VarDisplay v) -> v 
-
+        | Atom a -> src a
         | Index(l, r) -> sprintf "here"
-        
-        (* Unary terms *)
-        | Not (Var(VarDisplay v)) -> sprintf "\u00ac%s" v
-        | Not(Atom a) -> sprintf "\u00ac%s" (print_formula a)
-        | Not r -> sprintf "\u00ac(%s)" (print_formula r)
-        
-        | UnaryTerm(SymbolDisplay symbol , r) -> 
-            match r with
-            | Var _ 
-            | Quantifier _ 
-            | _ -> sprintf "%s%s" (symbol) (print_formula r)
-                        
-        (* Binary terms *)
-        | Equals(l, r) -> sprintf "%s = %s" (print_formula l) (print_formula r)
-        | And(l,r) -> sprintf "%s and %s" (print_formula l) (print_formula r)
-        | Or(l,r) -> sprintf "%s or %s" (print_formula l) (print_formula r)
-        | BinaryTerm(SymbolDisplay symbol, l, r) -> 
-            match l, r with
-            | PrimitiveTerm _, PrimitiveTerm _ 
-            | Quantifier _, PrimitiveTerm _
-            | PrimitiveTerm _, Quantifier _ 
-            | Quantifier _, Quantifier _
-            | _, Not _ 
-            | Not _, _ -> sprintf "%s %s %s" (print_formula l) (symbol) (print_formula r)
-            | Var _, _ -> sprintf "%s %s (%s)" (print_formula l) (symbol) (print_formula r)
-            | _, PrimitiveTerm _ -> sprintf "(%s) %s %s" (print_formula l) (symbol) (print_formula r)
-            | _ -> sprintf "%s %s %s" (print_formula l) (symbol) (print_formula r)
-        (* Index *)
-        
+                
         (* Quantifier terms *)
         | ForAll(_, VarDisplay v, Bool true, body) -> sprintf "(\u2200 %s |: %s)" v (print_formula body)
         | ForAll(_, VarDisplay v, range, body) -> sprintf "(\u2200 %s | %s : %s)" v (print_formula range) (print_formula body)
@@ -76,6 +55,10 @@ module Display =
         | Exists(_, VarDisplay v, range, body) -> sprintf "(\u2203 %s | %s : %s)" v (print_formula range) (print_formula body)
         | SumTerm(_, SymbolDisplay symbol, VarDisplay bound, range, body) 
         | ProductTerm(_, SymbolDisplay symbol, VarDisplay bound, range, body) -> sprintf "%s %s %s" symbol (bound) (print_formula body)
-        
+             
         (* All other terms *)
-        | expr -> src expr
+        | expr -> 
+            let mutable e = src expr
+            for kv in symbolMap 
+                do if e.Contains kv.Key then e <- e.Replace(kv.Key, kv.Value)
+            e

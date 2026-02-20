@@ -1,4 +1,4 @@
-﻿namespace Sylvia.Tests.Giant
+﻿namespace Sylvia.Tests.Prover
 
 open FSharp.Quotations
 
@@ -15,6 +15,16 @@ open Sylvia
 open TermParsers
 
 module TestRules =    
+    open PropCalculus
+    [<DerivedRule "p ∧ q ∧ (r ∧ s) = p ∧ r ∧ (q ∧ s)">]
+    let commute_and_and (p:Prop) (q:Prop) (r:Prop) (s:Prop) = ident prop_calculus (((p * q) * (r * s)) == ((p * r) * (q * s))) [
+        right_assoc_and p q ( r * s ) |> apply_left
+        left_assoc_and q r s |>  apply_left
+        commute_and q r |> apply_left
+        right_assoc_and r q s |> apply_left
+        left_assoc_and p r ( q * s ) |> apply_left
+    ]
+
     [<AdmissibleRule("Test Admissible Rule")>]
     let rule1 = Admit("rule1", id)
 
@@ -121,4 +131,9 @@ type ParserTests() =
         Assert.NotNull(p)
         Assert.Contains("-", p.Val.Display)
         Assert.Contains(">", p.Val.Display)
+
+    [<Fact>]
+    member __.``Can parse rull params``() =
+        let p = ProofParsers.parseRuleApp<bool> admissible derived theorems [||] "commute_and_and p q p (q || r) |> apply_left"
+        Assert.True p.IsOk
 
