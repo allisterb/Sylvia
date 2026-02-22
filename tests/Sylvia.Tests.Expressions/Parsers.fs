@@ -18,11 +18,12 @@ module Parsers =
     [<Fact>]
     let ``Can parse function def``() =
         let R = Infix.parse("BAR(x) + 1")
+        Assert.True R.IsOk
         Assert.Equal (R, Infix.parse("BAR()"))
 
     [<Fact>]
     let ``Can parse forall``() =
-        let text = "forall(x, P(x))"
+        let text = "forall(x, P[x])"
         let result = TermParsers.parseProp<bool> text
         match result.Val.Expr with
         | Formula.ForAll(op, bound, range, body) -> 
@@ -32,7 +33,7 @@ module Parsers =
 
     [<Fact>]
     let ``Can parse forall with range``() =
-        let text = "forall(x, Q(x), P(x))"
+        let text = "forall(x, Q[x], P[x])"
         let result = TermParsers.parseProp<bool> text
         match result.Val.Expr with
         | Formula.ForAll(op, bound, range, body) -> 
@@ -45,7 +46,7 @@ module Parsers =
 
     [<Fact>]
     let ``Can parse exists``() =
-        let text = "exists(y, P(y))"
+        let text = "exists(y, P[y])"
         let result = TermParsers.parseProp<bool> text
         match result.Val.Expr with
         | Formula.Exists(op, bound, range, body) -> 

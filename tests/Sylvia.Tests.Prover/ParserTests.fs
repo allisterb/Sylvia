@@ -63,13 +63,23 @@ type ParserTests() =
         | _ -> failwithf "Unexpected RuleApplication structure: %A" ra
 
     [<Fact>]
-    member this.``Can parse rule application with derived rule and arguments`` () =
+    member this.``Can parse rule application with derived rule and argument`` () =
         let admissible = [||]
         let derived = ProofModules.getModuleDerivedRules TestRules.Type
         
         let ra = ProofParsers.parseRuleApp<int> admissible derived [||] [||] "rule2 (p || q) |> apply_right"
         match ra with
         | Ok(ApplyRight(r)) when r.Name.Contains("rule2") && r.Name.Contains("p") && r.Name.Contains("q") -> ()
+        | _ -> failwithf "Unexpected RuleApplication structure: %A" ra
+
+     [<Fact>]
+     member this.``Can parse rule application with derived rule and multiple arguments`` () =
+        let admissible = [||]
+        let derived = ProofModules.getModuleDerivedRules TestRules.Type
+        
+        let ra = ProofParsers.parseRuleApp<int> admissible derived [||] [||] "commute_and_and p q p (p || q) |> apply_right"
+        match ra with
+        | Ok(ApplyRight(r)) when r.Name.Contains("p ∨ ") && r.Name.Contains("q") -> ()
         | _ -> failwithf "Unexpected RuleApplication structure: %A" ra
 
     [<Fact>]
@@ -82,7 +92,7 @@ type ParserTests() =
 
     [<Fact>]
     member this.``Can parse symbolic predicate expression`` () =
-        let p = parseProp<bool> "P(x)"
+        let p = parseProp<bool> "P[x]"
         Assert.NotNull(p)
         // Check that the display string contains the predicate and argument
         Assert.Contains("P", p.Val.Display)
@@ -90,7 +100,7 @@ type ParserTests() =
 
     [<Fact>]
     member this.``Can parse complex symbolic predicate expression`` () =
-        let p = parseProp<bool> "P(x) ==> Q(y)"
+        let p = parseProp<bool> "P[x] ==> Q[y]"
         Assert.Contains("===>", p.Val.Display)
         Assert.Contains("P", p.Val.Display)
         Assert.Contains("x", p.Val.Display)
@@ -128,6 +138,10 @@ type ParserTests() =
 
     [<Fact>]
     member __.``Can parse rule parameters``() =
-        let p = ProofParsers.parseRuleApp<bool> admissible derived theorems [||] "commute_and_and p q p q |> apply_left"
+        let p = ProofParsers.parseRuleApp<bool> admissible derived theorems [||] "commute_and_and (p&&q) q p p |> apply_left"
+        printfn "%A" p
         Assert.True p.IsOk
-
+        
+        let p = ProofParsers.parseRuleApp<bool> admissible derived theorems [||] "commute_and_and p q p (p) |> apply_left"
+        printfn "%A" p
+        Assert.True p.IsOk

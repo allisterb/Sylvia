@@ -22,7 +22,7 @@ module TermParsers =
     let private ws = spaces
     let private str_ws s = pstring s .>> ws
     let private parens p = between (str_ws "(") (str_ws ")") p
-    
+    let private sqparens p = between (str_ws "[") (str_ws "]") p
     let private isMathChar = function | '\u03C0' | '\u221E' | '\u29DD' -> true | _ -> false
     let private isIdentifierFirstChar c = isLetter c || isMathChar c
     let private isIdentifierChar c = isLetter c || isDigit c || isMathChar c || c = '_' || c = '\''
@@ -33,11 +33,11 @@ module TermParsers =
 
     let private intExprParser : Parser<Expr, unit> =
         let identifierStr = many1Satisfy2L isIdentifierFirstChar isIdentifierChar "identifier" .>> ws
-
+        let funcidentifierStr = many1Satisfy2L isIdentifierFirstChar isIdentifierChar "identifier" 
         let operand : Parser<Expr, unit> =
             (pint32 .>> ws |>> (fun n -> Expr.Value n))
             <|>
-            (identifierStr .>>. opt (parens identifierStr)
+            (identifierStr .>>. opt (sqparens identifierStr)
             >>= fun (id, argOpt) ->
                 match id with
                 | "true" | "false" -> fail "reserved"
@@ -89,7 +89,7 @@ module TermParsers =
         let operand : Parser<Expr, unit> =
             (pfloat .>> ws |>> (fun n -> Expr.Value n))
             <|>
-            (identifierStr .>>. opt (parens identifierStr)
+            (identifierStr .>>. opt (sqparens identifierStr)
             >>= fun (id, argOpt) ->
                 match id with
                 | "true" | "false" -> fail "The identifiers 'true' and 'false' cannot be used as symbol names."
@@ -172,7 +172,7 @@ module TermParsers =
             
         let operand : Parser<Expr, unit> =       
             let idp = 
-                (identifierStr .>>. opt (parens identifierStr)
+                (identifierStr .>>. opt (sqparens identifierStr)
                 |>> fun (id, argOpt) ->
                     match argOpt with
                     | Some arg ->
@@ -214,6 +214,7 @@ module TermParsers =
                 else failwithf "%A expression parser is not implemented." t
 
         let opp = OperatorPrecedenceParser<Expr,unit,unit>()
+        
        
         let term = parens expr <|> operand
 

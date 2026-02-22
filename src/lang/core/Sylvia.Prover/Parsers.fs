@@ -47,7 +47,13 @@ module ProofParsers =
         let upperIdentifier = many1Satisfy2L (fun c -> isLetter c && System.Char.IsUpper c) isIdentifierChar "tactic" .>> ws
 
         // Parse arguments for a rule/theorem (0 or more expressions)
-        let parseArgs (paramCount: int) = parray paramCount (boolExprParser<'t> <|> (parens boolExprParser<'t>))
+        // Ensure each argument parser consumes trailing whitespace so consecutive
+        // arguments (including parenthesised ones) are parsed correctly.
+        let parseArgs (paramCount: int) =
+
+            let arg = ws >>. ((attempt (parens (boolExprParser<'t>))) <|> (boolExprParser<'t>)) .>> ws
+         
+            parray paramCount arg
             
         let taut :Theorem->Rule=  
             let ieq p = 
@@ -67,7 +73,7 @@ module ProofParsers =
                     | Some rule ->
                         // Derived rules (Methods)
                         let paramCount = rule.Method.GetParameters().Length
-                        parseArgs paramCount |>> fun args ->
+                        parseArgs paramCount .>> ws |>> fun args ->
                              let argsArray = args |> Array.map getArgTerm'
                              match rule.Method.Invoke(null, argsArray) with
                              | :? Rule as r -> r
