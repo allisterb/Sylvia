@@ -45,6 +45,26 @@ module FsExpr =
     | Call (_, info, _) -> info.DeclaringType
     | _ -> failwith "Expression does not have information to retrieve module type."
 
+    let (|And|_|) =
+        function
+        | SpecificCall <@@ (&&) @@> (None,_,l::r::[]) -> Some (l, r)
+        | IfThenElse(l, r, elseBranch) ->
+            match elseBranch with 
+            | ValueWithName(_, _, "F") -> None
+            | Bool false -> Some(l, r)
+            | _ -> None
+        | _ -> None
+    
+    let (|Or|_|) =
+        function        
+        | SpecificCall <@@ (||) @@> (None,_,l::r::[]) -> Some (l, r)
+        | IfThenElse(l, thenBranch, r) ->
+            match thenBranch with
+            | ValueWithName(_, _, "T") -> None
+            | Bool true -> Some(l, r)
+            | _ -> None
+        | _ -> None
+
     let (|Op|_|) (n:string) :MethodInfo->unit option =
         function
         | mi when mi.Name = n -> Some()
@@ -561,11 +581,15 @@ module FsExpr =
     let expand_left = 
         function
         | Call(_,_,l::r::[]) when l.Type = r.Type -> expand l 
+        | And(l,_) -> expand l
+        | Or(l, _) -> expand l
         | expr -> failwithf "%s is not a binary expression." (src expr)
 
     let expand_right = 
         function
         | Call(_,_,l::r::[]) when l.Type = r.Type -> expand r
+        | And(_,r) -> expand r
+        | Or(_, r) -> expand r
         | expr -> failwithf "%s is not a binary expression." (src expr)
 
     let expandReflectedDefinitionParam = 

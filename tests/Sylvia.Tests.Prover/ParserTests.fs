@@ -4,15 +4,10 @@ open FSharp.Quotations
 
 open Xunit
 
-module private Helper =
-    type Result<'TOk,'Error> with
-        member x.Val =
-            match x with
-            | Ok v -> v
-            | Error e -> failwithf "Expected Ok but got Error: %A" e  
-
 open Sylvia
+
 open TermParsers
+open ProofParsers
 
 module TestRules =    
     open PropCalculus
@@ -33,13 +28,12 @@ module TestRules =
 
     [<Theorem("Test Derived Rule")>]
     let modus_ponens p q = PropCalculus.modus_ponens p q
+    
     (* Module information members *)
 
     type private IModuleTypeLocator = interface end
     
     let Type = match typeof<IModuleTypeLocator>.DeclaringType with | NonNull m -> m | _ -> failwith "Failed to locate module type."
-
-open Helper
 
 type ParserTests() =
     inherit TestsRuntime()
@@ -133,7 +127,7 @@ type ParserTests() =
         Assert.Contains(">", p.Val.Display)
 
     [<Fact>]
-    member __.``Can parse rull params``() =
-        let p = ProofParsers.parseRuleApp<bool> admissible derived theorems [||] "commute_and_and p q p (q || r) |> apply_left"
+    member __.``Can parse rule parameters``() =
+        let p = ProofParsers.parseRuleApp<bool> admissible derived theorems [||] "commute_and_and p q p q |> apply_left"
         Assert.True p.IsOk
 

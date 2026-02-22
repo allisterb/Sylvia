@@ -2,7 +2,6 @@
 
 open System
 
-open ExpectNet
 
 [<AutoOpen>]
 module FsRuntime =
@@ -120,3 +119,9 @@ module FsRuntime =
     let empty (s:string) = String.IsNullOrEmpty s
 
     let notnull (s:string | null) = s |> function | NonNull _s -> _s | _ -> ""
+
+    type Result<'TOk,'Error> with
+        member x.Val =
+            match x with
+            | Ok v -> v
+            | Error e -> failwithf "Expected Ok but got Error: %A" e  

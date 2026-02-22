@@ -22,6 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\base\Sylvia.Runtime.Fs\Sylvia.Runtime.Fs.fsproj" />
     <ProjectReference Include="..\..\src\lang\core\Sylvia.Prover\Sylvia.Prover.fsproj" />
   </ItemGroup>
 

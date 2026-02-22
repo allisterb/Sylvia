@@ -375,10 +375,14 @@ with
         | BranchLeft ra ->
             match expr with
             | Patterns.Call(o, m, l::r::[]) -> let s = ra.ApplyRule l in binary_call(o, m, s, r)
+            | And(l,r) -> let s = ra.ApplyRule l in Expr.IfThenElse(s, r, Expr.Value(false))
+            | Or(l,r) -> let s = ra.ApplyRule l in Expr.IfThenElse(s, Expr.Value(true), r)
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
         | BranchRight ra ->
             match expr with
             | Patterns.Call(o, m, l::r::[]) -> let s = ra.ApplyRule r in binary_call(o, m, l, s)
+            | And(l, r) -> let s = ra.ApplyRule r in Expr.IfThenElse(l, s, Expr.Value(false))
+            | Or(l, r) -> let s = ra.ApplyRule r in Expr.IfThenElse(l, Expr.Value(true), s)
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
         | ApplyUnary ra ->
             match expr with
