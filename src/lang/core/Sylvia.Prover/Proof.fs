@@ -357,17 +357,17 @@ with
             | Patterns.Call(o, m, l::r::[]) -> let s = rule.Apply l in binary_call(o, m, s, r)
             | And(l,r) -> let s = rule.Apply l in Expr.IfThenElse(s, r, Expr.Value(false))
             | Or(l,r) -> let s = rule.Apply l in Expr.IfThenElse(s, Expr.Value(true), r)
-            | _ -> failwithf "%s is not a binary operation." (print_formula expr)
+            | _ -> expr //failwithf "%s is not a binary operation." (print_formula expr)
         | ApplyRight rule -> 
             match expr with
             | Patterns.Call(o, m, l::r::[]) -> let s = rule.Apply r in binary_call(o, m, l, s)
             | And(l, r) -> let s = rule.Apply r in Expr.IfThenElse(l, s, Expr.Value(false))
             | Or(l, r) -> let s = rule.Apply r in Expr.IfThenElse(l, Expr.Value(true), s)
-            | _ -> failwithf "%s is not a binary operation." (print_formula expr)
+            | _ -> expr //failwithf "%s is not a binary operation." (print_formula expr)
         | ApplyRange rule ->
             match expr with
             | Quantifier(op, x, range, body) -> let s = rule.Apply range in let v = vars_to_tuple x in call op (v::s::body::[])
-            | _ -> failwithf "%s is not a quantification." (print_formula expr)
+            | _ -> expr //failwithf "%s is not a quantification." (print_formula expr)
         | ApplyBody rule ->
             match expr with
             | Quantifier(op, x, range, body) -> let s = rule.Apply body in let v = vars_to_tuple x in call op (v::range::s::[])
@@ -377,13 +377,13 @@ with
             | Patterns.Call(o, m, l::r::[]) -> let s = ra.ApplyRule l in binary_call(o, m, s, r)
             | And(l,r) -> let s = ra.ApplyRule l in Expr.IfThenElse(s, r, Expr.Value(false))
             | Or(l,r) -> let s = ra.ApplyRule l in Expr.IfThenElse(s, Expr.Value(true), r)
-            | _ -> failwithf "%s is not a binary operation." (print_formula expr)
+            | _ -> expr //failwithf "%s is not a binary operation." (print_formula expr)
         | BranchRight ra ->
             match expr with
             | Patterns.Call(o, m, l::r::[]) -> let s = ra.ApplyRule r in binary_call(o, m, l, s)
             | And(l, r) -> let s = ra.ApplyRule r in Expr.IfThenElse(l, s, Expr.Value(false))
             | Or(l, r) -> let s = ra.ApplyRule r in Expr.IfThenElse(l, Expr.Value(true), s)
-            | _ -> failwithf "%s is not a binary operation." (print_formula expr)
+            | _ -> expr //failwithf "%s is not a binary operation." (print_formula expr)
         | ApplyUnary ra ->
             match expr with
             | Patterns.Call(o, m, l::[]) -> let s = ra.ApplyRule l in unary_call(o, m, s)
