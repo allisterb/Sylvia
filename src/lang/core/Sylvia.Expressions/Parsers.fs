@@ -21,7 +21,7 @@ module TermParsers =
 
     let private ws = spaces
     let private str_ws s = pstring s .>> ws
-    let private parens p = between (str_ws "(") (str_ws ")") p
+    let private parens p = (between (str_ws "(") (str_ws ")") p)
     let private sqparens p = between (str_ws "[") (str_ws "]") p
     let private isMathChar = function | '\u03C0' | '\u221E' | '\u29DD' -> true | _ -> false
     let private isIdentifierFirstChar c = isLetter c || isMathChar c
@@ -33,7 +33,9 @@ module TermParsers =
 
     let private intExprParser : Parser<Expr, unit> =
         let identifierStr = many1Satisfy2L isIdentifierFirstChar isIdentifierChar "identifier" .>> ws
-        let funcidentifierStr = many1Satisfy2L isIdentifierFirstChar isIdentifierChar "identifier" 
+    
+        let expr, exprRef = createParserForwardedToRef<Expr, unit>()
+
         let operand : Parser<Expr, unit> =
             (pint32 .>> ws |>> (fun n -> Expr.Value n))
             <|>
@@ -51,8 +53,8 @@ module TermParsers =
                     | None ->
                         preturn (Expr.Var(Var(id, typeof<int>))))
 
-        let opp = OperatorPrecedenceParser<Expr,unit,unit>()
-        let expr = opp.ExpressionParser
+        let opp = OperatorPrecedenceParser<Expr,unit,unit>()       
+        
         let term = parens expr <|> operand
 
         // Helper expressions for arithmetic
@@ -68,8 +70,7 @@ module TermParsers =
         // Operator precedence (Standard Arithmetic)
         // 3: Unary -
         // 2: * /
-        // 1: + - %
-        
+        // 1: + - %        
         opp.AddOperator(InfixOperator("+", ws, 1, Associativity.Left, fun l r -> _add (expand_as<int> l) (expand_as<int> r)))
         opp.AddOperator(InfixOperator("-", ws, 1, Associativity.Left, fun l r -> _sub (expand_as<int> l) (expand_as<int> r)))
         opp.AddOperator(InfixOperator("mod", ws, 1, Associativity.Left, fun l r -> _mod (expand_as<int> l) (expand_as<int> r)))
@@ -77,9 +78,10 @@ module TermParsers =
         opp.AddOperator(InfixOperator("/", ws, 2, Associativity.Left, fun l r -> _div (expand_as<int> l) (expand_as<int> r)))
         opp.AddOperator(PrefixOperator("-", ws, 3, true, fun l -> _neg (expand_as<int> l)))
         
+        exprRef := opp.ExpressionParser
         expr
 
-     // -------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Real Expression Parser
     // -------------------------------------------------------------------------
 
@@ -214,7 +216,7 @@ module TermParsers =
                 else failwithf "%A expression parser is not implemented." t
 
         let opp = OperatorPrecedenceParser<Expr,unit,unit>()
-        
+               
        
         let term = parens expr <|> operand
 

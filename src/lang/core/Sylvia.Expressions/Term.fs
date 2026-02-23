@@ -635,6 +635,10 @@ type natvar = ScalarVar<nat>
 
 type complexvar = ScalarVar<complex>
 
+type prop = Prop
+
+type propvar = PropVar
+
 type boolvar = PropVar
 
 type indexvar = IndexVar
