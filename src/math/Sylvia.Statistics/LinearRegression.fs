@@ -72,10 +72,21 @@ type LinearRegressionModel(eqn:ScalarVarMap<real>, samples: (real array*real) ar
     let re = dv == (a |> Array.skip 1 |> Array.mapi (fun i v -> rv.[i] * v) |> Array.reduce (+)) + a.[0]
     let rf (x:float[]) = (a |> Array.skip 1 |> Array.mapi (fun i v -> x.[i] * v) |> Array.reduce (+)) + (a.[0])  
     let ypred = samples |> Array.map (fst >> rf)
-    let ssr = samples |> Array.sumBy(fun (x,y) -> (y - rf x) ** 2.)
-    let sse = ysamples |> Array.sumBy(fun y -> (y - ymean) ** 2.)
-    let sst = sse + ssr
-    let xsst = xsamples |> Array.mapi(fun i s -> Array.sumBy(fun x -> (x - xmean.[i]) ** 2.) s)
+    let rss = samples |> Array.sumBy(fun (x,y) -> (y - rf x) ** 2.)
+    let tss = ysamples |> Array.sumBy(fun y -> (y - ymean) ** 2.)
+    let ess = tss - rss
+    let ser =  sqrt (rss / (real) dof)
+    let xtss = xsamples |> Array.mapi(fun i s -> Array.sumBy(fun x -> (x - xmean.[i]) ** 2.) s)
+    let sec = 
+        let k = rv.Length
+        let mX = MathNet.Numerics.LinearAlgebra.Double.DenseMatrix(n, k + 1)
+        for r in 0 .. n - 1 do
+            mX.[r, 0] <- 1.0
+            let x, _ = samples.[r]
+            for c in 0 .. k - 1 do
+                mX.[r, c + 1] <- x.[c]
+        let mXtXInv = (mX.Transpose() * mX).Inverse()
+        mXtXInv.Diagonal().Map(fun v -> sqrt(ser * ser * v)).ToArray()
     let xr = 
         [|for i in 0 .. xsamples.Length - 1 -> [|for j in 0 .. xsamples.Length - 1 do if i <> j then yield SimpleRegression.FitThroughOrigin(xsamples.[i], xsamples.[j]) |]|]
         
@@ -99,11 +110,12 @@ type LinearRegressionModel(eqn:ScalarVarMap<real>, samples: (real array*real) ar
     member val YMean = ymean
     member val YVar = yvar
     member val Ysd = sqrt yvar
-    member val Ssr = ssr
-    member val Sse = sse
-    member val Sst = sst
-    member val Ser = sqrt (ssr / (real) dof)
-    member val XSst = xsst
+    member val Rss = rss
+    member val Ess = ess
+    member val Tss = tss
+    member val Ser = ser
+    member val XTss = xtss
+    member val Sec = sec
     member val RegressionEquation = re
     member val OriginalRegressionEquation : ScalarEquation<real> option = var_changes |> Option.map(fun vc ->  vc |> Array.fold(fun e cv -> e.SubstVar(cv.Var, cv.Rhs)) (re :> ScalarEquation<real>))   
     member val RegressionFunction = rf 
@@ -164,15 +176,19 @@ module LinearRegression =
 
     let lryvar (m:LinearRegressionModel) = m.YVar
 
-    let lrssr (m:LinearRegressionModel) = m.Ssr
+    let lrrss (m:LinearRegressionModel) = m.Rss
 
-    let lrsse (m:LinearRegressionModel) = m.Sse
+    let lress (m:LinearRegressionModel) = m.Ess
 
-    let lrsst (m:LinearRegressionModel) = m.Sst
+    let lrtss (m:LinearRegressionModel) = m.Tss
 
     let lrser (m:LinearRegressionModel) = m.Ser
 
-    //let lrsd (m:LinearRegressionModel) = m.YSD
+    let lrxtss (m:LinearRegressionModel) = m.XTss
+
+    let lrsec (m:LinearRegressionModel) = m.Sec
+
+    let lrysd (m:LinearRegressionModel) = m.Ysd
 
     let lrR2 (m:LinearRegressionModel) = m.R2
 

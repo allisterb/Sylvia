@@ -28,7 +28,9 @@ let wage1 =
     |> samples [educ; wage] 
     |> lr (wage == b0 + b1 * educ)
 
-lrser wage1
+lrysd wage1
+
+lrsec wage1
 let wage2 = w |> samples [educ; exper; wage] |> lr (wage == b0 + b1*educ + b2*exper)
 lrR2 wage2
 
