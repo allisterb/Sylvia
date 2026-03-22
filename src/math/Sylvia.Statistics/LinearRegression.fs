@@ -7,7 +7,7 @@ open FSharp.Quotations.Patterns
 open MathNet.Numerics
 open MathNet.Numerics.Statistics
 open MathNet.Numerics.LinearRegression
-
+open MathNet.Numerics.Distributions
 open Sylvia.Data
 
 [<AutoOpen>]
@@ -25,7 +25,7 @@ module Data =
     let with_field_type<'t> (col:int) (f:CsvFile) = f.[col].Type <- typeof<'t>; f
 
     let with_all_field_types<'t> (f:CsvFile) = 
-        for i in 0..f.Fields.Count - 1 do f.[i].Type <- typeof<'t> 
+        for i in 0..f.Fields.Count - 1 do f.[i].Type <- typeof<'t>         
         f
     
     let frame (file:CsvFile) = new Frame(file)
@@ -87,6 +87,12 @@ type LinearRegressionModel(eqn:ScalarVarMap<real>, samples: (real array*real) ar
                 mX.[r, c + 1] <- x.[c]
         let mXtXInv = (mX.Transpose() * mX).Inverse()
         mXtXInv.Diagonal().Map(fun v -> sqrt(ser * ser * v)).ToArray()
+    
+    let tstats = a |> Array.mapi (fun i c -> c / sec.[i])
+    let tpvalues = tstats |> Array.map (fun t -> 2.0 * (1.0 - Distributions.StudentT.CDF(0.0, 1.0, (float) dof, abs t)))
+    let fstat = (ess / (float) rv.Length) / (rss / (float) dof)
+    let fpvalue = 1.0 - Distributions.FisherSnedecor.CDF((float) rv.Length, (float) dof, fstat)
+
     let xr = 
         [|for i in 0 .. xsamples.Length - 1 -> [|for j in 0 .. xsamples.Length - 1 do if i <> j then yield SimpleRegression.FitThroughOrigin(xsamples.[i], xsamples.[j]) |]|]
         
@@ -116,6 +122,10 @@ type LinearRegressionModel(eqn:ScalarVarMap<real>, samples: (real array*real) ar
     member val Ser = ser
     member val XTss = xtss
     member val Sec = sec
+    member val TStats = tstats
+    member val TPValues = tpvalues
+    member val FStat = fstat
+    member val FPValue = fpvalue
     member val RegressionEquation = re
     member val OriginalRegressionEquation : ScalarEquation<real> option = var_changes |> Option.map(fun vc ->  vc |> Array.fold(fun e cv -> e.SubstVar(cv.Var, cv.Rhs)) (re :> ScalarEquation<real>))   
     member val RegressionFunction = rf 
@@ -126,9 +136,34 @@ type LinearRegressionModel(eqn:ScalarVarMap<real>, samples: (real array*real) ar
     member __.Item([<ParamArray>] (x:real array)) = rf x
     member __.Copy() = LinearRegressionModel(eqn, samples)
     override x.ToString() = 
-        match var_changes with
-        | None -> sprintf "%A: %A" (x.Samples) re 
-        | Some vc -> sprintf "%A: %A with [%s]" (x.Samples) re (vc |> Array.map(sprintf "%A") |> Array.reduce(sprintf "%s,%s"))
+        let sb = System.Text.StringBuilder()
+        let k = rv.Length
+        let adjR2 = 1.0 - (1.0 - x.R2) * (float(n-1))/(float(n-k-1))
+        let get_stars p = if p < 0.01 then "***" elif p < 0.05 then "**" elif p < 0.1 then "*" else ""
+
+        sb.AppendLine(sprintf "Model: OLS, using observations 1-%d" n) |> ignore
+        sb.AppendLine(sprintf "Dependent variable: %s" dv.Name) |> ignore
+        sb.AppendLine(String.replicate 80 "-") |> ignore
+        sb.AppendLine(sprintf "%-15s %12s %12s %12s %12s" "" "coefficient" "std. error" "t-ratio" "p-value") |> ignore
+        sb.AppendLine(String.replicate 80 "-") |> ignore
+
+        let p_name = x.Parameters.[0].Name
+        let p_stars = get_stars x.TPValues.[0]
+        sb.AppendLine(sprintf "%-15s %12.6f %12.6f %12.3f %12.4f %s" p_name x.RegressionCoefficients.[0] x.Sec.[0] x.TStats.[0] x.TPValues.[0] p_stars) |> ignore
+        
+        for i in 0 .. rv.Length - 1 do
+            let var_name = x.IndependentVariables.[i].Name
+            let stars = get_stars x.TPValues.[i+1]
+            sb.AppendLine(sprintf "%-15s %12.6f %12.6f %12.3f %12.4f %s" var_name x.RegressionCoefficients.[i+1] x.Sec.[i+1] x.TStats.[i+1] x.TPValues.[i+1] stars) |> ignore
+        
+        sb.AppendLine(String.replicate 80 "-") |> ignore
+        
+        sb.AppendLine(sprintf "%-25s %-15.4f %-25s %-15.4f" "Mean dependent var" x.YMean "S.D. dependent var" x.Ysd) |> ignore
+        sb.AppendLine(sprintf "%-25s %-15.4f %-25s %-15.4f" "Sum squared resid" x.Rss "S.E. of regression" x.Ser) |> ignore
+        sb.AppendLine(sprintf "%-25s %-15.4f %-25s %-15.4f" "R-squared" x.R2 "Adjusted R-squared" adjR2) |> ignore
+        sb.AppendLine(sprintf "%-25s %-15.4f %-25s %-15.4g" (sprintf "F(%d, %d)" k dof) x.FStat "P-value(F)" x.FPValue) |> ignore
+
+        sb.ToString()
 
     new (eqn:ScalarVarMap<real>, samples: (real array*real) seq) = LinearRegressionModel(eqn, samples |> Seq.toArray)
 
@@ -187,6 +222,14 @@ module LinearRegression =
     let lrxtss (m:LinearRegressionModel) = m.XTss
 
     let lrsec (m:LinearRegressionModel) = m.Sec
+
+    let lrtstats (m:LinearRegressionModel) = m.TStats
+
+    let lrtpvalues (m:LinearRegressionModel) = m.TPValues
+
+    let lrfstat (m:LinearRegressionModel) = m.FStat
+
+    let lrfpvalue (m:LinearRegressionModel) = m.FPValue
 
     let lrysd (m:LinearRegressionModel) = m.Ysd
 

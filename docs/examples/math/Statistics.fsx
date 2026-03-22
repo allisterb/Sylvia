@@ -4,8 +4,16 @@ open Sylvia
 open RealNumbers
 open LinearRegression
 
-
 let b0,b1,b2 = realconst3 "beta_0" "beta_1" "beta_2"
+
+let earn1data =  csv_file "..\\..\\..\\data\\dougherty\\EAEF21.csv" 
+let EARNINGS, S = realvar2 "EARNINGS" "S"
+let earn1 = earn1data |> samples [S; EARNINGS] |> lr (EARNINGS == b0 + b1 * S)
+
+earn1
+
+(*
+
 
 let vote1data = csv_file "C:\\Projects\\Sylvia\\data\\woolridge\\vote1.csv" |> with_all_field_types<real>
 let voteA, shareA = realvar2 "voteA" "shareA"
@@ -31,10 +39,15 @@ let wage1 =
 lrysd wage1
 
 lrsec wage1
+
+
+
+
 let wage2 = w |> samples [educ; exper; wage] |> lr (wage == b0 + b1*educ + b2*exper)
 lrR2 wage2
 
 lrR2 wage2
+
 
 let tenure = realvar "tenure"
 let b3 = realconst "beta_3"
@@ -46,14 +59,7 @@ let ceo1 = ceosal1 |> samples [roe; salary] |> lr (salary == b0 + b1 * roe)
 ceo1
 
 
-let EARNINGS,S,EXP = realvar3  "EARNINGS" "S" "EXP"
-let eawe21 = 
-    csv_file "C:\\Projects\\Sylvia\\data\\woolridge\\EAWE21.csv"
-    |> with_all_field_types<real>
 
-let m1 = eawe21 |> samples [S; EARNINGS] |> lr (EARNINGS == b0 + b1 * S)
-
-m1
 let roedecl = realvar "roedecl"
 
 let nm = ceo1 |> change_vars [
@@ -80,3 +86,4 @@ lrR2 m2//, lrrss m2, lrse m2, lrsd m2
 
 
 //lems witht lm = SimpleLinearRegressionModel(y .= b0 + b1 * x + u + b0, [])
+*)
