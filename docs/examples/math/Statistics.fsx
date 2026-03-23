@@ -4,6 +4,10 @@ open Sylvia
 open RealNumbers
 open LinearRegression
 
+let f = Sylvia.Data.GretlFile.ToCsvFile("..\\..\\..\\data\\dougherty\\EAEF21.gdt", "..\\..\\..\\data\\dougherty\\EAEF21.2.csv" )
+
+
+
 let b0,b1,b2 = realconst3 "beta_0" "beta_1" "beta_2"
 
 let earn1data =  csv_file "..\\..\\..\\data\\dougherty\\EAEF21.csv" 

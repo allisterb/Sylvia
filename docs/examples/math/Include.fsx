@@ -7,7 +7,7 @@
 #r "C:\\Users\\Allister\\.nuget\\packages\\microsoft.z3\\4.12.2\\lib\\netstandard2.0\\Microsoft.Z3.dll"
 #r "C:\\Users\\Allister\\.nuget\\packages\\fsharp.quotations.evaluator\\2.1.0\\lib\\netstandard2.0\\FSharp.Quotations.Evaluator.dll"
 #r "C:\\Users\\Allister\\.nuget\\packages\\csvhelper\\12.1.2\\lib\\netstandard2.0\\CsvHelper.dll"
-
+#r "C:\\Users\Allister\\.nuget\\packages\\sharpziplib\\1.4.2\lib\\netstandard2.1\\ICSharpCode.SharpZipLib.dll"
 #r "C:\\Users\\Allister\\.nuget\\packages\\unquote\\7.0.1\\lib\\netstandard2.0\\Unquote.dll"
 #r "C:\\Projects\\Sylvia\\src\\lang\\core\\Sylvia.Expressions\\bin\\Debug\\net10.0\\Expect.NETStandard.dll"
 #r "C:\\Projects\\Sylvia\\ext\\FunScript\\src\\main\\FunScript\\bin\\Debug\\netstandard2.0\\FunScript.dll"
