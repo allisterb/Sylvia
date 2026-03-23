@@ -18,7 +18,7 @@ public class GretlFile
             DtdProcessing = DtdProcessing.Parse,
             ValidationType = ValidationType.None
         };
-        var stream = XmlReader.Create(new GZipStream(new FileStream(inputFile, FileMode.Open), CompressionMode.Decompress), settings);             
+        using var stream = XmlReader.Create(new GZipStream(new FileStream(inputFile, FileMode.Open), CompressionMode.Decompress), settings);             
         XmlSerializer serializer = new XmlSerializer(typeof(gretldata));
         gretldata gdt = (gretldata)serializer.Deserialize(stream);
         stream.Close();

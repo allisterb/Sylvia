@@ -4,13 +4,9 @@ open Sylvia
 open RealNumbers
 open LinearRegression
 
-let f = Sylvia.Data.GretlFile.ToCsvFile("..\\..\\..\\data\\dougherty\\EAEF21.gdt", "..\\..\\..\\data\\dougherty\\EAEF21.2.csv" )
-
-
-
 let b0,b1,b2 = realconst3 "beta_0" "beta_1" "beta_2"
 
-let earn1data =  csv_file "..\\..\\..\\data\\dougherty\\EAEF21.csv" 
+let earn1data =  gretl_csv_file "..\\..\\..\\data\\dougherty\\EAEF21.gdt" 
 let EARNINGS, S = realvar2 "EARNINGS" "S"
 let earn1 = earn1data |> samples [S; EARNINGS] |> lr (EARNINGS == b0 + b1 * S)
 

@@ -16,6 +16,11 @@ module Data =
 
     let csv_file_with_delim name delim = new CsvFile(name, delim)
     
+    let gretl_csv_file name =
+        let _name = name + ".csv"
+        GretlFile.ToCsvFile(name, _name)
+        csv_file _name
+
     let csv_fields (f:obj) = 
         match f with
         | :? string as fn -> fn |> CsvFile |> Seq.map(fun fn -> sprintf "%A:%A" fn.Label fn.Type) |> Seq.toArray
