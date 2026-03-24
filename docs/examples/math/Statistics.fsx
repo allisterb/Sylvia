@@ -12,6 +12,11 @@ let earn1 = earn1data |> samples [S; EARNINGS] |> lr (EARNINGS == b0 + b1 * S)
 
 earn1
 
+let WEIGHT85, HEIGHT = realvar2 "WEIGHT85" "HEIGHT"
+
+let m2 = earn1data |> samples [HEIGHT; WEIGHT85] |> lr (WEIGHT85 == b0 + b1 * HEIGHT)
+
+m2
 (*
 
 

@@ -80,6 +80,8 @@ type LinearRegressionModel(eqn:ScalarVarMap<real>, samples: (real array*real) ar
     let rss = samples |> Array.sumBy(fun (x,y) -> (y - rf x) ** 2.)
     let tss = ysamples |> Array.sumBy(fun y -> (y - ymean) ** 2.)
     let ess = tss - rss
+    let mms = ess / float rv.Length
+    let rms = rss / float dof
     let ser =  sqrt (rss / (real) dof)
     let xtss = xsamples |> Array.mapi(fun i s -> Array.sumBy(fun x -> (x - xmean.[i]) ** 2.) s)
     let sec = 
@@ -124,6 +126,8 @@ type LinearRegressionModel(eqn:ScalarVarMap<real>, samples: (real array*real) ar
     member val Rss = rss
     member val Ess = ess
     member val Tss = tss
+    member val Mms = mms
+    member val Rms = rms
     member val Ser = ser
     member val XTss = xtss
     member val Sec = sec
@@ -146,8 +150,19 @@ type LinearRegressionModel(eqn:ScalarVarMap<real>, samples: (real array*real) ar
         let adjR2 = 1.0 - (1.0 - x.R2) * (float(n-1))/(float(n-k-1))
         let get_stars p = if p < 0.01 then "***" elif p < 0.05 then "**" elif p < 0.1 then "*" else ""
 
+        let tms = x.Tss / float (n - 1)
+
         sb.AppendLine(sprintf "Model: OLS, using observations 1-%d" n) |> ignore
         sb.AppendLine(sprintf "Dependent variable: %s" dv.Name) |> ignore
+        sb.AppendLine() |> ignore
+        sb.AppendLine(sprintf "%-10s | %15s %5s %15s" "Source" "SS" "df" "MS") |> ignore
+        sb.AppendLine(sprintf "%s-+-%s" (String.replicate 11 "-") (String.replicate 37 "-")) |> ignore
+        sb.AppendLine(sprintf "%-10s | %15.4f %5d %15.4f" "Model" x.Ess k x.Mms) |> ignore
+        sb.AppendLine(sprintf "%-10s | %15.4f %5d %15.4f" "Residual" x.Rss dof x.Rms) |> ignore
+        sb.AppendLine(sprintf "%s-+-%s" (String.replicate 11 "-") (String.replicate 37 "-")) |> ignore
+        sb.AppendLine(sprintf "%-10s | %15.4f %5d %15.4f" "Total" x.Tss (n - 1) tms) |> ignore
+        sb.AppendLine() |> ignore
+
         sb.AppendLine(String.replicate 80 "-") |> ignore
         sb.AppendLine(sprintf "%-15s %12s %12s %12s %12s" "" "coefficient" "std. error" "t-ratio" "p-value") |> ignore
         sb.AppendLine(String.replicate 80 "-") |> ignore
@@ -221,6 +236,10 @@ module LinearRegression =
     let lress (m:LinearRegressionModel) = m.Ess
 
     let lrtss (m:LinearRegressionModel) = m.Tss
+
+    let lrmms (m:LinearRegressionModel) = m.Mms
+
+    let lrrms (m:LinearRegressionModel) = m.Rms
 
     let lrser (m:LinearRegressionModel) = m.Ser
 
