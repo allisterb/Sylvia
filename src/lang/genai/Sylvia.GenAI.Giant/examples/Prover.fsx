@@ -11,13 +11,13 @@ proof "prop_calculus" "T = (p = p)" []
 proof "prop_calculus" "(((p = q) = r) = (p = (q = r)))" []
 
  // p ∨ q = q ∨ p
-proof "prop_calculus" "((p || q) = (q || p))" []
+proof "prop_calculus" "((p + q) = (q + p))" []
 
  // p ∨ (q = r) = (p ∨ q) = (p ∨ r)
-proof "prop_calculus" "((p || (q = r)) = ((p || q) = (p || r)))" []
+proof "prop_calculus" "((p + (q = r)) = ((p + q) = (p + r)))" []
 
  // (p ∨ p) = p
-proof "prop_calculus" "((p || p) = p)" []
+proof "prop_calculus" "((p + p) = p)" []
 
  // (p = true) = p
 proof "prop_calculus" "((p = T) = p)" [
@@ -46,16 +46,16 @@ proof "prop_calculus" "((not (p = q)) = (not p = q))" [
 ]
 
  // p ∨ ¬p = true
-proof "prop_calculus" "((p || (not p)) = T)" [
+proof "prop_calculus" "((p + (-p)) = T)" [
     "ident_eq (p || (not p)) |> apply"
 ]
 
  // p ∧ q = ((p = q) = (p ∨ q))
-proof "prop_calculus" "((p && q) = (p = q = (p || q)))" []
+proof "prop_calculus" "((p * q) = (p = q = (p + q)))" []
 
  // p ∨ (p ∧ q) = p
 proof "prop_calculus" "(p || (p && q) = p)" [
-    "golden_rule |> apply_right |> branch_left"    
+    "golden_rule |> apply_right |> left_branch"    
     "distrib |> apply_left"
     "left_assoc_or p p q |> apply_left"
     "idemp_or p |> apply_left"
@@ -64,7 +64,7 @@ proof "prop_calculus" "(p || (p && q) = p)" [
 ]
 
  // p ∧ q = q ∧ p
-proof "prop_calculus" "((p && q) = (q && p))" [
+proof "prop_calculus" "((p * q) = (q * p))" [
     "golden_rule' p q |> apply_left"
     "golden_rule' q p |> apply_right"
     "commute_or q p |> apply_right"

@@ -115,8 +115,8 @@ module ProofParsers =
         // Stage 2: RuleApplication -> RuleApplication
         let opAppToApp = 
             choice [
-                pstring "branch_left" >>. preturn (function | ra -> RuleApplication.BranchLeft ra)
-                pstring "branch_right" >>. preturn (function | ra -> RuleApplication.BranchRight ra)
+                pstring "left_branch" >>. preturn (function | ra -> RuleApplication.LeftBranch ra)
+                pstring "right_branch" >>. preturn (function | ra -> RuleApplication.RightBranch ra)
                 pstring "apply_unary" >>. preturn (function | ra -> RuleApplication.ApplyUnary ra)
                 pstring "select_range" >>. preturn (function | ra -> RuleApplication.SelectRange ra)
                 pstring "select_body" >>. preturn (function | ra -> RuleApplication.SelectBody ra)

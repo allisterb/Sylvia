@@ -14,7 +14,7 @@ open PredCalculus
 let p,q,r = boolvar3 "p" "q" "r"
 
 let ident_and_eq_all2 p q r = proof prop_calculus ((p * q * r) == (p == q == r == (p + q) == (q + r) == (r + p) == (p + q + r))) [
-        golden_rule' p q |> apply_left |> branch_left
+        golden_rule' p q |> branch_left
         golden_rule' ( (p == q) == (p + q) ) r |> apply_left 
         commute_or ( ((p == q) == (p + q)) ) r |> apply_left
         distrib_or_eq r ( p == q ) ( p + q ) |> apply_left

@@ -42,7 +42,7 @@ module PredCalculus =
     /// forall x (Q |&| N) P = (forall x Q (N ==> P))
     let trade_forall_and_implies (x:TermVar<'t>) (Q:Pred<'t>) (N:Pred<'t>) (P:Pred<'t>) = ident pred_calculus (forall(x, Q * N, P) == (forall (x, Q, N ==> P))) [
         trade_forall_implies x (Q * N) P |> apply_left
-        shunt |> apply_body |> branch_left
+        shunt |> apply_body |> left_branch
         trade_forall_implies x Q  (N==>P) |> Commute |> apply_left
     ]
 
@@ -58,7 +58,7 @@ module PredCalculus =
     /// forall x (N1 ||| N2) P = ((forall x N1 P) |&| (forall x N2 P))
     let split_range_forall' (x:TermVar<'t>) (N1:Pred<'t>) (N2:Pred<'t>) (P:Pred<'t>) = id_ax pred_calculus (forall (x, (N1 + N2), P) == ((forall(x, N1, P) * (forall (x, N2, P)))))
     
-        (* Module information members *)
+    (* Module information members *)
 
     type private IModuleTypeLocator = interface end
     

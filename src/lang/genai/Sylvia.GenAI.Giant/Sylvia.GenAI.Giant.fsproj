@@ -7,15 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="docs\eqlogic.txt">
+    <Content Include="docs\eqlogic.md">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <None Include="examples\prompts\Prover.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="examples\prompts\SMT.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Include="examples\Include.fsx" />
     <None Include="examples\SMT.fsx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

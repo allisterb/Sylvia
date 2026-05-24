@@ -325,9 +325,9 @@ and RuleApplication =
     /// Apply rule to body of quantification formula.
     | ApplyBody of Rule
     /// Branch to LHS of binary operation before rule application
-    | BranchLeft of RuleApplication
+    | LeftBranch of RuleApplication
     /// Branch to RHS of binary operation before rule application
-    | BranchRight of RuleApplication
+    | RightBranch of RuleApplication
     /// Apply rule to operand of unary operation
     | ApplyUnary of RuleApplication
     /// Select the range of quantification formula before rule application
@@ -342,8 +342,8 @@ with
         | ApplyRight rule
         | ApplyRange rule
         | ApplyBody rule -> rule
-        | BranchLeft ra 
-        | BranchRight ra 
+        | LeftBranch ra 
+        | RightBranch ra 
         | ApplyUnary ra 
         | SelectRange ra
         | SelectBody ra -> ra.Rule
@@ -372,13 +372,13 @@ with
             match expr with
             | Quantifier(op, x, range, body) -> let s = rule.Apply body in let v = vars_to_tuple x in call op (v::range::s::[])
             | _ -> failwithf "%s is not a quantification." (print_formula expr)
-        | BranchLeft ra ->
+        | LeftBranch ra ->
             match expr with
             | Patterns.Call(o, m, l::r::[]) -> let s = ra.ApplyRule l in binary_call(o, m, s, r)
             | And(l,r) -> let s = ra.ApplyRule l in Expr.IfThenElse(s, r, Expr.Value(false))
             | Or(l,r) -> let s = ra.ApplyRule l in Expr.IfThenElse(s, Expr.Value(true), r)
             | _ -> expr //failwithf "%s is not a binary operation." (print_formula expr)
-        | BranchRight ra ->
+        | RightBranch ra ->
             match expr with
             | Patterns.Call(o, m, l::r::[]) -> let s = ra.ApplyRule r in binary_call(o, m, l, s)
             | And(l, r) -> let s = ra.ApplyRule r in Expr.IfThenElse(l, s, Expr.Value(false))
@@ -403,8 +403,8 @@ with
         | ApplyRight _ -> "right of expression"
         | ApplyRange _ -> "quantifier range"
         | ApplyBody _ -> "quantifier body"
-        | BranchLeft ra -> sprintf "left>%s of expression" (ra.Pos.Replace(" of expression", ""))
-        | BranchRight ra -> sprintf "right>%s of expression" (ra.Pos.Replace(" of expression", ""))
+        | LeftBranch ra -> sprintf "left>%s of expression" (ra.Pos.Replace(" of expression", ""))
+        | RightBranch ra -> sprintf "right>%s of expression" (ra.Pos.Replace(" of expression", ""))
         | ApplyUnary ra -> sprintf "left-right>%s of expression" (ra.Pos.Replace(" of expression", ""))
         | SelectRange ra -> sprintf "quantifier-range>%s of expression" (ra.Pos.Replace(" of expression", ""))
         | SelectBody ra -> sprintf "quantifier-body>%s of expression" (ra.Pos.Replace(" of expression", ""))
@@ -448,10 +448,10 @@ module ProofOps =
     let apply_range = RuleApplication.ApplyRange
 
     /// Branch to LHS of binary operation before rule application.
-    let branch_left = BranchLeft
+    let left_branch = LeftBranch
 
     /// Branch to RHS of binary operation before rule application.
-    let branch_right = BranchRight
+    let right_branch = RightBranch
     
     /// Apply rule to operand of unary operation.
     let apply_unary = RuleApplication.ApplyUnary
@@ -463,15 +463,15 @@ module ProofOps =
     let select_range = RuleApplication.SelectRange
 
     /// Branch left n times before rule application.
-    let rec branch_left_n n (r:Rule->RuleApplication) x = 
-        let mutable x' = x |> r
-        for i in 0 .. n do x' <- branch_left x'
+    let left_branch_n n (r:Rule->RuleApplication) (x:Rule) = 
+        let mutable x' = r x
+        for i in 0 .. n do x' <- left_branch x'
         x'
 
     /// Branch right n times before rule application.
     let rec branch_right_n n (r:Rule->RuleApplication) x = 
         let mutable x' = x |> r
-        for i in 0 .. n do x' <- branch_left x'
+        for i in 0 .. n do x' <- right_branch x'
         x'
 
     let last_state (p:Proof) = p.LastState
