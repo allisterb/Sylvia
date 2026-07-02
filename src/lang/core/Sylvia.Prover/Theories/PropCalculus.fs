@@ -627,6 +627,20 @@ module PropCalculus =
         commute |> apply
     ]
 
+    /// p ≠ q = ((¬p ∧ q) ∨ (p ∧ ¬q))  (Gries 3.53)
+    [<DerivedRule "p ≠ q = ((¬p ∧ q) ∨ (p ∧ ¬q))">]
+    let ident_not_eq_and_or_not (p:Prop) (q:Prop) = ident prop_calculus ((p != q) == ((!!p * q) + (p * !!q))) [
+        double_negation p |> Commute |> apply_right |> right_branch
+        ident_eq_and_or_not (!!p) q |> Commute |> apply_right
+        distrib_not_not_eq p q |> Commute |> apply_right
+    ]
+
+    /// (p = q) ∧ (r = p) = (p = q) ∧ (r = q)  (Gries 3.51)
+    [<DerivedRule "(p = q) ∧ (r = p) = (p = q) ∧ (r = q)">]
+    let replace_eq (p:Prop) (q:Prop) (r:Prop) = ident prop_calculus (((p == q) * (r == p)) == ((p == q) * (r == q))) [
+        subst_and |> apply_left
+    ]
+
     /// p ∧ q == (p ∧ -q == -p)  (Gries 3.48)
     [<DerivedRule "p ∧ q = (p ∧ -q = -p)">]
     let ident_and_and_not (p:Prop) (q:Prop) = ident prop_calculus ((p * q) == (p * -q == -p)) [
@@ -738,6 +752,15 @@ module PropCalculus =
         ident_implies_not_or q p |> apply_left
         commute_or (!!q) p |> apply_left
         absorb_and p (!!q) |> apply_left
+    ]
+
+    /// (p ∨ q ⇒ p ∧ q) = (p = q)  (Gries 3.70)
+    [<DerivedRule "(p ∨ q ⇒ p ∧ q) = (p = q)">]
+    let ident_or_implies_and_eq (p:Prop) (q:Prop) = ident prop_calculus (((p + q) ==> (p * q)) == (p == q)) [
+        ident_implies_not_or (p + q) (p * q) |> apply_left
+        distrib_not_or p q |> apply_left
+        commute_or (!!p * !!q) (p * q) |> apply_left
+        ident_eq_and_or_not p q |> Commute |> apply_left
     ]
 
     /// p ⇒ q = (¬q ⇒ ¬p)  (Gries 3.61)
@@ -994,6 +1017,16 @@ module PropCalculus =
         strengthen_and r ( p * q ) |> Taut |> apply
     ]
 
+    /// (p ⇒ q) ∧ (q = r) ⇒ (p ⇒ r)  (Gries 3.82c)
+    [<Theorem "(p ⇒ q) ∧ (q = r) ⇒ (p ⇒ r)">]
+    let trans_implies_eq_conseq (p:Prop) (q:Prop) (r:Prop) = theorem prop_calculus ((p ==> q) * (q == r) ==> (p ==> r)) [
+        mutual_implication' q r |> Commute |> apply_left
+        left_assoc_and (p ==> q) (q ==> r) (r ==> q) |> apply_left
+        commute |> apply_left
+        shunt |> apply
+        trans_implies p q r |> Taut |> apply_right
+    ]
+
 
     /// p ⇒ (q ⇒ p)
     [<Theorem "p ⇒ (q ⇒ p)">]
@@ -1020,8 +1053,16 @@ module PropCalculus =
         commute |> apply_right
         def_implies' p q |> Commute |> apply_right
         weaken_or ( p ==> q ) r |> Taut |> apply
-    ]        
-    
+    ]
+
+    // NOTE: Shannon's expansion (Gries 3.89), E_z = (p ∧ E[z:=true]) ∨ (¬p ∧ E[z:=false]),
+    // is intentionally NOT formalized here. It is schematic in an arbitrary expression E with
+    // the textual-substitution metavariable E[z:=…], which the prover does not yet support as
+    // first-class machinery (the subst_true/subst_false/subst_or_and admissible rules only cover
+    // restricted, structurally-matched cases). It is not needed by any theorem in this module and
+    // its uses can be discharged by other propositional theorems, so it is left unimplemented
+    // pending metavariable support in the kernel.
+
     (* Module information members *)
 
     type private IModuleTypeLocator = interface end
