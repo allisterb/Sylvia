@@ -425,3 +425,5 @@ internal/*
 */**/*.csv
 */**/*.gdt
 src/lang/genai/Sylvia.GenAI.Giant/docs/**/*.pdf
+reference/*
+bin/*
