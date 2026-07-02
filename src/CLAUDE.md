@@ -15,7 +15,7 @@ Giant uses LLMs function calling capabilities to provide it with the ability to 
 and reasoning. 
 
 ## Using interactive tools
-The main way of interactively testing proofs and theorems and other aspects of Sylvia is by creating anf running F# interactive scripts (.fsx) using the F# interactive shell (fsi). 
+The main way of interactively testing proofs and theorems and other aspects of Sylvia is by creating and running F# interactive scripts (.fsx) using the F# interactive shell (fsi). 
 The scripts should reference the Sylvia libraries and any other libraries they need to use. The scripts can be run from the command line using the `dotnet fsi` command.
 See the example scripts in @docs\examples\math and @docs\examples\proofs for examples of how to use the Sylvia libraries and tools in scripts.
 

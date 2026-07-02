@@ -435,10 +435,116 @@ module EquationalLogic =
             <@@ (%%c1:bool) && (%%c2:bool) @@>
         | expr -> expr
 
-    let _split_range_exists = 
+    let _split_range_exists =
         function
-        | Exists(_, x, Or(R1, R2), P) ->  
+        | Exists(_, x, Or(R1, R2), P) ->
             let c1 = let v = vars_to_tuple x in call <@ exists_expr @> (v::R1::P::[])
             let c2 = let v = vars_to_tuple x in call <@ exists_expr @> (v::R2::P::[])
             <@@ (%%c1:bool) || (%%c2:bool) @@>
-        | expr -> expr    
+        | expr -> expr
+
+    /// Shared core of the associativity/AC normalizers. Flattens maximal chains of
+    /// a propositional operator (≡ over bool operands, ∨, ∧) and rebuilds them
+    /// right-associated. When `sort` is true, the operands of each chain are reordered
+    /// into a canonical order (full associative-commutative normalization); when false,
+    /// operand order is preserved (associativity only).
+    ///
+    /// Equivalence-preserving because ≡/∨/∧ are associative (and, when sorting,
+    /// commutative). The ≡ case is restricted to bool operands, so a non-bool `=`
+    /// (e.g. an integer equality) is treated as an atom and never reassociated. Pure
+    /// structural normalization: no idempotent/absorption simplification is performed.
+    let private _normalize_with (sort: bool) : Expr -> Expr =
+        // Collect the maximal chain of operands joined by a single operator.
+        let rec flatten split e =
+            match split e with
+            | Some (l, r) -> flatten split l @ flatten split r
+            | None -> [e]
+        let splitOr  = function Or (l, r)  -> Some (l, r) | _ -> None
+        let splitAnd = function And (l, r) -> Some (l, r) | _ -> None
+        let splitEq  = function Equals (l, r) when l.Type = typeof<bool> -> Some (l, r) | _ -> None
+        // Recursively normalize bottom-up; optionally sort operands by their
+        // normalized text, then rebuild right-associated so the form is deterministic.
+        let rec norm (e: Expr) =
+            let canon split rebuild =
+                flatten split e
+                |> List.map norm
+                |> (if sort then List.sortBy (fun (x: Expr) -> x.ToString()) else id)
+                |> List.reduceBack rebuild
+            match e with
+            | Or _  -> canon splitOr  (fun a b -> <@@ (%%a: bool) || (%%b: bool) @@>)
+            | And _ -> canon splitAnd (fun a b -> <@@ (%%a: bool) && (%%b: bool) @@>)
+            | Equals (l, _) when l.Type = typeof<bool> -> canon splitEq (fun a b -> <@@ (%%a: bool) = (%%b: bool) @@>)
+            | expr -> traverse expr norm
+        function
+        // The goal's top-level ≡ separates the two sides being proved equal:
+        // normalize each side independently so an equivalent goal becomes C ≡ C
+        // (closed by SEqual), instead of merging both sides into one ≡-chain.
+        | Equals (l, r) when l.Type = typeof<bool> ->
+            let l', r' = norm l, norm r in <@@ (%%l': bool) = (%%r': bool) @@>
+        | expr -> norm expr
+
+    /// Full associative-commutative normalization: flatten maximal ≡/∨/∧ chains,
+    /// SORT their operands, and rebuild right-associated into a canonical form. A single
+    /// application collapses the runs of left_assoc/right_assoc/commute bookkeeping
+    /// otherwise needed to shape an expression into a rule or lemma's exact left-hand
+    /// side: two AC-equivalent expressions normalize to the identical term, so SEqual
+    /// then recognizes them and closes the proof. Best as a closing / shape-to-canonical
+    /// move; because it reorders operands it can disturb a specific arrangement that a
+    /// longer hand-derivation's later steps depend on (use _normalize_assoc there).
+    let _normalize (e: Expr) : Expr = _normalize_with true e
+
+    /// Associativity-only normalization: flatten maximal ≡/∨/∧ chains and rebuild
+    /// right-associated, PRESERVING operand order (no commutative reordering). Reshapes
+    /// association without disturbing operand order, so it can slot into a longer
+    /// hand-derivation where full AC normalization (which sorts) would derail a later step.
+    let _normalize_assoc (e: Expr) : Expr = _normalize_with false e
+
+    /// Schematic single-node propositional simplification laws: identity, annihilator,
+    /// complement, idempotence, double negation, and constant/reflexive equivalence.
+    /// Every case is equivalence-preserving and size-non-increasing (so it drives a
+    /// terminating fixpoint), and produces the named truth constants T/F. Matches only
+    /// the top node; `_simp` applies it at every position. The ≡ cases are bool-typed by
+    /// construction (the operands are propositions).
+    let _simp_laws =
+        function
+        // identity and annihilator for the logical constants
+        | And(True, p) | And(p, True) -> p
+        | And(False, _) | And(_, False) -> fE
+        | Or(False, p) | Or(p, False) -> p
+        | Or(True, _) | Or(_, True) -> tE
+        // complement
+        | And(p, Not q) | And(Not q, p) when sequal p q -> fE
+        | Or(p, Not q) | Or(Not q, p) when sequal p q -> tE
+        // idempotence
+        | And(p, q) when sequal p q -> p
+        | Or(p, q) when sequal p q -> p
+        // absorption
+        | And(a, Or(b, c)) | And(Or(b, c), a) when sequal a b || sequal a c -> a
+        | Or(a, And(b, c)) | Or(And(b, c), a) when sequal a b || sequal a c -> a
+        // negation of constants and double negation
+        | Not True -> fE
+        | Not False -> tE
+        | Not(Not p) -> p
+        // equivalence with a constant, and reflexivity
+        | Equals(True, p) | Equals(p, True) -> p
+        | Equals(False, p) | Equals(p, False) -> <@@ not (%%p: bool) @@>
+        | Equals(p, q) when sequal p q -> tE
+        | expr -> expr
+
+    /// Deterministic propositional simplifier: apply the size-reducing rules
+    /// (`_simp_laws`, `_reduce_constants`) at every subterm position bottom-up, then
+    /// AC-normalize the whole term, iterating to a fixpoint. Closes any (sub)goal that
+    /// collapses to T (or to a canonical identity `x = x`); leaves anything it cannot
+    /// reduce unchanged. Terminating (each law is size-non-increasing, `_normalize` is
+    /// idempotent) with a hard iteration cap as a safety net. Sound by construction: it
+    /// only composes verified equivalence-preserving rules.
+    let _simp : Expr -> Expr =
+        // Apply the local laws bottom-up (implicit position enumeration via traverse).
+        let rec localpass (e: Expr) =
+            let e' = traverse e localpass
+            e' |> _reduce_constants |> _simp_laws
+        let onepass e = e |> localpass |> _normalize |> _reduce_constants |> _simp_laws
+        let rec fix n e =
+            if n <= 0 then e
+            else let e' = onepass e in if sequal e' e then e else fix (n - 1) e'
+        fix 200

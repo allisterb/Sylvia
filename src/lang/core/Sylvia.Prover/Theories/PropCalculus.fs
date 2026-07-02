@@ -45,6 +45,12 @@ module PropCalculus =
 
     let _double_neg = EquationalLogic._double_neg
 
+    let _normalize = EquationalLogic._normalize
+
+    let _normalize_assoc = EquationalLogic._normalize_assoc
+
+    let _simp = EquationalLogic._simp
+
     (* Admissible rules *)
 
     /// Reduce logical constants in expression. 
@@ -106,7 +112,25 @@ module PropCalculus =
     let distrib_implies = Theory.S.Rules.[19]
 
     let double_neg = Theory.S.Rules.[20]
-     
+
+    /// Normalize associative-commutative logical operators (≡, ∨, ∧) in expression
+    /// into a canonical flattened, sorted form, collapsing runs of
+    /// associativity/commutativity bookkeeping steps.
+    [<AdmissibleRule "Normalize associative-commutative logical operators in expression.">]
+    let normalize = Theory.S.Rules.[28]
+
+    /// Normalize associativity of logical operators (≡, ∨, ∧) in expression,
+    /// flattening and right-associating chains while PRESERVING operand order
+    /// (unlike normalize, which also sorts). Reshapes association without commuting.
+    [<AdmissibleRule "Normalize associativity of logical operators in expression.">]
+    let normalize_assoc = Theory.S.Rules.[29]
+
+    /// Simplify expression to a fixpoint using the propositional simplification laws
+    /// (identity, annihilator, complement, idempotence, double negation, constant
+    /// equivalence) plus AC-normalization. Closes any (sub)goal that collapses to T.
+    [<AdmissibleRule "Simplify expression.">]
+    let simp = Theory.S.Rules.[30]
+
     (* Tactics for rules *)
 
     /// If A is a theorem then replace A with T.
@@ -230,10 +254,8 @@ module PropCalculus =
     /// ((p = q) = (r = s)) = ((p = r) = (q = s))
     [<DerivedRule "((p = q) = (r = s)) = ((p = r) = (q = s))">]
     let commute_eq_eq (p:Prop) (q:Prop) (r:Prop) (s:Prop) = ident prop_calculus (((p == q) == (r == s)) == ((p == r) == (q == s))) [
-        left_assoc_eq (p == q) r s |> apply_left
-        right_assoc_eq p q r |> apply_left
-        commute_eq q r |> apply_left
-        left_assoc_eq p r q |> apply_left
+        // pure AC rearrangement of ≡ (Gries 3.1/3.2, both axiomatic); normalize collapses it
+        apply normalize
     ]
 
     /// p ∨ q = q ∨ p  (Gries 3.24)
@@ -242,7 +264,7 @@ module PropCalculus =
  
     /// p ∨ (q ∨ r) = p ∨ q ∨ r  (Gries 3.25)
     [<DerivedRule "p ∨ (q ∨ r) = p ∨ q ∨ r">]
-    let left_assoc_or (p:Prop) (q:Prop) (r:Prop) = ident prop_calculus ( (p + (q + r)) == ((p + q) + r) ) [apply left_assoc; apply commute]
+    let left_assoc_or (p:Prop) (q:Prop) (r:Prop) = ident prop_calculus ( (p + (q + r)) == ((p + q) + r) ) [apply normalize]
 
     /// (p ∨ q) ∨ r = p ∨ (q ∨ r)  (Gries 3.25)
     [<DerivedRule "(p ∨ q) ∨ r = p ∨ (q ∨ r)">]
@@ -251,10 +273,8 @@ module PropCalculus =
     /// ((p ∨ q) ∨ (r ∨ s)) = ((p ∨ r) ∨ (q ∨ s))
     [<DerivedRule "((p ∨ q) ∨ (r ∨ s)) = ((p ∨ r) ∨ (q ∨ s))">]
     let commute_or_or (p:Prop) (q:Prop) (r:Prop) (s:Prop) = ident prop_calculus (((p + q) + (r + s)) == ((p + r) + (q + s))) [
-        left_assoc_or (p + q) r s |> apply_left
-        right_assoc_or p q r |> apply_left
-        commute_or q r |> apply_left
-        left_assoc_or p r q |> apply_left
+        // pure AC rearrangement of ∨; normalize collapses the reassociate/commute chain
+        apply normalize
     ]
 
     /// p ∨ (q = r) = (p ∨ q) = (p ∨ r)  (Gries 3.27)
@@ -695,11 +715,8 @@ module PropCalculus =
     /// p ∧ q ∧ (r ∧ s) = p ∧ r ∧ (q ∧ s) 
     [<DerivedRule "p ∧ q ∧ (r ∧ s) = p ∧ r ∧ (q ∧ s)">]
     let commute_and_and (p:Prop) (q:Prop) (r:Prop) (s:Prop) = ident prop_calculus (((p * q) * (r * s)) == ((p * r) * (q * s))) [
-        right_assoc_and p q ( r * s ) |> apply_left
-        left_assoc_and q r s |>  apply_left
-        commute_and q r |> apply_left
-        right_assoc_and r q s |> apply_left
-        left_assoc_and p r ( q * s ) |> apply_left
+        // pure AC rearrangement of ∧; normalize collapses the reassociate/commute chain
+        apply normalize
     ]
 
     /// p ⇒ q = (p ∨ q = q)  (Gries 3.57)

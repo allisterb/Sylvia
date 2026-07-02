@@ -74,6 +74,12 @@ type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =
         
         let split_range_exists = Admit("Split \u2203 quantifer range in (expression)", EquationalLogic._split_range_exists)
 
+        let normalize = Admit("Normalize associative-commutative logical operators in (expression)", EquationalLogic._normalize)
+
+        let normalize_assoc = Admit("Normalize associativity of logical operators in (expression)", EquationalLogic._normalize_assoc)
+
+        let simp = Admit("Simplify (expression)", EquationalLogic._simp)
+
         Theory(EquationalLogic.equational_logic_axioms, [
             reduce
             left_assoc
@@ -103,6 +109,9 @@ type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =
             distrib_or_forall
             split_range_forall
             split_range_exists
+            normalize
+            normalize_assoc
+            simp
         ])
 
 and Axioms = (Expr -> AxiomDescription option)

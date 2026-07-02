@@ -156,6 +156,18 @@ type KernelProofTests() =
             "double_neg",         EquationalLogic._double_neg,
                 [ e (p ==> q); e (!!(p ==> q)); raw <@@ (%%p.Expr:bool) <=== (%%q.Expr:bool) @@>
                   e (p == q); e (p * q); e (p + q); e T; e F ]
+            "normalize",          EquationalLogic._normalize,
+                // reassociation, commutation, nested, and ≡-chain (nested, not the top ≡) cases
+                [ e ((p + q) + r); e (q + p); e ((p * q) * r); e (q * p)
+                  e ((p + q) * (r + p)); e (r == (q == p)); e (p + (r == q)) ]
+            "normalize_assoc",    EquationalLogic._normalize_assoc,
+                // reassociation-only inputs (order-preserving, so each must reassociate to fire)
+                [ e ((p + q) + r); e ((p * q) * r); e (p + ((q == r) == s)) ]
+            "simp_laws",          EquationalLogic._simp_laws,
+                // identity, annihilator, complement, idempotence, absorption, double-neg, const-≡
+                [ e (p * T); e (p * F); e (p + F); e (p + T)
+                  e (p * !!p); e (p + !!p); e (p * p); e (p + p)
+                  e (p * (p + q)); e (p + (p * q)); e (!!(!!p)); e (T == p); e (F == p) ]
         ]
         let notEquiv = ResizeArray<string>()
         let noFire = ResizeArray<string>()
@@ -181,6 +193,66 @@ type KernelProofTests() =
         let out = EquationalLogic._subst_or_and input
         Assert.False(sequal input out, "subst_or_and did not fire on the Shannon input")
         Assert.True(equivalent input out, sprintf "%s -> %s not equivalent" (src input) (src out))
+
+    // ===== AC-normalization: collapses associativity/commutativity bookkeeping =
+
+    [<Fact>]
+    member _.``normalize closes an AC-equivalent disjunction goal in one step`` () =
+        // ((p ∨ q) ∨ r) ≡ (r ∨ (q ∨ p)) needs a run of left_assoc/right_assoc/commute
+        // steps today; normalizing both sides makes them syntactically identical (SEqual).
+        let goal = ((p + q) + r) == (r + (q + p))
+        let pr = proof PropCalculus.prop_calculus goal [ apply PropCalculus.normalize ]
+        Assert.True(pr.Complete, sprintf "normalize should close the goal; last state %s" (src pr.LastState))
+
+    [<Fact>]
+    member _.``normalize closes an AC-equivalent equivalence-chain goal in one step`` () =
+        // ≡ is associative and commutative, so (p ≡ q ≡ r) ≡ (r ≡ (q ≡ p)) is valid;
+        // normalize flattens each side's ≡-chain into the same canonical form.
+        let goal = (((p == q) == r)) == (r == (q == p))
+        let pr = proof PropCalculus.prop_calculus goal [ apply PropCalculus.normalize ]
+        Assert.True(pr.Complete, sprintf "normalize should close the goal; last state %s" (src pr.LastState))
+
+    [<Fact>]
+    member _.``normalize_assoc reassociates but preserves operand order (unlike full normalize)`` () =
+        // assoc-only must NOT reorder: q ∨ p stays q ∨ p, whereas full normalize sorts to p ∨ q.
+        let inp = expand (q + p).Expr
+        let assocOut = EquationalLogic._normalize_assoc inp
+        let acOut    = EquationalLogic._normalize inp
+        Assert.True(sequal assocOut inp, sprintf "assoc must keep order: %s -> %s" (src inp) (src assocOut))
+        Assert.True(sequal acOut (expand (p + q).Expr), sprintf "full normalize should sort to p ∨ q, got %s" (src acOut))
+
+    // ===== simp: deterministic simplifier closes "obvious" propositional goals =
+
+    [<Fact>]
+    member _.``simp closes obvious propositional goals in one step`` () =
+        // Each of these is an "obvious" tautology a single `apply simp` should discharge.
+        let goals : Prop list =
+            [ (p + !!p) == T                    // excluded middle
+              (p * !!p) == F                    // contradiction
+              (p * T) == p                      // identity
+              (p + F) == p                      // identity
+              (p * (q + !!q)) == p              // complement inside a conjunction
+              (!!(!!p)) == p                    // double negation
+              (((p + q) + r)) == (r + (q + p))  // AC-equivalence (via normalize inside simp)
+              (p * q) == (q * p) ]              // commutativity (normalize inside simp)
+        for g in goals do
+            let pr = proof PropCalculus.prop_calculus g [ apply PropCalculus.simp ]
+            Assert.True(pr.Complete, sprintf "simp should close %s; last state %s" (src (expand g.Expr)) (src pr.LastState))
+
+    [<Fact>]
+    member _.``simp leaves a non-theorem unproved (does not overclaim)`` () =
+        // simp must not "close" something that isn't valid; p = q is not a tautology.
+        let pr = proof PropCalculus.prop_calculus (p == q) [ apply PropCalculus.simp ]
+        Assert.False(pr.Complete, "simp must not close the non-theorem p = q")
+
+    [<Fact>]
+    member _.``normalize leaves a non-bool equality intact (AC restricted to bool)`` () =
+        // The ≡ case is guarded to bool operands: a real (non-bool) `=` is an atom and
+        // must NOT be AC-reordered (y = x must not become x = y).
+        let x, y = realvar "x", realvar "y"
+        let inp = expand (y == x).Expr
+        let out = EquationalLogic._normalize inp
+        Assert.True(sequal inp out, sprintf "non-bool = must not be AC-reordered: %s -> %s" (src inp) (src out))
 
     // ===== Repaired theorems: contr and everything that depends on it =========
 
