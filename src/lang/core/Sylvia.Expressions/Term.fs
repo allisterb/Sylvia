@@ -807,9 +807,9 @@ module RealNumbers =
 module Prop =
     let prop e = Prop e
 
-    let T = Expr.ValueWithName(true, "T") |> expand_as<bool> |> Prop
+    let T = Expr.ValueWithName(true, "True") |> expand_as<bool> |> Prop
 
-    let F = Expr.ValueWithName(false, "F") |> expand_as<bool> |> Prop
+    let F = Expr.ValueWithName(false, "False") |> expand_as<bool> |> Prop
 
     let boolvar2 p q = boolvar p, boolvar q
 

@@ -12,11 +12,15 @@ open Patterns
     
 module Display = 
    
-    let private symbolMap = Map [    
+    let private symbolMap = Map [
             "not", "¬"
             "&&", "∧"
             "||", "∨"
             "===>", "⇒"
+            // The truth constants are named "True"/"False" internally; show them compactly
+            // in the decompiled-expression fallback below.
+            "True", "T"
+            "False", "F"
         ]
     
     let (|SymbolDisplay|_|):obj -> string option = 
@@ -40,9 +44,12 @@ module Display =
         | :? (Var list) as vars -> vars.Tail |> List.fold (fun s v -> sprintf "%s,%s" s v.Name) vars.Head.Name |> Some
         | _ -> None
 
-    let rec print_formula =         
+    let rec print_formula =
         function
         (* Primitive terms *)
+        // The truth constants are named "True"/"False" internally; display them compactly.
+        | True -> "T"
+        | False -> "F"
         | Const(NonNull(SymbolDisplay symbol)) -> symbol
         | Var(VarDisplay v) -> v 
         | Atom a -> src a

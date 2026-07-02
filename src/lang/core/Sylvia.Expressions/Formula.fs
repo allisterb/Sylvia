@@ -47,17 +47,19 @@ module Formula =
     let func2<'r, 's, 't> = fun (_:'r) (_:'s) -> Unchecked.defaultof<'t>
 
     (* Formula patterns *)          
-    // A Prop's truth constants are the named T/F (ValueWithName), never bare bool
-    // literals: propositions are only ever compared to other propositions.
+    // A Prop's truth constants are the named bool values True/F (ValueWithName),
+    // never bare bool literals: propositions are only compared to propositions.
+    // Match only bool-typed named values so a symbol of another type named
+    // "True"/"False" is not mistaken for a truth constant.
     let (|True|_|) =
         function
-        | ValueWithName(_, _, "T") -> Some()
+        | ValueWithName(_, t, "True") when t = typeof<bool> -> Some()
         | _ -> None
 
 
     let (|False|_|) =
         function
-        | ValueWithName(_, _, "F") -> Some()
+        | ValueWithName(_, t, "False") when t = typeof<bool> -> Some()
         | _ -> None
 
     let (|Equals|_|) = 

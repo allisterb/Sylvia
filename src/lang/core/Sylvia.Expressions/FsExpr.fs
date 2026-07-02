@@ -49,18 +49,18 @@ module FsExpr =
         function
         | SpecificCall <@@ (&&) @@> (None,_,l::r::[]) -> Some (l, r)
         | IfThenElse(l, r, elseBranch) ->
-            match elseBranch with 
-            | ValueWithName(_, _, "F") -> None
+            match elseBranch with
+            | ValueWithName(_, _, "False") -> None
             | Bool false -> Some(l, r)
             | _ -> None
         | _ -> None
-    
+
     let (|Or|_|) =
-        function        
+        function
         | SpecificCall <@@ (||) @@> (None,_,l::r::[]) -> Some (l, r)
         | IfThenElse(l, thenBranch, r) ->
             match thenBranch with
-            | ValueWithName(_, _, "T") -> None
+            | ValueWithName(_, _, "True") -> None
             | Bool true -> Some(l, r)
             | _ -> None
         | _ -> None
