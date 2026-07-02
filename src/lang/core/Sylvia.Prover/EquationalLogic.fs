@@ -239,11 +239,12 @@ module EquationalLogic =
         | And(Not p , Not q) -> <@@ not ((%%p:bool) || (%%q:bool)) @@>
         | expr -> expr
     
-    /// || operator is idempotent.    
+    /// || and && operators are idempotent.
+    // NB: = (equivalence) is NOT idempotent: p = p is true (Reflexivity, Gries 3.5),
+    // not p. Reflexivity of = is captured by the DefTrue axiom, so idemp leaves = alone.
     let _idemp =
         function
         | Or(a1, a2) when sequal a1 a2 -> <@@ (%%a2:bool) @@>
-        | Equals(a1, a2) when sequal a1 a2 -> <@@ (%%a2:bool) @@>
         | And(a1, a2) when sequal a1 a2 -> <@@ (%%a2:bool) @@>
         | expr ->expr
 
@@ -327,11 +328,11 @@ module EquationalLogic =
             let E' = replace_var_expr p <@ false @> E in 
             let p' = Expr.Var p
             <@@ (%%E':bool) ===> (%%p':bool) @@>
-        | Implies(E, Or(Var p, Var q)) when E |> occurs [p] -> 
-            let E' = replace_var_expr p <@ false @> E in 
+        | Implies(E, Or(Var p, Var q)) when E |> occurs [p] ->
+            let E' = replace_var_expr p <@ false @> E in
             let p' = Expr.Var p
             let q' = Expr.Var q
-            <@@ ((%%p':bool) || (%%q':bool)) ===> %%E' @@>
+            <@@ (%%E':bool) ===> ((%%p':bool) || (%%q':bool)) @@>
         | Or(Var p, E) when E |> occurs [p] -> 
             let E' = replace_var_expr p <@ false @> E in 
             let p' = Expr.Var p
@@ -366,10 +367,12 @@ module EquationalLogic =
         | False -> <@@ not true @@>
         | Equals(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not ((%%_p:bool) <> (%%_q:bool)) @@>
         | Not(NotEquals(p, q)) -> let _p = _double_neg p in let _q = _double_neg q in <@@ (%%_p:bool) = (%%_q:bool) @@>
-        | Implies(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not ((%%_p:bool) <=== (%%_q:bool)) @@>
-        | Not(Conseq(p, q)) -> let _p = _double_neg p in let _q = _double_neg q in <@@ (%%_p:bool) ===> (%%_q:bool) @@>
-        | Conseq(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not ((%%_p:bool) ===> (%%_q:bool)) @@>
-        | Not(Implies(p, q)) -> let _p = _double_neg p in let _q = _double_neg q in <@@ (%%_p:bool) <=== (%%_q:bool) @@>
+        // p ==> q = not (p && not q)  (since not (p ==> q) = p && not q)
+        | Implies(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not ((%%_p:bool) && not (%%_q:bool)) @@>
+        | Not(Implies(p, q)) -> let _p = _double_neg p in let _q = _double_neg q in <@@ (%%_p:bool) && not (%%_q:bool) @@>
+        // p <=== q = q ==> p = not (q && not p)
+        | Conseq(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not ((%%_q:bool) && not (%%_p:bool)) @@>
+        | Not(Conseq(p, q)) -> let _p = _double_neg p in let _q = _double_neg q in <@@ (%%_q:bool) && not (%%_p:bool) @@>
         | And(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not (not(%%_p:bool) || (not(%%_q:bool))) @@>
         | Or(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not (not(%%_p:bool) && not (%%_q:bool)) @@>
         | ForAll(_, bound, range, body) -> let v = vars_to_tuple bound in let q = call <@ exists_expr @> (v::range::(<@@ not (%%body:bool) @@>)::[]) in call <@ not @> (q::[])

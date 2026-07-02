@@ -510,16 +510,10 @@ module PropCalculus =
     /// p ∨ (-p ∧ q) = (p ∨ q)
     [<DerivedRule "p ∨ (-p ∧ q) = (p ∨ q)">]
     let absorb_or_not p q = ident prop_calculus (p + (-p * q) == (p + q)) [
-        golden_rule |> apply_left
-        commute_or ( -p ) q  |> apply_left
-        right_assoc_eq ( -p ) q  ( q + -p ) |> apply_left
-        ident_or_or_not q  p |> Commute |> CommuteL |> apply_left
-        distrib |> apply_left 
-        commute_or q p |> apply_left
-        left_assoc_or p p q |> apply_left
-        idemp_or p |> apply_left
-        excluded_middle |> apply_left
-        ident_eq ( p + q ) |> CommuteL |> apply_left
+        distrib |> apply_left
+        excluded_middle |> apply_left |> left_branch
+        commute |> apply_left
+        ident_and ( p + q ) |> apply_left
     ]
     
     /// p ∨ (q ∧ r) = ((p ∨ q) ∧ (p ∨ r))
@@ -875,27 +869,10 @@ module PropCalculus =
     /// p ∧ q ⇒ p ∨ q
     [<Theorem "p ∧ q ⇒ p ∨ q">]
     let weaken_and_or (p:Prop) (q:Prop) = theorem prop_calculus ( p * q ==> p + q ) [
-        def_implies |> apply_left
-        commute |> apply_left |> left_branch
-        distrib |> apply_left |> left_branch
-        commute |> apply
-        idemp_or p |> apply
-        distrib |> apply_left |> right_branch
-        idemp_and p |> apply
-        distrib |> apply
-        distrib |> apply_right |> left_branch
-        distrib |> apply_left
-        idemp_or p |> apply_left
-        distrib |> apply_left
-        commute_or q p |> apply_left
-        idemp_and ( p + q ) |> apply_left
-        commute |> apply_left |> left_branch
-        distrib |> apply_left |> left_branch
-        idemp_and q |> apply_left
-        absorb_or q p |> CommuteL |> apply_left
-        commute |> apply_right |> left_branch
-        left_assoc |> apply_left
-        idemp_or q |> apply_left
+        def_implies |> apply
+        left_assoc_or ( p * q ) p q |> apply_left
+        commute_or ( p * q ) p |> apply_left |> left_branch
+        absorb_or p q |> apply_left |> left_branch
     ]
 
     /// (p ∨ (q ∧ r)) ⇒ (p ∨ q)

@@ -46,14 +46,22 @@ module ProofParsers =
         // Identifier for tactic names (starting with uppercase)
         let upperIdentifier = many1Satisfy2L (fun c -> isLetter c && System.Char.IsUpper c) isIdentifierChar "tactic" .>> ws
 
-        // Parse arguments for a rule/theorem (0 or more expressions)
+        // Parse arguments for a rule/theorem (0 or more), choosing a parser per
+        // parameter type: Prop -> boolean expression, int/real -> numeric literal.
         // Ensure each argument parser consumes trailing whitespace so consecutive
         // arguments (including parenthesised ones) are parsed correctly.
-        let parseArgs (paramCount: int) =
-
-            let arg = ws >>. ((attempt (parens (boolExprParser<'t>))) <|> (boolExprParser<'t>)) .>> ws
-         
-            parray paramCount arg
+        let parseArgs (parameters: ParameterInfo[]) : Parser<obj[], unit> =
+            let propArg = ws >>. ((attempt (parens (boolExprParser<'t>))) <|> (boolExprParser<'t>)) .>> ws |>> getArgTerm'
+            let intArg  = ws >>. (pint32 .>> ws) |>> box
+            let realArg = ws >>. (pfloat .>> ws) |>> box
+            let argFor (p: ParameterInfo) =
+                let pt = p.ParameterType
+                if pt = typeof<int> then intArg
+                elif pt = typeof<real> then realArg
+                else propArg
+            parameters
+            |> Array.map argFor
+            |> Array.fold (fun st p -> st >>= fun xs -> p |>> fun x -> Array.append xs [| x |]) (preturn [||])
             
         let taut :Theorem->Rule=  
             let ieq p = 
@@ -72,9 +80,7 @@ module ProofParsers =
                     match derived |> Array.tryFind (fun r -> r.Name = name) with
                     | Some rule ->
                         // Derived rules (Methods)
-                        let paramCount = rule.Method.GetParameters().Length
-                        parseArgs paramCount .>> ws |>> fun args ->
-                             let argsArray = args |> Array.map getArgTerm'
+                        parseArgs (rule.Method.GetParameters()) .>> ws |>> fun argsArray ->
                              match rule.Method.Invoke(null, argsArray) with
                              | :? Rule as r -> r
                              | _ -> failwith "Derived rule method did not return a Rule."
@@ -82,9 +88,7 @@ module ProofParsers =
                         match theorems |> Array.tryFind (fun t -> t.Name = name) with
                         | Some theorem ->
                             // Theorems (Methods that return Theorem)
-                            let paramCount = theorem.Method.GetParameters().Length
-                            parseArgs paramCount |>> fun args ->
-                                 let argsArray = args |> Array.map getArgTerm'
+                            parseArgs (theorem.Method.GetParameters()) |>> fun argsArray ->
                                  match theorem.Method.Invoke(null, argsArray) with
                                  | :? Theorem as th -> taut th
                                  | _ -> failwith "Theorem method did not return a Theorem."

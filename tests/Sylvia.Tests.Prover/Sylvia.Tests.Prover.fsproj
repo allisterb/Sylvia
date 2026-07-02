@@ -12,6 +12,7 @@
     <Compile Include="TestsRuntime.fs" />
     <Compile Include="DisplayTests.fs" />
     <Compile Include="ParserTests.fs" />
+    <Compile Include="KernelProofTests.fs" />
   </ItemGroup>
 
   <ItemGroup>

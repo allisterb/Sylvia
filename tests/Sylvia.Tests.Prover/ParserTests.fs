@@ -30,7 +30,7 @@ module TestRules =
     let distribute_and_or (p:Prop) (q:Prop) (r:Prop) = PropCalculus.distrib_and_or p q r
        
     [<DerivedRule "Test Derived Rule with Prop and Int parameters">]
-    let ruleWithMultipleTypes (p:Prop) (i:int) = Admit(sprintf "ruleWithMultipleTypes(%s, %d)" (src p.Expr) i, fun _ -> p.Expr)
+    let ruleWithMultipleTypes (p:Prop) (i:int) = Admit(sprintf "ruleWithMultipleTypes(%s, %d)" (Display.print_formula p.Expr) i, fun _ -> p.Expr)
 
     [<AdmissibleRule("Test Admissible Rule")>]
     let rule1 = Admit("rule1", id)
@@ -41,8 +41,9 @@ module TestRules =
     [<Theorem("Test theorem with 2 parameters")>]
     let theorem2 (p:Prop) (q:Prop) = theorem prop_calculus T []
 
-    //[<Theorem("Forall x. P[x] implies Exists x. P[x]")>]
-    //let quantifierTheorem (x:Prop) (P:Pred<bool>)= theorem prop_calculus (forall'(x, P[x] ==> exists(x, x)) [] // Placeholder logic
+    // Takes a (predicate-application) Prop argument, e.g. P[x], and proves P[x] ==> T.
+    [<Theorem("P[x] implies true")>]
+    let quantifierTheorem (p:Prop) = implies_true p
     
     (* Module information members *)
 
@@ -72,9 +73,9 @@ type ParserTests() =
         let admissible = ProofModules.getModuleAdmissibleRules TestRules.Type
         let derived = [||]
         
-        let ra = ProofParsers.parseRuleApp<bool> admissible derived [||] [||] "rule1 |> apply_left |> branch_right"
+        let ra = ProofParsers.parseRuleApp<bool> admissible derived [||] [||] "rule1 |> apply_left |> right_branch"
         match ra with
-        | Ok(BranchRight(ApplyLeft(r))) when r.Name = "rule1" -> ()
+        | Ok(RightBranch(ApplyLeft(r))) when r.Name = "rule1" -> ()
         | _ -> failwithf "Unexpected RuleApplication structure: %A" ra
 
     [<Fact>]

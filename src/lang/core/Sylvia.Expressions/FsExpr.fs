@@ -360,8 +360,22 @@ module FsExpr =
 
     let hasCase<'t> case = FSharpType.GetUnionCases(typeof<'t>) |> Array.tryFind(fun c -> c.Name = case)
     
-    let sequal (l:Expr) (r:Expr) = 
-        (l.ToString() = r.ToString()) 
+    // A named boolean constant (e.g. the T/F constants, built with ValueWithName)
+    // denotes the same proposition as the corresponding bare literal true/false
+    // (e.g. produced by rules like _excluded_middle). The True/False active patterns
+    // already treat them interchangeably; strip the name so that string-based sequal
+    // does too, even when the constant occurs nested inside a larger expression.
+    let rec private strip_bool_names (e:Expr) =
+        match e with
+        | ValueWithName((:? bool as b), _, _) -> Expr.Value(b)
+        | ShapeVar v -> Expr.Var v
+        | ShapeLambda(v, body) -> Expr.Lambda(v, strip_bool_names body)
+        | ShapeCombination(o, args) -> RebuildShapeCombination(o, args |> List.map strip_bool_names)
+
+    let sequal (l:Expr) (r:Expr) =
+        let l = strip_bool_names l
+        let r = strip_bool_names r
+        (l.ToString() = r.ToString())
         || l.ToString() = sprintf "(%s)" (r.ToString())
         || r.ToString() = sprintf "(%s)" (l.ToString())
     
