@@ -109,6 +109,79 @@ type KernelProofTests() =
         let out = EquationalLogic._excluded_middle (expand (p + !!p).Expr)
         Assert.True(sequal out T.Expr, sprintf "excluded_middle produced %s, expected T" (src out))
 
+    // ===== Mis-targeted steps fail loudly (no silent no-ops) ==================
+
+    [<Fact>]
+    member _.``apply_left on a non-binary expression throws`` () =
+        // Targeting the left of an expression that has no binary structure (here a
+        // bare variable) is a proof-authoring error and must not silently no-op.
+        let ra = apply_left PropCalculus.commute
+        Assert.ThrowsAny<exn>(fun () -> ra.ApplyRule (expand p.Expr) |> ignore) |> ignore
+
+    // ===== Trusted base: every admissible rule preserves equivalence ==========
+    // The propositional Admit rules in Theory.S are trusted rewrites; verify each is
+    // equivalence-preserving (this is the class of defect that broke idemp/double_neg/
+    // subst_false). Quantifier rules (empty_range, trade_body, ...) need a finite-domain
+    // model checker and are out of scope for this propositional oracle.
+
+    [<Fact>]
+    member _.``every propositional admissible rule in Theory.S is equivalence-preserving`` () =
+        let inline e (pr: Prop) = expand pr.Expr
+        let raw (q: Expr) = expand q
+        let cases : (string * (Expr -> Expr) * Expr list) list = [
+            "reduce",             EquationalLogic._reduce_constants,
+                [ raw <@@ true && false @@>; raw <@@ true || false @@>; raw <@@ not true @@>
+                  raw <@@ (true:bool) = false @@>; raw <@@ (true:bool) <> false @@>; raw <@@ (true:bool) ===> false @@> ]
+            "commute",            EquationalLogic._commute,      [ e (p == q); e (p + q); e (p * q) ]
+            "left_assoc",         EquationalLogic._left_assoc,   [ e (p == (q == r)); e (p + (q + r)); e (p * (q * r)) ]
+            "right_assoc",        EquationalLogic._right_assoc,  [ e ((p == q) == r); e ((p + q) + r); e ((p * q) * r) ]
+            "distrib",            EquationalLogic._distrib,
+                [ e (!!(p == q)); e (p + (q == r)); e (p + (q * r)); e (p + (q + r)); e (p * (q + r)); e (!!(p + q)); e (!!(p * q)) ]
+            "collect",            EquationalLogic._collect,
+                [ e (!!p == q); e ((p + q) == (p + r)); e ((p + q) * (p + r)); e ((p * q) + (p * r)); e ((p + q) + (p + r)); e (!!p + !!q); e (!!p * !!q) ]
+            "idemp",              EquationalLogic._idemp,        [ e (p + p); e (p * p) ]
+            "excluded_middle",    EquationalLogic._excluded_middle, [ e (p + !!p) ]
+            "golden_rule",        EquationalLogic._golden_rule,  [ e (p * q) ]
+            "def_implies",        EquationalLogic._def_implies,  [ e (p ==> q) ]
+            "shunt",              EquationalLogic._shunt,        [ e ((p * q) ==> r) ]
+            "rshunt",             EquationalLogic._rshunt,       [ e (p ==> (q ==> r)) ]
+            "mutual_implication", EquationalLogic._mutual_implication, [ e (p == q) ]
+            "subst_and",          EquationalLogic._subst_and,          [ e ((p == q) * (p + r)) ]
+            "subst_implies",      EquationalLogic._subst_implies,      [ e ((p == q) ==> (p + r)) ]
+            "subst_and_implies",  EquationalLogic._subst_and_implies,  [ e ((s * (p == q)) ==> (p + r)) ]
+            "subst_true",         EquationalLogic._subst_true,         [ e (p ==> (p + q)); e (p * (p + q)) ]
+            "subst_false",        EquationalLogic._subst_false,        [ e ((p + q) ==> p); e ((p * r) ==> (p + q)); e (p + (p * q)) ]
+            "distrib_implies",    EquationalLogic._distrib_implies,
+                [ e (p * (p ==> q)); e (p * (q ==> p)); e (p + (p ==> q)); e (p + (q ==> p)); e ((p + q) ==> (p * q)) ]
+            "double_neg",         EquationalLogic._double_neg,
+                [ e (p ==> q); e (!!(p ==> q)); raw <@@ (%%p.Expr:bool) <=== (%%q.Expr:bool) @@>
+                  e (p == q); e (p * q); e (p + q); e T; e F ]
+        ]
+        let notEquiv = ResizeArray<string>()
+        let noFire = ResizeArray<string>()
+        for (name, rule, inputs) in cases do
+            for inp in inputs do
+                let out = rule inp
+                if sequal inp out then noFire.Add(sprintf "%s: %s (rule did not fire)" name (src inp))
+                elif not (equivalent inp out) then notEquiv.Add(sprintf "%s: %s -> %s" name (src inp) (src out))
+        Assert.True(notEquiv.Count = 0, sprintf "NON-EQUIVALENCE-PRESERVING rewrites:\n%s" (String.Join("\n", notEquiv)))
+        // Every input should exercise its rule; a no-op means the test input is miscovered.
+        Assert.True(noFire.Count = 0, sprintf "inputs that did not exercise the rule:\n%s" (String.Join("\n", noFire)))
+
+    [<Fact>]
+    member _.``subst_or_and (Shannon) fires and preserves equivalence`` () =
+        // Build E = p ∨ q and the Shannon expansion (p ∧ E[p:=T]) ∨ (¬p ∧ E[p:=F]).
+        let pv = match p.Expr with | Patterns.Var v -> v | _ -> failwith "p is not a Var"
+        let bigE = expand (p + q).Expr
+        let eT = replace_var_expr pv (T.Expr.Raw) bigE
+        let eF = replace_var_expr pv (F.Expr.Raw) bigE
+        let pE = Expr.Var pv
+        let shannon = <@@ ((%%pE:bool) && (%%eT:bool)) || ((not (%%pE:bool)) && (%%eF:bool)) @@>
+        let input = expand <@@ (%%bigE:bool) = (%%shannon:bool) @@>
+        let out = EquationalLogic._subst_or_and input
+        Assert.False(sequal input out, "subst_or_and did not fire on the Shannon input")
+        Assert.True(equivalent input out, sprintf "%s -> %s not equivalent" (src input) (src out))
+
     // ===== Repaired theorems: contr and everything that depends on it =========
 
     [<Fact>]

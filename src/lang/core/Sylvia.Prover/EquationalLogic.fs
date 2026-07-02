@@ -220,7 +220,7 @@ module EquationalLogic =
         | Equals(a1, a2) -> <@@ (%%a2:bool) = (%%a1:bool) @@>
         | Or(a1, a2) -> <@@ (%%a2:bool) || (%%a1:bool) @@>
         | And(a1, a2) -> <@@ (%%a2:bool) && (%%a1:bool) @@>
-        | expr -> expr 
+        | expr -> expr
     
     /// Distribute logical terms.
     let _distrib =
@@ -368,6 +368,9 @@ module EquationalLogic =
         | Exists _ as expr -> failwithf "Expression %s not supported for dual operator." <| src expr
         | expr -> traverse expr _dual 
 
+    /// Rewrite an expression as an equivalent double negation, distributing the inner
+    /// negation with De Morgan's laws (and generalized De Morgan for quantifiers, so
+    /// forall <-> exists). Unlike _dual, this preserves equivalence.
     let rec _double_neg =
         function
         | True -> <@@ not (%%fE:bool) @@>

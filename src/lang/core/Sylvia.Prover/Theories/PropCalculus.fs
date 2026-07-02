@@ -158,37 +158,37 @@ module PropCalculus =
 
     (* Derived rules *)
     
-    /// T = (p = p)
+    /// T = (p = p)  (Gries 3.3)
     [<DerivedRule "T = (p = p)">]
     let def_true (p:Prop) = id_ax prop_calculus (T == (p == p))  
         
-    /// F = (¬p = p)
+    /// F = (¬p = p)  (Gries 3.15)
     [<DerivedRule "F = (¬p = p)">]
     let def_false (p:Prop) = ident prop_calculus (F == (!!p == p)) [
         apply_right collect
         def_true p |> Commute |> apply_right
     ] 
 
-    /// (p = T) = p
+    /// (p = T) = p  (Gries 3.3)
     [<DerivedRule "(p = T) = p">]
     let ident_eq (p:Prop) = ident prop_calculus ((p == T) == p)  [
         apply_left commute
         apply right_assoc
     ]
 
-    /// p = q = q = p
+    /// p = q = q = p  (Gries 3.2)
     [<DerivedRule "p = q = q = p">]
     let commute_eq (p:Prop) (q:Prop) = ident prop_calculus ( (p == q) == (q == p) ) [apply left_assoc]
 
-    /// p = (q = r) = p = q = r
+    /// p = (q = r) = p = q = r  (Gries 3.1)
     [<DerivedRule "p = (q = r) = p = q = r">]
     let left_assoc_eq (p:Prop) (q:Prop) (r:Prop) = ident prop_calculus ( (p == (q == r)) == (p == q == r)) [apply_right right_assoc]
 
-    /// (p = q) = r = p = (q = r)
+    /// (p = q) = r = p = (q = r)  (Gries 3.1)
     [<DerivedRule "(p = q) = r = p = (q = r)">]
     let right_assoc_eq (p:Prop) (q:Prop) (r:Prop) = id_ax prop_calculus (((p == q) == r) == (p == (q == r)))
 
-    /// ¬F = T
+    /// ¬F = T  (Gries 3.13)
     [<DerivedRule "¬F = T">]
     let not_false = ident prop_calculus (!!F == T) [
         apply commute
@@ -199,14 +199,14 @@ module PropCalculus =
         def_true F |> Commute |> apply_right  
     ]
 
-    /// ¬¬p = p
+    /// ¬¬p = p  (Gries 3.12)
     [<DerivedRule "¬¬p = p">]
     let double_negation (p:Prop) = ident prop_calculus ((!!(!!p)) == p) [
          apply collect
          def_false p |> Commute |> apply         
     ]
 
-    /// ¬p = q = p = ¬q
+    /// ¬p = q = p = ¬q  (Gries 3.11)
     [<DerivedRule "¬p = q = p = ¬q">]
     let symm_not_eq (p:Prop) (q:Prop) = ident prop_calculus (!!p == q == p == !!q) [
         collect |> apply_left
@@ -236,15 +236,15 @@ module PropCalculus =
         left_assoc_eq p r q |> apply_left
     ]
 
-    /// p ∨ q = q ∨ p
+    /// p ∨ q = q ∨ p  (Gries 3.24)
     [<DerivedRule "p ∨ q = q ∨ p">]
     let commute_or (p:Prop) (q:Prop) = id_ax prop_calculus ((p + q) == (q + p))
  
-    /// p ∨ (q ∨ r) = p ∨ q ∨ r
+    /// p ∨ (q ∨ r) = p ∨ q ∨ r  (Gries 3.25)
     [<DerivedRule "p ∨ (q ∨ r) = p ∨ q ∨ r">]
     let left_assoc_or (p:Prop) (q:Prop) (r:Prop) = ident prop_calculus ( (p + (q + r)) == ((p + q) + r) ) [apply left_assoc; apply commute]
 
-    /// (p ∨ q) ∨ r = p ∨ (q ∨ r)
+    /// (p ∨ q) ∨ r = p ∨ (q ∨ r)  (Gries 3.25)
     [<DerivedRule "(p ∨ q) ∨ r = p ∨ (q ∨ r)">]
     let right_assoc_or p q r = left_assoc_or p q r |> Commute
 
@@ -257,19 +257,19 @@ module PropCalculus =
         left_assoc_or p r q |> apply_left
     ]
 
-    /// p ∨ (q = r) = (p ∨ q) = (p ∨ r)
+    /// p ∨ (q = r) = (p ∨ q) = (p ∨ r)  (Gries 3.27)
     [<DerivedRule "p ∨ (q = r) = (p ∨ q) = (p ∨ r)">]
     let distrib_or_eq (p:Prop) (q:Prop) (r:Prop) = id_ax prop_calculus ((p + (q == r)) == ((p + q) == (p + r)))
 
-    /// (p ∨ q) = (p ∨ r) = p ∨ (q ∨ r)
+    /// (p ∨ q) = (p ∨ r) = p ∨ (q ∨ r)  (Gries 3.27)
     [<DerivedRule "(p ∨ q) = (p ∨ r) = p ∨ (q ∨ r)">]
     let collect_or_eq p q r = distrib_or_eq p q r |> Commute
 
-    /// (p ∨ p) = p
+    /// (p ∨ p) = p  (Gries 3.26)
     [<DerivedRule "(p ∨ p) = p">]
     let idemp_or p =  id_ax prop_calculus ((p + p) == p) 
   
-    /// (p and p) = p
+    /// (p and p) = p  (Gries 3.38)
     [<DerivedRule "(p and p) = p">]
     let idemp_and p = ident prop_calculus ((p * p) == p) [
         apply_left golden_rule
@@ -278,7 +278,7 @@ module PropCalculus =
         apply commute 
     ] 
 
-    /// p ∨ T = T
+    /// p ∨ T = T  (Gries 3.29)
     [<DerivedRule "p ∨ T = T">]
     let zero_or p = ident prop_calculus ((p + T) == T) [
         def_true p |> apply_right |> left_branch
@@ -286,7 +286,7 @@ module PropCalculus =
         commute |> apply
     ]
 
-    /// p ∨ F = p
+    /// p ∨ F = p  (Gries 3.30)
     [<DerivedRule "p ∨ F = p">]
     let ident_or (p:Prop) = ident prop_calculus ((p + F) == p) [
         def_false p |> apply_right |> left_branch
@@ -296,7 +296,7 @@ module PropCalculus =
         apply_left excluded_middle
     ]
 
-    /// (p ∨ q) = (p ∨ ¬q = p)
+    /// (p ∨ q) = (p ∨ ¬q = p)  (Gries 3.32)
     [<DerivedRule "(p ∨ q) = (p ∨ ¬q = p)">]
     let ident_or_or_not (p:Prop) q = ident prop_calculus ((p + q) == ((p + !!q) == p)) [
         apply left_assoc
@@ -317,7 +317,7 @@ module PropCalculus =
     ]
 
     
-    /// p ∨ (q ∨ r) = ((p ∨ q) ∨ (p ∨ r))
+    /// p ∨ (q ∨ r) = ((p ∨ q) ∨ (p ∨ r))  (Gries 3.31)
     [<DerivedRule "p ∨ (q ∨ r) = ((p ∨ q) ∨ (p ∨ r))">]
     let distrib_or_or (p:Prop) (q:Prop) (r:Prop) =  ident prop_calculus ((p + (q + r)) == ((p + q) + (p + r))) [
         idemp_or p |> Commute |> apply_left
@@ -328,25 +328,25 @@ module PropCalculus =
         left_assoc |> apply_left
     ]
 
-    /// (p ∨ q) = (p ∨ r) = p ∨ (q ∨ r)
+    /// (p ∨ q) = (p ∨ r) = p ∨ (q ∨ r)  (Gries 3.31)
     [<DerivedRule "(p ∨ q) = (p ∨ r) = p ∨ (q ∨ r)">]
     let collect_or_or p q r = distrib_or_or p q r |> Commute
 
-    /// ¬(p = q) = ¬p = q
+    /// ¬(p = q) = ¬p = q  (Gries 3.9)
     [<DerivedRule "¬(p = q) = ¬p = q">]
     let distrib_not (p:Prop) (q:Prop) = ident prop_calculus ((-(p == q)) == (-p == q)) [apply right_assoc]
 
-    /// (¬p = q) = ¬(p = q)
+    /// (¬p = q) = ¬(p = q)  (Gries 3.9)
     [<DerivedRule "(¬p = q) = ¬(p = q)">]
     let collect_not p q = distrib_not p q |> Commute
 
-    /// p ≠ q = ¬(p = q)
+    /// p ≠ q = ¬(p = q)  (Gries 3.10)
     [<DerivedRule "p ≠ q = ¬(p = q)">]
     let def_not_eq (p:Prop) (q:Prop) = ident prop_calculus ((p != q) == (-(p == q))) [
         right_assoc |> apply
     ]
 
-    /// p ≠ q = q ≠ p
+    /// p ≠ q = q ≠ p  (Gries 3.16)
     [<DerivedRule "p ≠ q = q ≠ p">]
     let commute_not_eq (p:Prop) (q:Prop) = ident prop_calculus ((p != q) == (q != p)) [
         def_not_eq p q |> apply_left
@@ -354,7 +354,7 @@ module PropCalculus =
         commute_eq q p |> apply_right
     ]
 
-    /// (p ≠ q) ≠ r = p ≠ (q ≠ r)
+    /// (p ≠ q) ≠ r = p ≠ (q ≠ r)  (Gries 3.17)
     [<DerivedRule "(p ≠ q) ≠ r = p ≠ (q ≠ r)">]
     let right_assoc_not_eq p q r = ident prop_calculus (((p != q) != r) == (p != (q != r))) [
         def_not_eq p q  |> apply_left
@@ -368,20 +368,47 @@ module PropCalculus =
         commute_eq q p |> apply_right
     ]
 
-    /// p ≠ (q ≠ r) = (p ≠ q) ≠ r
+    /// p ≠ (q ≠ r) = (p ≠ q) ≠ r  (Gries 3.17)
     [<DerivedRule "p ≠ (q ≠ r) = (p ≠ q) ≠ r">]
     let left_assoc_not_eq p q r = right_assoc_not_eq p q r |> Commute
 
-    
-    /// p ∨ ¬p = T
+    /// (p ≠ q) = (¬p = q)  (Gries 3.14)
+    [<DerivedRule "(p ≠ q) = (¬p = q)">]
+    let distrib_not_not_eq (p:Prop) (q:Prop) = ident prop_calculus ((p != q) == (!!p == q)) [
+        def_not_eq p q |> apply_left
+        distrib_not p q |> apply_left
+    ]
+
+    /// (p ≠ q) = r = p ≠ (q = r)  (Gries 3.18)
+    [<DerivedRule "(p ≠ q) = r = p ≠ (q = r)">]
+    let mutual_assoc_not_eq (p:Prop) (q:Prop) (r:Prop) = ident prop_calculus (((p != q) == r) == (p != (q == r))) [
+        def_not_eq p q |> apply_left |> left_branch
+        distrib_not p q |> apply_left |> left_branch
+        def_not_eq p (q == r) |> apply_right
+        distrib_not p (q == r) |> apply_right
+        right_assoc_eq (!!p) q r |> apply_left
+    ]
+
+    /// (p ≠ q) = r = (p = q) ≠ r  (Gries 3.19)
+    [<DerivedRule "(p ≠ q) = r = (p = q) ≠ r">]
+    let mutual_interchange_not_eq (p:Prop) (q:Prop) (r:Prop) = ident prop_calculus (((p != q) == r) == ((p == q) != r)) [
+        def_not_eq p q |> apply_left |> left_branch
+        distrib_not p q |> apply_left |> left_branch
+        def_not_eq (p == q) r |> apply_right
+        distrib_not (p == q) r |> apply_right
+        distrib_not p q |> apply_right
+    ]
+
+
+    /// p ∨ ¬p = T  (Gries 3.28)
     [<DerivedRule "p ∨ ¬p = T">]
     let excluded_middle' (p:Prop) = ident prop_calculus ((p + (-p)) == T) [ident_eq (p + (-p)) |> apply]
     
-    /// p ∧ q = ((p = q) = (p ∨ q))
+    /// p ∧ q = ((p = q) = (p ∨ q))  (Gries 3.35)
     [<DerivedRule "p ∧ q = ((p = q) = (p ∨ q))">]
     let golden_rule' (p:Prop) (q:Prop) = id_ax prop_calculus ((p * q) == (p == q == (p + q)))
 
-    /// (p ∨ (p ∧ q)) = p
+    /// (p ∨ (p ∧ q)) = p  (Gries 3.43b)
     [<DerivedRule "(p ∨ (p ∧ q)) = p">]
     let absorb_or (p:Prop) (q:Prop) = ident prop_calculus (p + (p * q) == p)  [
         golden_rule |> apply_right |> left_branch
@@ -392,7 +419,7 @@ module PropCalculus =
         idemp_or p |> apply_left
     ]
 
-     /// p ∧ q = q ∧ p
+     /// p ∧ q = q ∧ p  (Gries 3.36)
     [<DerivedRule "p ∧ q = q ∧ p">]
     let commute_and (p:Prop) (q:Prop) = ident prop_calculus ((p * q) == (q * p))  [
         golden_rule' p q |> apply_left
@@ -401,7 +428,7 @@ module PropCalculus =
         commute_eq q p |> apply_right
     ]
         
-    /// p ∧ q ∧ r == (p == q == r == (p ∨ q) = (q ∨ r) = (r ∨ p) = (p ∨ q ∨ r))
+    /// p ∧ q ∧ r == (p == q == r == (p ∨ q) = (q ∨ r) = (r ∨ p) = (p ∨ q ∨ r))  (Gries 3.55)
     [<DerivedRule "p ∧ q ∧ r == (p == q == r == (p ∨ q) == (q ∨ r) == (r ∨ p) == (p ∨ q ∨ r))">]
     let ident_and_eq_all p q r = ident prop_calculus ((p * q * r) == (p == q == r == (p + q) == (q + r) == (r + p) == (p + q + r))) [
         golden_rule' p q |> apply_left |> left_branch
@@ -419,7 +446,7 @@ module PropCalculus =
         left_assoc_eq (p == q == r == (p + q)) (q + r) (r + p) |> apply_left |> left_branch
     ]
     
-    /// p ∧ q ∧ r == p ∧ (q ∧ r)
+    /// p ∧ q ∧ r == p ∧ (q ∧ r)  (Gries 3.37)
     [<DerivedRule "p ∧ q ∧ r == p ∧ (q ∧ r)">]
     let right_assoc_and p q r = ident prop_calculus ((p * q * r) == (p * (q * r))) [
         ident_and_eq_all p q r |> apply_left
@@ -441,11 +468,11 @@ module PropCalculus =
         left_assoc_eq ( p == q == r ) ( p + q )  ( (q + r) ) |> apply_right
     ]
 
-    /// p ∧ (q ∧ r) = p ∧ q ∧ r
+    /// p ∧ (q ∧ r) = p ∧ q ∧ r  (Gries 3.37)
     [<DerivedRule "p ∧ (q ∧ r) = p ∧ q ∧ r">]
     let left_assoc_and p q r = right_assoc_and p q r |> Commute
         
-    /// p ∧ true = p
+    /// p ∧ true = p  (Gries 3.39)
     [<DerivedRule "p ∧ true = p">]
     let ident_and p = ident prop_calculus ( (p * T) == p ) [
         apply_left golden_rule
@@ -454,7 +481,7 @@ module PropCalculus =
         apply_right commute
     ]
 
-    /// p ∧ false = false
+    /// p ∧ false = false  (Gries 3.40)
     [<DerivedRule "p ∧ false = false">]
     let zero_and p = ident prop_calculus ( (p * F) == F ) [
       golden_rule' p F |> apply_left
@@ -462,7 +489,7 @@ module PropCalculus =
       apply right_assoc
     ]
 
-    /// p ∧ (q ∧ r) = (p ∧ q) ∧ (p ∧ r)
+    /// p ∧ (q ∧ r) = (p ∧ q) ∧ (p ∧ r)  (Gries 3.41)
     [<DerivedRule "p ∧ (q ∧ r) = (p ∧ q) ∧ (p ∧ r)">]
     let distrib_and p q r = ident prop_calculus ( (p * (q * r)) == ((p * q) * (p * r)) ) [
         idemp_and p |> Commute |> apply_left |> left_branch
@@ -473,7 +500,7 @@ module PropCalculus =
         left_assoc |> apply_left
     ]
 
-    /// p ∧ ¬p = F
+    /// p ∧ ¬p = F  (Gries 3.42)
     [<DerivedRule "p ∧ ¬p = F">]
     let contr p = ident prop_calculus ( p * -p == F) [
         golden_rule |> apply_left
@@ -484,7 +511,7 @@ module PropCalculus =
         right_assoc |> apply
     ]
 
-    /// (p ∧ (p ∨ q)) = p
+    /// (p ∧ (p ∨ q)) = p  (Gries 3.43a)
     [<DerivedRule "(p ∧ (p ∨ q)) = p">]
     let absorb_and p q = ident prop_calculus ( (p * (p + q)) == p ) [
         apply_left golden_rule
@@ -492,7 +519,7 @@ module PropCalculus =
         idemp_or p |> apply_left
     ]
     
-    /// p ∧ (-p ∨ q) = (p ∧ q)
+    /// p ∧ (-p ∨ q) = (p ∧ q)  (Gries 3.44a)
     [<DerivedRule "p ∧ (-p ∨ q) = (p ∧ q)">]
     let absorb_and_not (p:Prop) q = ident prop_calculus (p * ((-p) + q) == (p * q)) [
         golden_rule |> apply_left
@@ -507,7 +534,7 @@ module PropCalculus =
         golden_rule' p q |> Commute |> apply_left
     ]
 
-    /// p ∨ (-p ∧ q) = (p ∨ q)
+    /// p ∨ (-p ∧ q) = (p ∨ q)  (Gries 3.44b)
     [<DerivedRule "p ∨ (-p ∧ q) = (p ∨ q)">]
     let absorb_or_not p q = ident prop_calculus (p + (-p * q) == (p + q)) [
         distrib |> apply_left
@@ -516,7 +543,7 @@ module PropCalculus =
         ident_and ( p + q ) |> apply_left
     ]
     
-    /// p ∨ (q ∧ r) = ((p ∨ q) ∧ (p ∨ r))
+    /// p ∨ (q ∧ r) = ((p ∨ q) ∧ (p ∨ r))  (Gries 3.45)
     [<DerivedRule "p ∨ (q ∧ r) = ((p ∨ q) ∧ (p ∨ r))">]
     let distrib_or_and (p:Prop) (q:Prop) (r:Prop) = ident prop_calculus (p + (q * r) == ((p + q) * (p + r))) [
         golden_rule |> apply_right |> left_branch
@@ -526,11 +553,11 @@ module PropCalculus =
         golden_rule' ( p + q ) ( p + r ) |> Commute |> apply_left
     ]
 
-    /// ((p ∨ q) ∧ (p ∨ r)) = p ∨ (q ∧ r)
+    /// ((p ∨ q) ∧ (p ∨ r)) = p ∨ (q ∧ r)  (Gries 3.45)
     [<DerivedRule "((p ∨ q) ∧ (p ∨ r)) = p ∨ (q ∧ r)">]
     let collect_or_and p q r = distrib_or_and p q r |> Commute
 
-    /// p ∧ (q ∨ r) = ((p ∧ q) ∨ (p ∧ r))
+    /// p ∧ (q ∨ r) = ((p ∧ q) ∨ (p ∧ r))  (Gries 3.46)
     [<DerivedRule "p ∧ (q ∨ r) = ((p ∧ q) ∨ (p ∧ r))">]
     let distrib_and_or p q r =  ident prop_calculus ( p * (q + r) == ((p * q) + (p * r)) ) [
         distrib_or_and ( p * q ) p r|> apply_right
@@ -541,7 +568,7 @@ module PropCalculus =
         absorb_and p r |> apply_right
         commute |> apply_right |> right_branch
     ]
-    /// -(p ∧ q) = -p ∨ -q
+    /// -(p ∧ q) = -p ∨ -q  (Gries 3.47a)
     [<DerivedRule "-(p ∧ q) = -p ∨ -q">]
     let distrib_not_and (p:Prop) (q:Prop) = ident prop_calculus (-(p * q) == (-p + -q)) [
         golden_rule |> apply |> ApplyUnary |> left_branch
@@ -554,11 +581,11 @@ module PropCalculus =
         commute_or q p |> apply_right
     ]
 
-    /// -p ∨ -q == -(p ∧ q) 
+    /// -p ∨ -q == -(p ∧ q)   (Gries 3.47a)
     [<DerivedRule "-p ∨ -q = -(p ∧ q)">]
     let collect_not_and p q = distrib_not_and p q |> Commute
 
-    /// -(p ∨ q) = -p ∧ -q
+    /// -(p ∨ q) = -p ∧ -q  (Gries 3.47b)
     [<DerivedRule "-(p ∨ q) = -p ∧ -q">]
     let distrib_not_or (p:Prop) (q:Prop) = ident prop_calculus (-(p + q) == (-p * -q)) [
         golden_rule' p q |> Commute |> CommuteL |> RightAssoc |> apply_left
@@ -570,11 +597,11 @@ module PropCalculus =
         commute |> apply_right
     ]
 
-    /// -p ∧ -q == -(p ∨ q)
+    /// -p ∧ -q == -(p ∨ q)  (Gries 3.47b)
     [<DerivedRule "-p ∧ -q = -(p ∨ q)">]
     let collect_not_or p q = distrib_not_or p q |> Commute
     
-    /// p ∨ q == (p ∨ -q == p)
+    /// p ∨ q == (p ∨ -q == p)  (Gries 3.32)
     [<DerivedRule "p ∨ q = (p ∨ -q = p)">]
     let ident_or_or_not_eq (p:Prop) (q:Prop) = ident prop_calculus ( (p + q) == (p + (-q) == p) ) [
         left_assoc |> apply
@@ -584,7 +611,7 @@ module PropCalculus =
         ident_or p |> apply_left
     ]
 
-    /// p == q == ((p ∧ q) ∨ (-p ∧ -q))
+    /// p == q == ((p ∧ q) ∨ (-p ∧ -q))  (Gries 3.52)
     [<DerivedRule "p = q = ((p ∧ q) ∨ (-p ∧ -q))">]
     let ident_eq_and_or_not (p:Prop) (q:Prop) = ident prop_calculus (p == q == ((p * q) + (-p * -q))) [
         ident_or_or_not ( p * q ) ( -p * -q ) |> apply_right
@@ -600,7 +627,7 @@ module PropCalculus =
         commute |> apply
     ]
 
-    /// p ∧ q == (p ∧ -q == -p)
+    /// p ∧ q == (p ∧ -q == -p)  (Gries 3.48)
     [<DerivedRule "p ∧ q = (p ∧ -q = -p)">]
     let ident_and_and_not (p:Prop) (q:Prop) = ident prop_calculus ((p * q) == (p * -q == -p)) [
         left_assoc |> apply
@@ -619,7 +646,7 @@ module PropCalculus =
         symm_eq_not_eq p q |> apply_right
     ]
 
-    /// p ∧ (q == r) = ((p ∧ q) = (p ∧ r) = p)
+    /// p ∧ (q == r) = ((p ∧ q) = (p ∧ r) = p)  (Gries 3.49)
     [<DerivedRule "p ∧ (q = r) = ((p ∧ q) = (p ∧ r) = p)">]
     let distrib_and_eq p q r = ident prop_calculus (p * (q == r) == ((p * q) == (p * r) == p)) [
         golden_rule |> apply_left
@@ -634,7 +661,7 @@ module PropCalculus =
         left_assoc |> apply_left
     ]
 
-    /// p ∧ (q == p) = (p ∧ q)
+    /// p ∧ (q == p) = (p ∧ q)  (Gries 3.50)
     [<DerivedRule "p ∧ (q = p) = (p ∧ q)">]
     let ident_and_eq p q  = ident prop_calculus (p * (q == p) == (p * q)) [
         golden_rule |> apply_left
@@ -661,11 +688,11 @@ module PropCalculus =
         left_assoc_and p r ( q * s ) |> apply_left
     ]
 
-    /// p ⇒ q = (p ∨ q = q)
+    /// p ⇒ q = (p ∨ q = q)  (Gries 3.57)
     [<DerivedRule "p ⇒ q = (p ∨ q = q)">]
     let def_implies' (p:Prop) (q:Prop) = id_ax prop_calculus ( (p ==> q) == (p + q == q) )
 
-    /// p ⇒ q = (¬p ∨ q)
+    /// p ⇒ q = (¬p ∨ q)  (Gries 3.59)
     [<DerivedRule "p ⇒ q = (¬p ∨ q)">]
     let ident_implies_not_or p q = ident prop_calculus ( p ==> q == (-p + q) ) [
         def_implies |> apply_left
@@ -674,7 +701,7 @@ module PropCalculus =
         commute |> apply_left |> right_branch
     ]
 
-    /// p ⇒ q = ((p ∧ q) = p)
+    /// p ⇒ q = ((p ∧ q) = p)  (Gries 3.60)
     [<DerivedRule "p ⇒ q = ((p ∧ q) = p)">]
     let ident_implies_eq_and_eq p q = ident prop_calculus (p ==> q == ((p * q) == p)) [
         def_implies |> apply_left
@@ -684,7 +711,7 @@ module PropCalculus =
         left_assoc |> apply_right 
     ]
 
-    /// p ∧ (p ⇒ q) = (p ∧ q)
+    /// p ∧ (p ⇒ q) = (p ∧ q)  (Gries 3.66)
     [<DerivedRule "p ∧ (p ⇒ q) = (p ∧ q)">]
     let ident_and_implies (p:Prop) (q:Prop) = ident prop_calculus ( p * (p ==> q) == (p * q) ) [
         ident_implies_eq_and_eq p q |> apply_left
@@ -693,7 +720,7 @@ module PropCalculus =
         idemp_and p |> apply_left
     ]
 
-    /// p ∨ (q ⇒ p) = (q ⇒ p)
+    /// p ∨ (q ⇒ p) = (q ⇒ p)  (Gries 3.69)
     [<DerivedRule "p ∨ (q ⇒ p) = (q ⇒ p)">]
     let ident_or_conseq (p:Prop) (q:Prop) = ident prop_calculus ( p + (q ==> p) == (q ==> p) ) [
         def_implies |> apply_right |> left_branch
@@ -705,7 +732,15 @@ module PropCalculus =
         commute_or p q |> apply_right
     ]
 
-    /// p ⇒ q = (¬q ⇒ ¬p)
+    /// p ∧ (q ⇒ p) = p  (Gries 3.67)
+    [<DerivedRule "p ∧ (q ⇒ p) = p">]
+    let ident_and_conseq (p:Prop) (q:Prop) = ident prop_calculus (p * (q ==> p) == p) [
+        ident_implies_not_or q p |> apply_left
+        commute_or (!!q) p |> apply_left
+        absorb_and p (!!q) |> apply_left
+    ]
+
+    /// p ⇒ q = (¬q ⇒ ¬p)  (Gries 3.61)
     [<DerivedRule "p ⇒ q = (¬q ⇒ ¬p)">]
     let def_implies_contr p q = ident prop_calculus (p ==> q == (-q ==> -p)) [
         def_implies |> apply_right
@@ -717,7 +752,7 @@ module PropCalculus =
         ident_implies_eq_and_eq p q |> Taut' |> apply
     ]
 
-    /// p ⇒ (q = r) = ((p ∧ q) = (p ∧ r))
+    /// p ⇒ (q = r) = ((p ∧ q) = (p ∧ r))  (Gries 3.62)
     [<DerivedRule "p ⇒ (q = r) = ((p ∧ q) = (p ∧ r))">]
     let distrib_implies_eq_and p q r =
         ident prop_calculus ( p ==> (q == r) == ((p * q) == (p * r))) [
@@ -725,7 +760,7 @@ module PropCalculus =
             distrib_and_eq p q r |> apply_left
     ]
 
-    /// p ⇒ (q = r) = ((p ⇒ q) = (p ⇒ r))
+    /// p ⇒ (q = r) = ((p ⇒ q) = (p ⇒ r))  (Gries 3.63)
     [<DerivedRule "p ⇒ (q = r) = ((p ⇒ q) = (p ⇒ r))">]
     let distrib_implies_eq_implies p q r = ident prop_calculus ( p ==> (q == r) == ((p ==> q) == (p ==> r))) [
         distrib_implies_eq_and p q r |> apply_left
@@ -737,8 +772,28 @@ module PropCalculus =
         def_true p |> Commute |> apply_right
         ident_eq ( p * q ) |> apply_left |> right_branch
     ]
-  
-    /// (T ⇒ p) = p
+
+    /// p ⇒ (q ⇒ r) = ((p ⇒ q) ⇒ (p ⇒ r))  (Gries 3.64)
+    [<DerivedRule "p ⇒ (q ⇒ r) = ((p ⇒ q) ⇒ (p ⇒ r))">]
+    let self_distrib_implies (p:Prop) (q:Prop) (r:Prop) = ident prop_calculus ((p ==> (q ==> r)) == ((p ==> q) ==> (p ==> r))) [
+        ident_implies_not_or p (q ==> r) |> apply_left
+        ident_implies_not_or q r |> apply_left
+        left_assoc_or (!!p) (!!q) r |> apply_left
+        ident_implies_not_or (p ==> q) (p ==> r) |> apply_right
+        ident_implies_not_or p q |> apply_right
+        ident_implies_not_or p r |> apply_right
+        distrib_not_or (!!p) q |> apply_right
+        double_negation p |> apply_right
+        left_assoc_or (p * !!q) (!!p) r |> apply_right
+        commute_or (p * !!q) (!!p) |> apply_right
+        distrib_or_and (!!p) p (!!q) |> apply_right
+        commute_or (!!p) p |> apply_right
+        excluded_middle' p |> apply_right
+        commute |> apply_left |> right_branch
+        ident_and (!!p + !!q) |> apply_right
+    ]
+
+    /// (T ⇒ p) = p  (Gries 3.73)
     [<DerivedRule "(T ⇒ p) = p">]
     let ident_conseq_true p = ident prop_calculus ((T ==> p) == p) [
         def_implies |> apply_left
@@ -747,7 +802,7 @@ module PropCalculus =
         commute |> apply
     ]
 
-    /// p ⇒ F = ¬p
+    /// p ⇒ F = ¬p  (Gries 3.74)
     [<DerivedRule "p ⇒ F = ¬p">]
     let ident_implies_false_not (p:Prop) = ident prop_calculus ((p ==> F) == -p) [
         def_implies |> apply_left
@@ -758,7 +813,7 @@ module PropCalculus =
         def_false p |> apply
     ]
     
-    /// p ∧ q ⇒ r = (p ⇒ (q ⇒ r))
+    /// p ∧ q ⇒ r = (p ⇒ (q ⇒ r))  (Gries 3.65)
     [<DerivedRule "p ∧ q ⇒ r = (p ⇒ (q ⇒ r))">]
     let shunt' p q r = ident prop_calculus (p * q ==> r == (p ==> (q ==> r))) [
         ident_implies_eq_and_eq ( p * q ) r |> apply_left
@@ -772,7 +827,7 @@ module PropCalculus =
         commute |> apply
     ]
     
-    /// (p ⇒ r) ∧ (q ⇒ r) = (p ∨ q ⇒ r)
+    /// (p ⇒ r) ∧ (q ⇒ r) = (p ∨ q ⇒ r)  (Gries 3.78)
     [<DerivedRule "(p ⇒ r) ∧ (q ⇒ r) = (p ∨ q ⇒ r)">]
     let case_analysis_1 p q r = ident prop_calculus (( p ==> r) * (q ==> r) == (p + q  ==> r) ) [
         ident_implies_not_or ( p + q ) r |> apply_right
@@ -784,7 +839,7 @@ module PropCalculus =
         ident_implies_not_or q r |> Commute |> apply_right
     ]
 
-    /// (p ⇒ r) ∧ (¬p ⇒ r) = r
+    /// (p ⇒ r) ∧ (¬p ⇒ r) = r  (Gries 3.79)
     [<DerivedRule "(p ⇒ r) ∧ (¬p ⇒ r) = r">]
     let case_analysis_2 p r = ident prop_calculus ((p ==> r) * (-p ==> r) == r) [
         case_analysis_1 p -p r |> apply
@@ -792,7 +847,7 @@ module PropCalculus =
         ident_conseq_true r |> Taut' |> apply
     ]
 
-    /// (p ⇒ q) ∧ (q ⇒ p) = (p == q)
+    /// (p ⇒ q) ∧ (q ⇒ p) = (p == q)  (Gries 3.80)
     [<DerivedRule "(p ⇒ q) ∧ (q ⇒ p) = (p = q)">]
     let mutual_implication' (p:Prop) (q:Prop) = ident prop_calculus (((p ==> q) * (q ==> p)) == (p == q)) [
         right_assoc |> apply
@@ -818,7 +873,7 @@ module PropCalculus =
         
     (* Theorems *)
 
-    /// p ∨ (p ⇒ q)
+    /// p ∨ (p ⇒ q)  (Gries 3.68)
     [<Theorem "p ∨ (p ⇒ q)">]
     let or_implies (p:Prop) (q:Prop) = theorem prop_calculus ( (p + (p ==> q)) == T ) [
         def_implies |> apply_right |> left_branch
@@ -828,27 +883,27 @@ module PropCalculus =
         ident_eq ((p + q) == (p + q)) |> apply
     ]
 
-    /// p ⇒ p
+    /// p ⇒ p  (Gries 3.71)
     [<Theorem "p ⇒ p">]
     let reflex_implies p = theorem prop_calculus ( p ==> p ) [
         def_implies |> apply
     ]
         
-    /// p ⇒ true
+    /// p ⇒ true  (Gries 3.72)
     [<Theorem "p ⇒ true">]
     let implies_true p = theorem prop_calculus (p ==> T) [
         def_implies |> apply
         zero_or p |> apply_left
     ]
 
-    /// false ⇒ p
+    /// false ⇒ p  (Gries 3.75)
     [<Theorem "false ⇒ p">]
     let conseq_false (p:Prop) = theorem prop_calculus (F ==> p) [
         def_implies |> apply
         ident_or p |> CommuteL |> Taut' |> apply
     ]
 
-    /// (p ∧ q) ⇒ p
+    /// (p ∧ q) ⇒ p  (Gries 3.76b)
     [<Theorem "(p ∧ q) ⇒ p">]
     let strengthen_and p q = theorem prop_calculus ((p * q) ==> p) [
         ident_eq ( ((p * q ) ==> p) ) |> apply
@@ -857,7 +912,7 @@ module PropCalculus =
         absorb_or p q |> Taut' |> apply
     ]
     
-    /// p ⇒ p ∨ q 
+    /// p ⇒ p ∨ q   (Gries 3.76a)
     [<Theorem "p ⇒ p ∨ q">]
     let weaken_or p q = theorem prop_calculus ( p ==> (p + q) ) [
         ident_eq ( (p ==> (p + q)) ) |> apply
@@ -866,7 +921,7 @@ module PropCalculus =
         idemp_or p |> apply_left
     ]
 
-    /// p ∧ q ⇒ p ∨ q
+    /// p ∧ q ⇒ p ∨ q  (Gries 3.76c)
     [<Theorem "p ∧ q ⇒ p ∨ q">]
     let weaken_and_or (p:Prop) (q:Prop) = theorem prop_calculus ( p * q ==> p + q ) [
         def_implies |> apply
@@ -875,35 +930,35 @@ module PropCalculus =
         absorb_or p q |> apply_left |> left_branch
     ]
 
-    /// (p ∨ (q ∧ r)) ⇒ (p ∨ q)
+    /// (p ∨ (q ∧ r)) ⇒ (p ∨ q)  (Gries 3.76d)
     [<Theorem "(p ∨ (q ∧ r)) ⇒ (p ∨ q)">]
     let weaken_or_and (p:Prop) q r = theorem prop_calculus ( (p + (q * r)) ==> (p + q) ) [
         distrib |> apply_left
         strengthen_and ( p + q ) ( p + r ) |> Taut |> apply
     ]
 
-    /// (p ∧ q) ⇒ (p ∧ (q ∨ r))
+    /// (p ∧ q) ⇒ (p ∧ (q ∨ r))  (Gries 3.76e)
     [<Theorem "(p ∧ q) ⇒ (p ∧ (q ∨ r))">]
     let weaken_and_and_or p (q:Prop) (r:Prop) = theorem prop_calculus ((p * q)  ==> (p * (q + r)) ) [
         distrib |> apply_right
         weaken_or ( p * q ) ( p * r ) |> Taut |> apply
     ]
 
-    /// p ∧ (p ⇒ q) ⇒ q
+    /// p ∧ (p ⇒ q) ⇒ q  (Gries 3.77)
     [<Theorem "p ∧ (p ⇒ q) ⇒ q">]
     let modus_ponens p q = theorem prop_calculus ( p * (p ==> q) ==> q ) [
         ident_and_implies p q |> apply_left
         commute_and p q |> apply
         strengthen_and q p |> Taut |> apply
     ]
-    /// (p ⇒ q) ∧ (q ⇒ p) ⇒ (p = q)
+    /// (p ⇒ q) ∧ (q ⇒ p) ⇒ (p = q)  (Gries 3.81)
     [<Theorem "(p ⇒ q) ∧ (q ⇒ p) ⇒ (p = q)">]
     let antisymm_implies p q = theorem prop_calculus ((p ==> q) * (q ==> p) ==> (p == q)) [
         mutual_implication' p q |> apply_left  
         reflex_implies ( p == q ) |> Taut |> apply
     ]
 
-    /// (p ⇒ q) ∧ (q ⇒ r) ⇒ (p ⇒ r)
+    /// (p ⇒ q) ∧ (q ⇒ r) ⇒ (p ⇒ r)  (Gries 3.82a)
     [<Theorem "(p ⇒ q) ∧ (q ⇒ r) ⇒ (p ⇒ r)">]
     let trans_implies p q r = theorem prop_calculus ((p ==> q) * (q ==> r) ==> (p ==> r)) [
         rshunt |> apply
@@ -918,7 +973,7 @@ module PropCalculus =
         strengthen_and r ( q * p ) |> Taut |> apply
     ]
 
-    /// (p = q) ∧ (q ⇒ r) ⇒ (p ⇒ r)
+    /// (p = q) ∧ (q ⇒ r) ⇒ (p ⇒ r)  (Gries 3.82b)
     [<Theorem "(p = q) ∧ (q ⇒ r) ⇒ (p ⇒ r)">]
     let trans_implies_eq (p:Prop) (q:Prop) (r:Prop) = theorem prop_calculus ((p == q) * (q ==> r) ==> (p ==> r)) [
         mutual_implication' p q |> Commute |> apply_left
