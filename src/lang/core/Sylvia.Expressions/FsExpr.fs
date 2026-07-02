@@ -463,11 +463,33 @@ module FsExpr =
         List.fold2 (fun e v1 v2 -> replace_var_var v1 v2 e) expr lvar1 lvar2
        
         
-    let rec replace_expr (o:Expr) (n:Expr)  = 
+    let rec replace_expr (o:Expr) (n:Expr)  =
             function
             | l when sequal l o && l.Type = o.Type -> n
             | expr -> traverse expr (replace_expr o n)
-            
+
+    /// Replace only the FIRST (leftmost-outermost, pre-order) subterm equal to
+    /// `o` with `n`, leaving any further matches untouched. Returns the expression
+    /// unchanged if there is no match. Contrast replace_expr, which replaces all matches.
+    let replace_first_expr (o:Expr) (n:Expr) (expr:Expr) : Expr =
+        let rec go (e:Expr) : bool * Expr =
+            if sequal e o && e.Type = o.Type then true, n
+            else
+                match e with
+                | ShapeVar _ -> false, e
+                | ShapeLambda (v, body) -> let d, b = go body in d, Expr.Lambda(v, b)
+                | ShapeCombination (c, args) ->
+                    let rec loop acc =
+                        function
+                        | [] -> false, List.rev acc
+                        | x :: rest ->
+                            let d, x' = go x
+                            if d then true, List.rev acc @ (x' :: rest)
+                            else loop (x' :: acc) rest
+                    let d, args' = loop [] args
+                    d, RebuildShapeCombination(c, args')
+        go expr |> snd
+
     let get_vars expr =
         let rec rget_vars prev expr =
             match expr with

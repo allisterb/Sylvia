@@ -254,6 +254,20 @@ type KernelProofTests() =
         let out = EquationalLogic._normalize inp
         Assert.True(sequal inp out, sprintf "non-bool = must not be AC-reordered: %s -> %s" (src inp) (src out))
 
+    // ===== First-match substitution: Subst/Ident rewrite one occurrence ========
+
+    [<Fact>]
+    member _.``replace_first_expr rewrites only the leftmost-outermost match`` () =
+        // (p ∧ p) ∨ (p ∧ p): replacing p ∧ p with p must touch only the first.
+        let target = expand (p * p).Expr
+        let e = expand ((p * p) + (p * p)).Expr
+        let out = replace_first_expr target (expand p.Expr) e
+        let expected = expand (p + (p * p)).Expr    // first collapsed, second intact
+        Assert.True(sequal out expected, sprintf "expected %s got %s" (src expected) (src out))
+        // a second application collapses the remaining occurrence
+        let out2 = replace_first_expr target (expand p.Expr) out
+        Assert.True(sequal out2 (expand (p + p).Expr), sprintf "second pass: got %s" (src out2))
+
     // ===== Repaired theorems: contr and everything that depends on it =========
 
     [<Fact>]

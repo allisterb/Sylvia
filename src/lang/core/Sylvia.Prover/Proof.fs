@@ -503,13 +503,12 @@ module ProofOps =
 [<AutoOpen>]
 module LogicalRules =     
     /// Leibniz's rule : A behaves equivalently in a formula if we substitute a part of A: a with x when x = a.
-    let Subst (p:Proof) = 
-        let rec subst (p:Proof) = 
-            function
-            | l when sequal l p.L && p.Complete -> p.R
-            | expr -> traverse expr (subst p) 
-        if not p.Complete then 
-            failwithf "The proof of %A is not complete" (p.Theory.PrintFormula p.Stmt)  
+    let Subst (p:Proof) =
+        // Replace only the FIRST (leftmost-outermost) occurrence of p.L; narrow with the
+        // addressing combinators (apply_left, left_branch, ...) to target a specific one.
+        let subst (p:Proof) e = if p.Complete then replace_first_expr p.L p.R e else e
+        if not p.Complete then
+            failwithf "The proof of %A is not complete" (p.Theory.PrintFormula p.Stmt)
         Derive(sprintf "Substitute %s \u2261 %s into (expression)" (p.Theory.PrintFormula p.L) (p.Theory.PrintFormula p.R), p, fun proof e -> subst proof e)
         
     /// Substitute an identity with a completed proof into another proof.
@@ -517,52 +516,32 @@ module LogicalRules =
         
     /// Rule of modus ponens: Substitute the consequent of a proven theorem p ==> q with true in a proof where p is one of the conjuncts of the antecedent.
     let Subst' (p:Proof) =
-        let rec subst (p:Proof)  = 
-            let con= 
-                match p.Stmt with 
-                | Argument(_, c, _) -> c
-                | _ -> failwithf "The theorem %s is not a logical implication." (p.Stmt |> p.Theory.PrintFormula)
-            function
-            | l when sequal l con -> T.Expr.Raw
-            | expr -> traverse expr (subst p) 
-        if not p.Complete then 
-                failwithf "The proof of %A is not complete" (p.Stmt |> p.Theory.PrintFormula)  
-        let ant,con = 
-            match p.Stmt with 
+        if not p.Complete then
+                failwithf "The proof of %A is not complete" (p.Stmt |> p.Theory.PrintFormula)
+        let ant,con =
+            match p.Stmt with
             | Argument(a, c, _) -> a, c
             | _ -> failwithf "The theorem %s is not a logical implication." (p.Stmt |> p.Theory.PrintFormula)
-        Rule.Deduce(sprintf "Deduce %s from %s and substitute with true into (expression)" (p.Theory.PrintFormula con) (p.Theory.PrintFormula ant), p, fun proof e -> subst proof e)
+        // Replace only the FIRST occurrence of the consequent with true.
+        Rule.Deduce(sprintf "Deduce %s from %s and substitute with true into (expression)" (p.Theory.PrintFormula con) (p.Theory.PrintFormula ant), p, fun _ e -> replace_first_expr con T.Expr.Raw e)
 
     /// Substitute the consequent of a proven theorem p ==> q with true in a proof where p is one of the conjuncts of the antecedent.
     let Deduce(t:Theorem) = t.Proof |> Subst'
 
     /// Rule of modus ponens: Substitute the LHS q of a proven identity p ==> (q = r) with the RHS r in a proof where p is one of the conjuncts of the antecedent.
     let Subst'' (p:Proof) =
-        let rec subst (p:Proof)  = 
-            let con = 
-                match p.Stmt with 
-                | Argument(_, c, _) -> c
-                | _ -> failwithf "The theorem %s is not a logical implication." (p.Stmt |> p.Theory.PrintFormula)
-            let lcon, rcon = 
-                match con with
-                | Equals(l, r) -> l, r
-                | _ -> failwithf "The theorem %s is not an identity." (con |> p.Theory.PrintFormula)
-            function
-            | l when sequal l lcon -> rcon
-            | expr -> traverse expr (subst p) 
-
-        if not p.Complete then 
-                failwithf "The proof of %A is not complete" (p.Stmt |> p.Theory.PrintFormula)  
-        let ant,con = 
-            match p.Stmt with 
+        if not p.Complete then
+                failwithf "The proof of %A is not complete" (p.Stmt |> p.Theory.PrintFormula)
+        let ant,con =
+            match p.Stmt with
             | Argument(a, c, _) -> a, c
             | _ -> failwithf "The theorem %s is not a logical implication." (p.Stmt |> p.Theory.PrintFormula)
-        let lcon, rcon = 
+        let lcon, rcon =
             match con with
             | Equals(l, r) -> l, r
             | _ -> failwithf "The theorem %s is not an identity." (con |> p.Theory.PrintFormula)
-    
-        Rule.Deduce(sprintf "Deduce %s from %s and substitute %s with %s into (expression)" (p.Theory.PrintFormula con) (p.Theory.PrintFormula ant) (p.Theory.PrintFormula lcon) (p.Theory.PrintFormula rcon), p, fun proof e -> subst proof e)
+        // Replace only the FIRST occurrence of the identity's LHS with its RHS.
+        Rule.Deduce(sprintf "Deduce %s from %s and substitute %s with %s into (expression)" (p.Theory.PrintFormula con) (p.Theory.PrintFormula ant) (p.Theory.PrintFormula lcon) (p.Theory.PrintFormula rcon), p, fun _ e -> replace_first_expr lcon rcon e)
 
     /// Substitute the LHS q of a proven identity p ==> (q = r) with the RHS r in a proof where p is one of the conjuncts of the antecedent.
     let Deduce'(t:Theorem) = t.Proof |> Subst''

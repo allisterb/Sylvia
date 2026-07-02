@@ -748,6 +748,8 @@ module PropCalculus =
         ident_implies_eq_and_eq p q |> apply_left
         distrib_and_eq p ( p * q ) p |> apply_left
         left_assoc |> apply_left |> left_branch |> left_branch
+        // two p ∧ p occurrences; first-match Subst rewrites one per step (see docs/prover-automation.md)
+        idemp_and p |> apply_left
         idemp_and p |> apply_left
     ]
 
@@ -757,7 +759,9 @@ module PropCalculus =
         def_implies |> apply_right |> left_branch
         distrib |> apply_left
         commute_or q p |> apply_left
-        left_assoc_or p p q |> apply_left 
+        left_assoc_or p p q |> apply_left
+        // two p ∨ p occurrences; first-match Subst rewrites one per step
+        idemp_or p |> apply_left
         idemp_or p |> apply_left
         commute |> apply
         commute_or p q |> apply_right
