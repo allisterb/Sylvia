@@ -17,23 +17,25 @@ type Maxima(?maximaCmd:string) =
     let cmd = defaultArg maximaCmd "maxima"
     let args = if RuntimeInformation.IsOSPlatform(OSPlatform.Linux) then [|"--disable-readline"|] else Array.empty
     let p = new ConsoleProcess(cmd, args, false)
-    let output, session = 
+    // No-op handler for the Expect.NET matcher API (results are consumed directly).
+    let noop = Action<IResult>(ignore)
+    let output, session =
         if p.Initialized then
-            let _s = new ProcessSpawnable(p.Process, new StringBuilder())
+            let _s = new ProcessSpawnable(p.Process)
             do p.Start ()
-            _s.Output, Expect.Spawn(_s, Environment.NewLine, base.CancellationToken) |> Ok
-        else 
+            new StringBuilder(), Expect.Spawn(_s, Environment.NewLine) |> Ok
+        else
             null, exn "Maxima console process did not initialize." |> Error
-    let initialized = 
+    let initialized =
         match session with
-        | Ok s -> 
-            if s.Expect.Contains("(%i1)", Nullable(2000)).IsMatch then
-                s.Send.Line "ratprint:false;"
-                s.Send.Line "display2d:false;"
-                s.Send.Line "linel:500;"
-                s.Send.Line "load(simplify_sum);"
-                s.Send.Line "load(diag);"
-                if s.Expect.Contains("diag.mac", Nullable(2000)).IsMatch then
+        | Ok s ->
+            if s.Expect.Contains("(%i1)", noop, Nullable(2000)).IsMatch then
+                s.Send.String "ratprint:false;"
+                s.Send.String "display2d:false;"
+                s.Send.String "linel:500;"
+                s.Send.String "load(simplify_sum);"
+                s.Send.String "load(diag);"
+                if s.Expect.Contains("diag.mac", noop, Nullable(2000)).IsMatch then
                     true
                 else
                     err' "Could not set Maxima default options."
@@ -135,10 +137,12 @@ module Maxima =
     
     let stop (m:Maxima) = m.ConsoleProcess.Stop()
     
-    let send (m:Maxima) (input:string) = 
+    let private noop = Action<IResult>(ignore)
+
+    let send (m:Maxima) (input:string) =
         m.Input.AppendLine input |> ignore
-        !> m.ConsoleSession.Send.Line input 
-        >>|> (m.ConsoleSession.Expect.Regex(outputPattern, Nullable(m.ProcessTimeOut)) |> wrap_result)
+        !> m.ConsoleSession.Send.String input
+        >>|> (m.ConsoleSession.Expect.Regex(outputPattern, noop, Nullable(m.ProcessTimeOut)) |> wrap_result)
         >>>= extract_output
         >>= fun (_, r, n) -> 
             do m.CurrentInputLine <- Int32.Parse n
@@ -161,14 +165,20 @@ module Maxima =
             | Error e -> Error e
         | None -> failwith "The default Maxima interpreter is not initialized."
 
+    // The current Expect.NET Session exposes a single accumulated Output string
+    // (no LastOutput/LastInput); return the last n lines of the given text.
+    let private lastLines n (s:string) =
+        let lines = (if isNull s then "" else s).Replace("\r\n", "\n").Split('\n')
+        lines |> Array.skip (max 0 (lines.Length - n)) |> String.concat "\n"
+
     let last_output n =
         match defaultInt with
-        | Some m -> m.ConsoleSession.LastOutput n
+        | Some m -> lastLines n m.ConsoleSession.Output
         | None -> failwith "The default Maxima interpreter is not initialzed."
 
     let last_input n =
         match defaultInt with
-        | Some m -> m.ConsoleSession.LastInput n
+        | Some m -> lastLines n (m.Input.ToString())
         | None -> failwith "The default Maxima interpreter is not initialzed."
 
     let set_stardisp()  =

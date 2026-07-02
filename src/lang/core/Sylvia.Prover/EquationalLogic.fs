@@ -14,7 +14,14 @@ open Descriptions
 /// The number after each axiom corresponds to the number of the axiom in the textbook A Logical Approach to Discrete Math by Gries et.al.
 module EquationalLogic =
     let private desc = axiom_desc "Equational Logic"
-    
+
+    // The propositional truth constants. Rule functions produce these named
+    // constants (T/F), never bare bool literals, so that propositions are only
+    // ever compared to other propositions.
+    let private tE : Expr = T.Expr.Raw
+    let private fE : Expr = F.Expr.Raw
+    let private boolConst b = if b then tE else fE
+
     (* Axioms *)
 
     /// true = p = p
@@ -28,7 +35,7 @@ module EquationalLogic =
     /// false = not true
     let (|DefFalse|_|) =
         function
-        | Equals(Bool false, Not(True)) -> pattern_desc "Definition of false" <@ false = not true @> |> Some
+        | Equals(False, Not(True)) -> pattern_desc "Definition of false" <@ false = not true @> |> Some
         | _ -> None
 
     /// not (p = q) = not p = q
@@ -183,12 +190,12 @@ module EquationalLogic =
     /// Reduce logical constants.
     let _reduce_constants  =
         function
-        | Equals(Bool l, Bool r) -> Expr.Value((l = r))
-        | NotEquals(Bool l, Bool r) -> Expr.Value(l <> r)
-        | Not(Bool l) -> Expr.Value(not l)
-        | Or(Bool l, Bool r) -> Expr.Value(l || r)                
-        | And(Bool l, Bool r) -> Expr.Value(l && r)
-        | Implies(Bool l, Bool r) -> Expr.Value(l ===> r)
+        | Equals(Bool l, Bool r) -> boolConst (l = r)
+        | NotEquals(Bool l, Bool r) -> boolConst (l <> r)
+        | Not(Bool l) -> boolConst (not l)
+        | Or(Bool l, Bool r) -> boolConst (l || r)
+        | And(Bool l, Bool r) -> boolConst (l && r)
+        | Implies(Bool l, Bool r) -> boolConst (l ===> r)
         | expr -> expr
     
     /// Binary logical operators are right associative.
@@ -250,7 +257,7 @@ module EquationalLogic =
 
     let _excluded_middle =
         function
-        | Or(a1, Not(a2)) when sequal a1 a2 -> <@@ true @@>
+        | Or(a1, Not(a2)) when sequal a1 a2 -> tE
         | expr -> expr
 
     let _golden_rule =
@@ -308,16 +315,16 @@ module EquationalLogic =
     let _subst_true =
         function
         | Implies(Var p,  E) when E |> occurs [p] -> 
-            let E' = replace_var_expr p <@ true @> E in 
+            let E' = replace_var_expr p tE E in
             let p' = Expr.Var p
             <@@ (%%p':bool) ===> %%E' @@>
         | Implies(And(Var q, Var p),  E) when E |> occurs [p] -> 
-            let E' = replace_var_expr p <@ true @> E in 
+            let E' = replace_var_expr p tE E in
             let p' = Expr.Var p
             let q' = Expr.Var q
             <@@ ((%%q':bool) && (%%p':bool)) ===> %%E' @@>
         | And(Var p, E) when E |> occurs [p] -> 
-            let E' = replace_var_expr p <@ true @> E in 
+            let E' = replace_var_expr p tE E in
             let p' = Expr.Var p
             <@@ (%%p':bool) && %%E' @@>
         | expr -> expr
@@ -325,30 +332,30 @@ module EquationalLogic =
     let _subst_false =
         function
         | Implies(E, Var p) when E |> occurs [p] -> 
-            let E' = replace_var_expr p <@ false @> E in 
+            let E' = replace_var_expr p fE E in
             let p' = Expr.Var p
             <@@ (%%E':bool) ===> (%%p':bool) @@>
         | Implies(E, Or(Var p, Var q)) when E |> occurs [p] ->
-            let E' = replace_var_expr p <@ false @> E in
+            let E' = replace_var_expr p fE E in
             let p' = Expr.Var p
             let q' = Expr.Var q
             <@@ (%%E':bool) ===> ((%%p':bool) || (%%q':bool)) @@>
         | Or(Var p, E) when E |> occurs [p] -> 
-            let E' = replace_var_expr p <@ false @> E in 
+            let E' = replace_var_expr p fE E in
             let p' = Expr.Var p
             <@@ (%%p':bool) || %%E' @@>
         | expr -> expr
 
     let _subst_or_and = 
         function
-        | Equals(E, Or(And(Var p1, Et), And(Not(Var p2), Ef))) when E |> occurs [p1] && p1.Name = p2.Name && Et = replace_var_expr p1 <@ true @> E && Ef = replace_var_expr p2 <@ false @> E -> 
-            <@@ true @@>
+        | Equals(E, Or(And(Var p1, Et), And(Not(Var p2), Ef))) when E |> occurs [p1] && p1.Name = p2.Name && Et = replace_var_expr p1 tE E && Ef = replace_var_expr p2 fE E ->
+            tE
         | expr -> expr
 
-    let rec _dual = 
+    let rec _dual =
         function
-        | False -> <@@ true @@>
-        | True -> <@@ false @@>
+        | False -> tE
+        | True -> fE
         | Not p -> let _p = _dual p in <@@ not (%%_p:bool) @@>
         | And(p, q) -> 
             let _p = _dual p in let _q = _dual q in <@@ (%%_p:bool) || (%%_q:bool) @@>
@@ -361,10 +368,10 @@ module EquationalLogic =
         | Exists _ as expr -> failwithf "Expression %s not supported for dual operator." <| src expr
         | expr -> traverse expr _dual 
 
-    let rec _double_neg = 
+    let rec _double_neg =
         function
-        | True -> <@@ not false @@>
-        | False -> <@@ not true @@>
+        | True -> <@@ not (%%fE:bool) @@>
+        | False -> <@@ not (%%tE:bool) @@>
         | Equals(p, q) -> let _p = _double_neg p in let _q = _double_neg q in <@@ not ((%%_p:bool) <> (%%_q:bool)) @@>
         | Not(NotEquals(p, q)) -> let _p = _double_neg p in let _q = _double_neg q in <@@ (%%_p:bool) = (%%_q:bool) @@>
         // p ==> q = not (p && not q)  (since not (p ==> q) = p && not q)
@@ -383,15 +390,15 @@ module EquationalLogic =
         function
         | And(p1, Implies(p2, q)) when sequal p1 p2 -> <@@ (%%p1:bool) && (%%q:bool) @@>
         | And(p1, Implies(_, p2)) when sequal p1 p2 -> <@@ (%%p1:bool) @@>
-        | Or(p1, Implies(p2, q)) when sequal p1 p2 -> <@@ true @@>
+        | Or(p1, Implies(p2, q)) when sequal p1 p2 -> tE
         | Or(p1, Implies(q, p2)) when sequal p1 p2 -> <@@ (%%q:bool) ===> (%%p1:bool) @@>
         | Implies(Or(p1,  q1), And(p2,  q2)) when sequal2 p1 q1 p2 q2 -> <@@ (%%p1:bool) = (%%q1:bool) @@>
         | expr -> expr
         
     let _empty_range = 
         function
-        | ForAll(_,_,False,_) -> <@@ true @@>
-        | Exists(_,_,False,_) -> <@@ false @@>
+        | ForAll(_,_,False,_) -> tE
+        | Exists(_,_,False,_) -> fE
         | expr -> expr
 
     let _collect_forall_and =
@@ -408,8 +415,8 @@ module EquationalLogic =
 
     let _trade_body = 
         function
-        | ForAll(_, x, R, P) -> let v = vars_to_tuple x in call <@ forall_expr @> (v::(<@@ true @@>)::(<@@ (%%R:bool) ===> (%%P:bool)@@>)::[])
-        | Exists(_, x, R, P) -> let v = vars_to_tuple x in call <@ exists_expr @> (v::(<@@ true @@>)::(<@@ (%%R:bool) && (%%P:bool)@@>)::[])
+        | ForAll(_, x, R, P) -> let v = vars_to_tuple x in call <@ forall_expr @> (v::tE::(<@@ (%%R:bool) ===> (%%P:bool)@@>)::[])
+        | Exists(_, x, R, P) -> let v = vars_to_tuple x in call <@ exists_expr @> (v::tE::(<@@ (%%R:bool) && (%%P:bool)@@>)::[])
         | expr -> expr
 
     let _distrib_or_forall =

@@ -50,7 +50,7 @@ module Algebra =
         |> function
         | Ok s -> s
         | Error "" -> []
-        | Error e -> failwithf "Error executing Maxima solve command: %s.\n. Session output:%s." e (Maxima.defaultInt.Value.ConsoleSession.Last10Output)
+        | Error e -> failwithf "Error executing Maxima solve command: %s.\n. Session output:%s." e (Maxima.defaultInt.Value.ConsoleSession.Output)
 
     let eliminate (options:'a) (v:Expr<'t> list) (system:Expr<bool> list) =
         do if get_prop_else<bool> "posvars" false options  then system |> List.collect get_vars |> List.distinct |> List.map exprvar<real> |> List.iter assume_pos
@@ -65,6 +65,6 @@ module Algebra =
         | Ok s -> s
         | Error "" -> []
         | Error e when e.Contains "last: empty argument" -> []
-        | Error e -> failwithf "Error executing Maxima eliminate command: %s.\n. Session output:%s." e (Maxima.defaultInt.Value.ConsoleSession.Last10Output)
+        | Error e -> failwithf "Error executing Maxima eliminate command: %s.\n. Session output:%s." e (Maxima.defaultInt.Value.ConsoleSession.Output)
 
     let collectterms (term:Expr<'t>) (expr:Expr<'t>) = sprintf "collectterms(%s, %s);" (sprint expr) (sprint term) |> sendCmd<'t> (get_vars expr)

@@ -91,16 +91,23 @@ type KernelProofTests() =
         let inp, out = applyRule EquationalLogic._subst_false ((p * r) ==> (p + q))
         Assert.True(equivalent inp out, sprintf "%s -> %s not equivalent" (src inp) (src out))
 
-    // ===== sequal: T/F named constants unify with bare true/false =============
+    // ===== Truth constants: rules stay in Prop-land (named T/F, never bare bool) =
 
     [<Fact>]
-    member _.``sequal unifies named T with bare true and F with false`` () =
-        Assert.True(sequal T.Expr <@@ true @@>, "T should equal bare true")
-        Assert.True(sequal F.Expr <@@ false @@>, "F should equal bare false")
-        // nested occurrence (the shape that broke contr)
-        Assert.True(sequal (F == T).Expr (F == (Prop <@ true @>)).Expr)
-        // and it must NOT unify true with false
-        Assert.False(sequal T.Expr <@@ false @@>, "true must not equal false")
+    member _.``truth constants are the named Prop T/F, distinct from bare bool literals`` () =
+        // A proposition's truth values are the named constants T/F, which are NOT the
+        // bare bool literals true/false (propositions are compared only to propositions).
+        Assert.False(sequal T.Expr <@@ true @@>, "named T must not be the bare literal true")
+        Assert.False(sequal F.Expr <@@ false @@>, "named F must not be the bare literal false")
+        Assert.False(sequal T.Expr F.Expr, "T must not equal F")
+        Assert.True(sequal T.Expr T.Expr)
+
+    [<Fact>]
+    member _.``rule functions emit the named T constant (this is what repaired contr)`` () =
+        // _excluded_middle used to emit a bare `true`, which did not match the named T
+        // in rules like commute_eq F T, stalling contr. It must now yield the named T.
+        let out = EquationalLogic._excluded_middle (expand (p + !!p).Expr)
+        Assert.True(sequal out T.Expr, sprintf "excluded_middle produced %s, expected T" (src out))
 
     // ===== Repaired theorems: contr and everything that depends on it =========
 

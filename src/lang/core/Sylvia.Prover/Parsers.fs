@@ -65,7 +65,7 @@ module ProofParsers =
             
         let taut :Theorem->Rule=  
             let ieq p = 
-                let stmt = <@@ ((%%p) = true) = (%%p) @@> in Theorem(stmt, Proof (stmt, Theory.S, [apply_left Theory.S.Rules[3]; apply Theory.S.Rules[2]], true)) |> Ident  
+                let stmt = <@@ ((%%p) = %T.Expr) = (%%p) @@> in Theorem(stmt, Proof (stmt, Theory.S, [apply_left Theory.S.Rules[3]; apply Theory.S.Rules[2]], true)) |> Ident
             Tactics.Taut ieq
         // Lookup and create a rule from admissible/derived rules
         let parseRuleStart = 
