@@ -338,6 +338,32 @@ type KernelProofTests() =
         // p = q is invalid; auto must exhaust its budget and throw, never return a "proof".
         Assert.ThrowsAny<exn>(fun () -> PropCalculus.autoproof (p == q) |> ignore) |> ignore
 
+    // ===== valid/equiv: ANF decision TOOL (checks a proof exists; not a proof rule) =====
+
+    [<Fact>]
+    member _.``valid recognizes propositional theorems and rejects non-theorems`` () =
+        // A checker, not a closer: it answers "does a proof exist?" — complete for propositional,
+        // including the (p⇒q)∧(q⇒p) = (p≡q) that auto's bounded search missed.
+        Assert.True(PropCalculus.valid ((p + !!p) == T))
+        Assert.True(PropCalculus.valid (((p ==> q) * (q ==> p)) == (p == q)))
+        Assert.True(PropCalculus.valid ((p * (p ==> q)) ==> q))
+        Assert.True(PropCalculus.equiv (p * (q * r)) ((p * q) * (p * r)))
+        Assert.False(PropCalculus.valid (p == q))
+        Assert.False(PropCalculus.valid (p ==> q))
+        Assert.False(PropCalculus.equiv p q)
+
+    [<Fact>]
+    member _.``ANF decider agrees with the independent truth-table oracle (sound and complete)`` () =
+        // is_tautology (ANF) must match `equivalent e T` (truth-table) on every input — a
+        // cross-check of two independent complete deciders (soundness + completeness).
+        let tExpr = expand T.Expr
+        let cases : Prop list =
+            [ (p + !!p); (p * !!p); (p == p); ((p ==> q) == (!!q ==> !!p))
+              (((p ==> q) * (q ==> p)) == (p == q)); (p == q); (p ==> q); (p + q); ((p + q) ==> p) ]
+        for c in cases do
+            let e = expand c.Expr
+            Assert.Equal(equivalent e tExpr, EquationalLogic.Anf.is_tautology e)
+
     // ===== Repaired theorems: contr and everything that depends on it =========
 
     [<Fact>]

@@ -205,6 +205,15 @@ module PropCalculus =
 
     let Auto = Proof.Auto Taut autoproof |> RuleApplication.Auto
 
+    /// Decision TOOL (not a proof step): does a proof of this propositional goal exist?
+    /// Complete via algebraic normal form — use it to check that an identity is valid before
+    /// investing in a hand proof or an `auto` search. It is NOT part of the trusted base and
+    /// never closes a proof itself; a proof must still be a real derivation.
+    let valid (e:Prop) : bool = EquationalLogic.Anf.is_tautology (expand e.Expr)
+
+    /// Decision TOOL: are two propositional formulas equivalent (does a proof of a = b exist)?
+    let equiv (a:Prop) (b:Prop) : bool = EquationalLogic.Anf.equivalent (expand a.Expr) (expand b.Expr)
+
     (* Derived rules *)
     
     /// T = (p = p)  (Gries 3.3)

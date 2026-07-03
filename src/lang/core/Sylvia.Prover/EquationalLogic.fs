@@ -548,3 +548,45 @@ module EquationalLogic =
             if n <= 0 then e
             else let e' = onepass e in if sequal e' e then e else fix (n - 1) e'
         fix 200
+
+    /// Algebraic normal form (ANF / Zhegalkin) over the Boolean ring (⊕, ∧, true), the
+    /// canonical form on which propositional E-equivalence is DECIDABLE: every formula is a
+    /// unique XOR of AND-monomials, and two formulas are equivalent iff their ANFs are equal.
+    /// A monomial is a set of atom keys (∧ is idempotent, so x∧x=x → set union); an ANF is a
+    /// set of monomials (⊕ is its own inverse, so a repeated monomial cancels → symmetric
+    /// difference). Bool subterms that are not known connectives (variables, comparisons, …)
+    /// are opaque atoms keyed by their text — treating them as free variables is sound: a
+    /// formula valid for all atom assignments is valid regardless of what the atoms mean.
+    module Anf =
+        type private Monomial = Set<string>
+        type private Poly = Set<Monomial>
+        let private zero : Poly = Set.empty
+        let private one : Poly = Set.singleton Set.empty
+        let private xor (a: Poly) (b: Poly) : Poly = Set.union (Set.difference a b) (Set.difference b a)
+        let private toggle (m: Monomial) (a: Poly) : Poly = if Set.contains m a then Set.remove m a else Set.add m a
+        let private mul (a: Poly) (b: Poly) : Poly =
+            Set.fold (fun acc ma -> Set.fold (fun acc2 mb -> toggle (Set.union ma mb) acc2) acc b) zero a
+        let rec private poly (e: Expr) : Poly =
+            match e with
+            | True -> one
+            | False -> zero
+            | Bool b -> if b then one else zero
+            | Not a -> xor (poly a) one
+            | And (a, b) -> mul (poly a) (poly b)
+            | Or (a, b) -> let x, y = poly a, poly b in xor (xor x y) (mul x y)
+            | Implies (a, b) -> let x, y = poly a, poly b in xor one (xor x (mul x y))   // 1 ⊕ a ⊕ ab
+            | Conseq (a, b) -> let x, y = poly a, poly b in xor one (xor y (mul x y))     // b ⇒ a = 1 ⊕ b ⊕ ab
+            | NotEquals (a, b) -> xor (poly a) (poly b)                                    // XOR
+            | Equals (a, b) when a.Type = typeof<bool> -> xor (xor (poly a) (poly b)) one  // a ≡ b = a ⊕ b ⊕ 1
+            | atom -> Set.singleton (Set.singleton (atom.ToString()))
+
+        /// True iff the bool expression is a propositional tautology (ANF = constant true).
+        /// A decision TOOL, deliberately NOT a proof rule: it tells you whether a proof
+        /// exists (complete for the propositional fragment) so you don't invest in proving a
+        /// non-theorem — it is not part of the trusted base and never closes a proof itself.
+        let is_tautology (e: Expr) : bool = e.Type = typeof<bool> && poly e = one
+
+        /// True iff two bool expressions are propositionally equivalent (equal ANF), i.e. a
+        /// proof of the identity a = b exists. Same tool character as is_tautology.
+        let equivalent (a: Expr) (b: Expr) : bool =
+            a.Type = typeof<bool> && b.Type = typeof<bool> && poly a = poly b

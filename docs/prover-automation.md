@@ -1,8 +1,9 @@
 # Automating Sylvia's Equational Logic Prover: `simp`, `decide`, `auto`
 
-*Design note — 2026-07-02. Status: `simp`, `auto` (bounded search), the position/matching
-primitives, and automation-as-composable-steps (`autoident`/`autodeduce`/`Auto`) are all
-DONE; `decide` (complete propositional ANF procedure) is next.*
+*Design note — 2026-07-02. Status: `simp`, `auto` (bounded search), `decide` (complete
+propositional ANF decision, exposed as a validity-checking tool — NOT a trusted rule), the
+position/matching primitives, and automation-as-composable-steps (`autoident`/`autodeduce`/
+`Auto`) are all DONE. All three layers of the plan are built.*
 
 ## 1. Motivation
 
@@ -78,18 +79,40 @@ the existing completion check closes the proof.
 (`traverse`) visits every node, applies the local laws, then re-normalizes. No
 explicit position enumeration is required until the search layer (§3.3).
 
-### 3.2 `decide` — complete propositional decision procedure
+### 3.2 `decide` — complete propositional decision procedure — DONE
 
-Extend `simp`'s canonicalization to a full **Boolean-ring normal form** (ANF):
-push everything to `⊕`/`∧`/`true`, distribute, cancel (`x ⊕ x = 0`, `x ∧ x = x`),
-sort. Two formulas are E-equivalent iff their ANFs match, so `decide` *solves* any
-valid propositional (sub)goal and returns the canonicalization trace. Bounded to
-guard the exponential worst case. This is the "auto that actually solves" for the
-propositional fragment, and is **complete** there — unlike heuristic `auto`.
+Every propositional formula has a unique **algebraic normal form** (ANF / Zhegalkin):
+a XOR of AND-monomials over the Boolean ring (`⊕`, `∧`, `true`). Two formulas are
+E-equivalent **iff their ANFs are equal**, so ANF *decides* the propositional fragment.
 
-Note: a `decide` trace is verifiable but may be long/ugly, *not* a slick Gries
-derivation. Perfect for discharging subgoals; not a substitute when a *pedagogical*
-proof is the goal.
+`EquationalLogic.Anf` computes it directly: a monomial is a `Set<string>` of atom keys
+(`∧` is idempotent → set union), an ANF is a `Set<monomial>` (`⊕` is self-inverse → a
+repeated monomial cancels → symmetric difference). `poly` recurses over the connectives
+(`¬a = a⊕1`, `a∨b = a⊕b⊕ab`, `a⇒b = 1⊕a⊕ab`, `a≡b = a⊕b⊕1`, …); any bool subterm that
+isn't a known connective (a variable, a comparison like `x<y`, …) is an **opaque atom**
+keyed by its text — sound, because a formula valid for all atom assignments is valid
+regardless of what the atoms mean. `is_tautology e = (poly e = one)`.
+
+**Deliberately a checking *tool*, NOT a proof rule / not in the trusted base.** Exposed
+as `is_tautology`/`equivalent` (on `Expr`) and `PropCalculus.valid`/`equiv` (on `Prop`):
+*does a proof of this goal exist?* It is **complete** for the propositional fragment —
+it recognizes even the `(p⇒q)∧(q⇒p) = (p≡q)` that `auto`'s bounded search missed — but it
+answers yes/no; it never closes a proof.
+
+This is a design choice, and the right one (it matches §2 and §5): a whole decision
+algorithm is a large trust unit that produces *no derivation*, so admitting it as a rule
+that discharges goals would let any propositional theorem be "proved" by oracle appeal,
+bypassing the calculational proof that is the entire point (and Giant's deliverable). As a
+*check* it has none of that downside: the user/agent calls it to confirm a proof exists
+(so as not to waste effort on a non-theorem, or to know when `auto`/a hand proof *should*
+succeed) while the actual proof remains a real derivation. It is cross-checked against the
+independent truth-table oracle (they agree on every input). Worst case is exponential
+(monomial blowup), fine for textbook goals.
+
+An earlier iteration admitted a `decide` *rule* (tautology → `T`); it was pulled from the
+trusted base for exactly this reason. A future refinement could instead emit the ANF
+canonicalization as real rule steps — a genuine checkable trace rather than an oracle
+appeal — which *would* be admissible.
 
 ### 3.3 `auto` — bounded heuristic search — DONE
 
@@ -216,7 +239,10 @@ benchmark, and it dovetails with the "goal + applicable-rules view" backlog item
    a sub-identity, use it as a step) and the `RuleApplication.Auto` case /
    `PropCalculus.Auto` (discharge the current obligation). The discharge dispatches
    `Equals → Ident`, everything else → `Taut` (not `Deduce`).
-5. **`decide`** — NEXT. Boolean-ring/ANF normal form; complete propositional decision.
-6. **Later**: enumerate *all* positions to branch the search (full completeness for the
-   reachable rules); fold the Gries theorem bank into `auto`'s moves via `try_match`;
-   extend to predicate/quantifier goals.
+5. **`decide`** — DONE (§3.2), as a **checking tool** (`EquationalLogic.Anf` +
+   `PropCalculus.valid`/`equiv`), deliberately kept OUT of the trusted base. Complete for
+   propositional (recognizes `auto`'s one miss); cross-checked against the truth-table
+   oracle. Answers "does a proof exist?"; it does not close proofs.
+6. **Later**: emit the ANF canonicalization as real rule steps (a checkable trace that
+   *would* be admissible, unlike the oracle); enumerate *all* positions to branch `auto`'s
+   search; fold the Gries theorem bank into `auto`'s moves via `try_match`; predicate/quantifier.
