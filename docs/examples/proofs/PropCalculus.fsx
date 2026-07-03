@@ -12,14 +12,9 @@ open PropCalculus
 
 let p,q,r = boolvar3 "p" "q" "r"
 
- // p ∨ (p ∧ q) = p
-proof prop_calculus (p + (p * q) == p) [
-    golden_rule |> apply_right |> left_branch    
-    distrib |> apply_left
-    left_assoc_or p p q |> apply_left
-    idemp_or p |> apply_left
-    distrib_or_eq p p q |> apply_left
-    idemp_or p |> apply_left
-]
 
+
+proof prop_calculus ((p * (q * r)) == ((p * q) * (p * r))) [
+    Auto
+]
 

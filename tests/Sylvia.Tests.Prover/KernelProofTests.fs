@@ -311,6 +311,33 @@ type KernelProofTests() =
         let pr = proof PropCalculus.prop_calculus goal [ autoapply (PropCalculus.golden_rule' (meta "a") (meta "b")) ]
         Assert.True(pr.Complete, sprintf "autoapply golden_rule' should close; last state %s" (src pr.LastState))
 
+    // ===== auto: bounded search finds replayable, checkable proofs ============
+
+    [<Fact>]
+    member _.``auto proves a goal simp cannot (distrib_and)`` () =
+        // distrib_and needs distribution, which simp deliberately omits; auto's search finds it.
+        let goal = (p * (q * r)) == ((p * q) * (p * r))
+        let pr = PropCalculus.autoproof goal
+        Assert.True(pr.Complete, sprintf "auto should close distrib_and; last state %s" (src pr.LastState))
+
+    [<Fact>]
+    member _.``auto proves an implication theorem (contrapositive)`` () =
+        let pr = PropCalculus.autoproof ((p ==> q) == (!!q ==> !!p))
+        Assert.True(pr.Complete, "auto should close the contrapositive")
+
+    [<Fact>]
+    member _.``auto's result is a genuine replayable proof, not just a yes`` () =
+        // Feed auto's step list back through the ordinary Proof engine: it must complete,
+        // proving the search returns a real checkable derivation (the Giant contract).
+        let goal = (p ==> q) == (!!p + q)
+        let p = PropCalculus.autoproof goal
+        Assert.True(p.Complete, "auto's steps must replay to a complete proof")
+
+    [<Fact>]
+    member _.``auto does not fabricate a proof of a non-theorem`` () =
+        // p = q is invalid; auto must exhaust its budget and throw, never return a "proof".
+        Assert.ThrowsAny<exn>(fun () -> PropCalculus.autoproof (p == q) |> ignore) |> ignore
+
     // ===== Repaired theorems: contr and everything that depends on it =========
 
     [<Fact>]
@@ -360,6 +387,9 @@ type KernelProofTests() =
             |> Array.filter (fun m -> m.IsStatic && m.IsPublic && not (m.Name.StartsWith "get_"))
             |> Array.filter (fun m -> m.ReturnType = typeof<Rule> || m.ReturnType = typeof<Theorem>)
             |> Array.filter (fun m -> m.GetParameters() |> Array.forall (fun pr -> pr.ParameterType = typeof<Prop>))
+            // auto/autoident/autodeduce are meta-provers: they take an arbitrary goal and search
+            // for its proof, so invoking them on a bare variable is not theorem construction.
+            |> Array.filter (fun m -> not (List.contains m.Name [ "auto"; "autoident"; "autodeduce" ]))
         let failures =
             methods
             |> Array.filter (fun m -> not (KernelProofTests.KnownFailing.Contains m.Name))

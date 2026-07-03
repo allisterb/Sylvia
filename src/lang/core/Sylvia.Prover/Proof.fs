@@ -125,7 +125,7 @@ and Rule =
     /// A deduced rule in a theory
     | Deduce of string * Proof * (Proof -> Expr -> Expr)
     /// A defined rule in a theory
-    | Define of string * (Expr -> Expr)
+    | Define of string * (Expr -> Expr)   
 with
     member x.Name = 
         match x with 
@@ -220,8 +220,11 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
         let step = steps.[stepCount]
         let stepId = stepCount + 1
         let stepName = stepNames.[stepCount]
-        do 
-            match step.Rule with
+        let rule = match step with
+                    | Auto rf -> rf _state
+                    | _ -> step.Rule
+        do            
+            match rule with
             | Admit(n,_) -> if (not (ruleNames |> List.contains (n))) then 
                                 failwithf "Rule at step %i (%s) is not an admitted logical inference rule or part of the admitted rules of the current theory." stepId n
             | Derive(n, p, _) -> 
@@ -240,10 +243,15 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
                         (conjs |> List.find(fun v -> List.exists(fun v' -> not (sequal v v')) current_conjuncts.Value) |> print_formula) stepId n (print_formula a)
                 if not step.RightApplication then failwith "A deduction rule can only be applied to the consequent of a logical implication."
             | _ -> ()
-        let _a = step.ApplyRule _state
+        // For an Auto step, `rule` above already holds the searched-for rule (rf _state); reuse
+        // it here so the auto-search runs once per step, not twice.
+        let _a =
+            match step with
+            | Auto _ -> rule.Apply _state
+            | _ -> step.ApplyRule _state
 
         let msg =
-            match step.Rule with
+            match rule with
             | Admit(_, _) -> 
                 if not ((sequal _a _state)) then
                     sprintf "%i. %s: %s \u2192 %s." (stepId) (stepName.Replace("(expression)", step.Pos)) (print_formula _state) (print_formula _a) 
@@ -348,6 +356,8 @@ and RuleApplication =
     | SelectRange of RuleApplication
     /// Select the body of quantification formula before rule application
     | SelectBody of RuleApplication
+    /// Automatically search for a sequence of rule applications that completes the proof
+    | Auto of (Expr->Rule)
 with
     member x.Rule = 
         match x with
@@ -363,7 +373,13 @@ with
         | ApplyUnary ra 
         | SelectRange ra
         | SelectBody ra -> ra.Rule
-    member x.RuleName = x.Rule.Name
+        | Auto _ -> failwith "Auto doesn't have a single rule; it searches for a sequence of rule applications that completes the proof."        
+
+    member x.RuleName = 
+        match x with
+        | Auto _ -> "Auto discharge"
+        | _ -> x.Rule.Name
+
     member x.ApplyRule(expr:Expr) =
         let print_formula = Proof.Logic.PrintFormula
         match x with
@@ -417,6 +433,7 @@ with
             match expr with
             | Quantifier(op, x, range, body) -> let s = ra.ApplyRule body in let v = vars_to_tuple x in call op (v::range::s::[])
             | _ -> failwithf "%s is not a quantification." (print_formula expr)
+        | Auto rf -> let r = rf expr in r.Apply expr    
     member x.Pos =
         match x with
         | Apply _ -> "expression"
@@ -431,6 +448,7 @@ with
         | ApplyUnary ra -> sprintf "left-right>%s of expression" (ra.Pos.Replace(" of expression", ""))
         | SelectRange ra -> sprintf "quantifier-range>%s of expression" (ra.Pos.Replace(" of expression", ""))
         | SelectBody ra -> sprintf "quantifier-body>%s of expression" (ra.Pos.Replace(" of expression", ""))
+        | Auto _ -> "auto search"
 
     member x.LeftApplication = 
         x.Pos = "left of expression" || System.Text.RegularExpressions.Regex.IsMatch(x.Pos, "left>(\\S)+\\s+of expression")
@@ -586,7 +604,57 @@ module LogicalRules =
 
 
 [<AutoOpen>]
-module Proof = 
+module Auto =
+    open System.Collections.Generic
+
+    /// Bounded best-first search for a completing sequence of rule applications. At each
+    /// state it tries every `move` (a structural rewrite), simplifies the result with
+    /// `simplify`, and keeps the smallest states first (heuristic: shorter term is closer to
+    /// a reflexive `x = x` / a truth constant). States are deduped by their textual form and
+    /// the search is capped at `budget` expansions. Returns the RuleApplication path (with
+    /// the interleaved simplify steps) that reaches a state satisfying `isComplete`, or None.
+    /// The path is directly replayable and checkable by the ordinary Proof engine \u2014 the
+    /// search only reuses `RuleApplication.ApplyRule`, so it can never fabricate an invalid step.
+    let search (isComplete: Expr -> bool) (simplify: RuleApplication) (moves: RuleApplication list) (budget: int) (goal: Expr) : RuleApplication list option =
+        // Apply a RuleApplication, discarding no-ops and any step that throws (mis-target).
+        let step (ra: RuleApplication) (e: Expr) =
+            try let e' = ra.ApplyRule e in if sequal e' e then None else Some e'
+            with _ -> None
+        // Simplify a state, and report the extra path segment (empty if simp was a no-op).
+        let simp (e: Expr) = match step simplify e with Some e' -> e', [ simplify ] | None -> e, []
+        let key (e: Expr) = e.ToString()
+        let start, startPath = simp goal
+        if isComplete start then Some startPath
+        else
+            let visited = HashSet<string>([ key start ])
+            let frontier = List<Expr * RuleApplication list>()
+            frontier.Add(start, startPath)
+            let mutable result = None
+            let mutable expansions = 0
+            while result.IsNone && frontier.Count > 0 && expansions < budget do
+                // pop the smallest-term state (best-first)
+                let mutable bi = 0
+                for i in 1 .. frontier.Count - 1 do
+                    if (key (fst frontier.[i])).Length < (key (fst frontier.[bi])).Length then bi <- i
+                let state, path = frontier.[bi]
+                frontier.RemoveAt bi
+                expansions <- expansions + 1
+                for mv in moves do
+                    if result.IsNone then
+                        match step mv state with
+                        | Some afterMove ->
+                            let s, simpPath = simp afterMove
+                            let k = key s
+                            if not (visited.Contains k) then
+                                visited.Add k |> ignore
+                                let newPath = path @ (mv :: simpPath)
+                                if isComplete s then result <- Some newPath
+                                else frontier.Add(s, newPath)
+                        | None -> ()
+            result
+
+[<AutoOpen>]
+module Proof =
     let proof (theory:Theory) (e:Prop) steps =         
         let f = e.Expr |> expand in Proof(f, theory, steps)
     
@@ -627,7 +695,33 @@ module Proof =
         | Equals(_, _) -> Define theory f
         | _ -> failwithf "The expression %s is not an identity." (theory.PrintFormula f)
 
+    (* Automation *)
+    let autoproof (e: Prop) (theory:Theory) (simplify: Rule) (moves: RuleApplication list) (budget: int) : Proof =
+        let goal = expand e.Expr
+        let isComplete x = theory.AxEquiv x || Proof.Logic.AxEquiv x       
+        match search isComplete (apply simplify) moves budget goal with
+        | Some steps -> proof theory e steps
+        | None -> failwithf "auto could not find a proof of %s within the search budget." (theory.PrintFormula goal)
+        
+    let autoident (f:Prop->Proof) (e: Prop) = e |> f |> Theorem |>Ident
 
+    let autodeduce (f:Prop->Proof) (e: Prop) = e |> f |> Theorem |>Deduce
+
+    // Discharge a proof obligation by auto-proving it (`f`) and folding the result back in.
+    // An identity A = B is folded with Ident (rewrite A into B, closing via reflexivity); any
+    // other proven statement (an implication, a bare tautology, ...) is replaced wholesale by
+    // T via `taut` — Deduce is NOT used here, it discharges a consequent in a surrounding
+    // context, not a whole goal. `taut` is theory-specific so it is passed in.
+    let auto (taut:Theorem->Rule) (f:Prop->Proof) (e:Prop) =
+        match e.Expr with
+        | Equals(_, _) -> e |> f |> Theorem |> Ident
+        | _ -> e |> f |> Theorem |> taut
+
+    let Auto (taut:Theorem->Rule) (f:Prop->Proof) (e:Expr) =
+        match e with
+        | Equals(_, _) -> e |> expand_as<bool> |> Prop |> f |> Theorem |> Ident
+        | _ -> e |> expand_as<bool> |> Prop |> f |> Theorem |> taut
+  
 type ModuleAdmissibleRule = {
     Name:string
     Description:string

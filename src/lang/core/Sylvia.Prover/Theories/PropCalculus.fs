@@ -177,8 +177,33 @@ module PropCalculus =
     let RightAssocBranchRight = Tactics.RightAssocRecurseRight left_assoc
 
     (* Tactics for proofs *)
-    
+
     let MutualImplication stmt = Tactics.MutualImplication prop_calculus Taut mutual_implication stmt
+
+    (* Automation *)
+
+    /// Bounded best-first proof search for a propositional goal. Simplifies with `simp`
+    /// between structural moves (golden rule, def of ⇒, mutual implication, distribute/
+    /// collect, double negation), deduping states and capped by a search budget. Returns a
+    /// replayable, checkable step list (feed to `proof`/`theorem`/`ident`); throws if no
+    /// proof is found within budget. Incomplete by design — handles the routine, not everything.
+    let autoproof (e: Prop) : Proof  =        
+        let moves =
+            [ applyfirst golden_rule
+              applyfirst def_implies
+              applyfirst mutual_implication
+              applyfirst distrib
+              applyfirst collect
+              applyfirst double_neg ]
+        autoproof e prop_calculus simp moves 800 
+        
+    let autoident (e:Prop) = Proof.autoident autoproof e
+
+    let autodeduce (e:Prop) = Proof.autodeduce autoproof e
+
+    let auto (e:Prop) = Proof.auto Taut autoproof e
+
+    let Auto = Proof.Auto Taut autoproof |> RuleApplication.Auto
 
     (* Derived rules *)
     

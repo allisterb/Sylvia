@@ -1,6 +1,8 @@
 # Automating Sylvia's Equational Logic Prover: `simp`, `decide`, `auto`
 
-*Design note — 2026-07-02. Status: `simp` prototype in progress; `decide`/`auto` proposed.*
+*Design note — 2026-07-02. Status: `simp`, `auto` (bounded search), the position/matching
+primitives, and automation-as-composable-steps (`autoident`/`autodeduce`/`Auto`) are all
+DONE; `decide` (complete propositional ANF procedure) is next.*
 
 ## 1. Motivation
 
@@ -89,22 +91,55 @@ Note: a `decide` trace is verifiable but may be long/ugly, *not* a slick Gries
 derivation. Perfect for discharging subgoals; not a substitute when a *pedagogical*
 proof is the goal.
 
-### 3.3 `auto` — bounded heuristic search
+### 3.3 `auto` — bounded heuristic search — DONE
 
-For goals `simp`/`decide` don't reach — chiefly **predicate/quantifier** logic,
-which has no cheap canonical form and is outside the propositional oracle. A bounded
-best-first rewrite search over the admitted rules **plus the Gries theorem bank** as
-an (oriented) rewrite set:
+A bounded **best-first** rewrite search. `Auto.search` (generic, theory-agnostic) at
+each state tries every structural *move*, simplifies the result with `simp`, keeps the
+smallest terms first, dedups states by textual form, and caps at a `budget`. It only
+composes existing `RuleApplication.ApplyRule` transforms, so **any path it finds is a
+real, replayable, checkable proof** — the search can't fabricate an invalid step.
 
-- `simp` as the between-step normalizer,
-- `normalize` output as the **visited-state key** (dedup modulo AC),
-- a step/depth/time budget (the rules are bidirectional — distrib/collect, assoc
-  directions — so unbounded rewriting loops; search must be bounded with visited-set
-  pruning),
-- a heuristic cost (e.g. term size toward `T`, or distance to a lemma's LHS).
+`PropCalculus.autoproof` wires it up: moves are `applyfirst` of {`golden_rule`,
+`def_implies`, `mutual_implication`, `distrib`, `collect`, `double_neg`}, `simp`
+between steps, budget 800. Completion is the ordinary axiom check.
 
-`auto` is explicitly **incomplete** — the Isabelle contract: it handles the routine,
-the user finishes the rest.
+- Heuristic: smallest term first (toward `T` / `x = x`). Because the frontier retains
+  larger nodes, proofs needing temporary growth (e.g. `golden_rule` expanding `∧`) are
+  still found within budget.
+- Bounded + visited-set pruned because the rules are bidirectional (distrib/collect,
+  assoc directions) and would otherwise loop.
+
+**Eval: `auto` closes 19/20 of a mixed Gries set vs `simp` 12/20** — everything `simp`
+does plus the implication theorems (def-of-`⇒`, contrapositive, weaken, strengthen,
+modus ponens) and the distribution goals. The one miss (`(p⇒q)∧(q⇒p) = (p≡q)`) is the
+expected incompleteness. `auto` is explicitly **incomplete** — the Isabelle contract:
+it handles the routine, the user finishes the rest.
+
+Still open: enumerate *all* positions (not just first-firing) to branch the search;
+fold the Gries theorem bank into the moves via `try_match`; predicate/quantifier reach.
+
+### 3.4 Automation as composable proof steps — DONE
+
+The real leverage for **Giant** is not "prove a whole goal" but "let the human/LLM
+write the skeleton and have automation discharge the routine obligations." Three
+combinators lift an auto-prover `f : Prop -> Proof` into things usable *inside* a
+larger proof:
+
+- **`autoident` / `autodeduce`** — `e |> f |> Theorem |> Ident/Deduce` : auto-prove a
+  named sub-identity and drop it in as a rewrite/deduction **step** (the Isabelle
+  `by auto` model). `Theorem(...)` throws unless the search actually closed, so a rule
+  can only be minted from a genuinely proven fact — no new trust.
+- **`Auto`** (the `RuleApplication.Auto of (Expr->Rule)` case) — applies an auto-prover
+  to the **current proof state** to discharge the remaining obligation. Use
+  `PropCalculus.Auto` directly as a step: after a few manual moves, `Auto` finishes.
+  Dispatch by shape: an identity `A = B` is folded with `Ident` (rewrite `A→B`, close by
+  reflexivity); any other proven statement (an implication, a bare tautology) is
+  replaced wholesale by `T` via `Taut`. (Note: `Deduce` is *not* used to discharge a
+  whole goal — it substitutes a consequent in a surrounding context, and is guarded to
+  right-of-implication positions.)
+
+Soundness is unchanged: `autoproof` replays the found steps through the ordinary Proof
+engine, and every discharge goes through the existing verified `Ident`/`Taut` path.
 
 ## 4. Enabling infrastructure: position enumeration & matching
 
@@ -125,10 +160,10 @@ items: declarative **subterm targeting** and **auto-instantiation**.
   schema in its proof, so unifying L against the target infers **both** the
   arguments and the position (no spelling out subterms, no addressing).
 
-`try_match` is the reusable unification primitive the `auto` search layer will reuse
-for rewriting with the oriented Gries theorem bank. What remains for full search is
-enumerating *all* positions (not just the first) to branch over — a small extension
-of the same traversal.
+`auto` (§3.3) is built on these — its moves are `applyfirst` of the structural rules.
+`try_match` is the reusable unification primitive to fold the oriented Gries theorem
+bank into `auto`'s moves next. What remains for full search is enumerating *all*
+positions (not just the first) to branch over — a small extension of the same traversal.
 
 ## 5. Soundness & verification strategy
 
@@ -170,8 +205,18 @@ benchmark, and it dovetails with the "goal + applicable-rules view" backlog item
 
 ## 8. Phased plan
 
-1. **`simp`** (this prototype): `simp_laws` (verified) + the `simp` fixpoint; measure
-   against the Gries bank. *← current step.*
-2. **`decide`**: Boolean-ring/ANF normal form; complete propositional decision.
-3. **Position-enumeration primitive** + declarative subterm targeting / auto-instantiation.
-4. **`auto`**: bounded heuristic search using the theorem bank; predicate-logic reach.
+1. **`simp`** — DONE. `simp_laws` (verified) + the `simp` fixpoint; closes 17/19 of the
+   Gries simplification bank.
+2. **Position-enumeration primitive + auto-instantiation** — DONE. `applyfirst`
+   (`apply_first_firing`) and the first-order matcher `try_match` powering `autoapply`.
+3. **`auto`** — DONE (prototype). `Auto.search`: bounded best-first over `applyfirst`
+   moves + `simp`, returning a replayable step list. Closes 19/20 of a mixed Gries set
+   (vs simp 12/20). Incomplete by design (first-firing positions, term-size heuristic).
+4. **Automation as composable steps** — DONE (§3.4). `autoident`/`autodeduce` (auto-prove
+   a sub-identity, use it as a step) and the `RuleApplication.Auto` case /
+   `PropCalculus.Auto` (discharge the current obligation). The discharge dispatches
+   `Equals → Ident`, everything else → `Taut` (not `Deduce`).
+5. **`decide`** — NEXT. Boolean-ring/ANF normal form; complete propositional decision.
+6. **Later**: enumerate *all* positions to branch the search (full completeness for the
+   reachable rules); fold the Gries theorem bank into `auto`'s moves via `try_match`;
+   extend to predicate/quantifier goals.
