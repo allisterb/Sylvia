@@ -325,6 +325,11 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
 and RuleApplication =
     /// Apply rule to entire formula.
     | Apply of Rule
+    /// Apply rule at the first subterm position (leftmost-outermost) where it fires.
+    | ApplyFirst of Rule
+    /// Auto-instantiate a derived rule: match its L schema (with metavariable args) against
+    /// the first matching subterm, inferring the arguments and position.
+    | ApplyMatch of Rule
     /// Apply rule to LHS operand of binary operation.
     | ApplyLeft  of Rule
     /// Apply rule to RHS operand of binary operation.
@@ -347,6 +352,8 @@ with
     member x.Rule = 
         match x with
         | Apply rule
+        | ApplyFirst rule
+        | ApplyMatch rule
         | ApplyLeft rule
         | ApplyRight rule
         | ApplyRange rule
@@ -361,7 +368,12 @@ with
         let print_formula = Proof.Logic.PrintFormula
         match x with
         | Apply rule -> rule.Apply expr
-        | ApplyLeft rule -> 
+        | ApplyFirst rule -> apply_first_firing rule.Apply expr
+        | ApplyMatch rule ->
+            match rule with
+            | Derive(_, proof, _) | Deduce(_, proof, _) -> apply_first_schema proof.L proof.R expr
+            | _ -> failwithf "autoapply requires a derived or deduced substitution rule (with an L = R schema); %s is not one." rule.Name
+        | ApplyLeft rule ->
             match expr with
             | Patterns.Call(o, m, l::r::[]) -> let s = rule.Apply l in binary_call(o, m, s, r)
             | And(l,r) -> let s = rule.Apply l in Expr.IfThenElse(s, r, Expr.Value(false))
@@ -408,6 +420,8 @@ with
     member x.Pos =
         match x with
         | Apply _ -> "expression"
+        | ApplyFirst _ -> "first match in expression"
+        | ApplyMatch _ -> "first schema match in expression"
         | ApplyLeft _ -> "left of expression"
         | ApplyRight _ -> "right of expression"
         | ApplyRange _ -> "quantifier range"
@@ -443,6 +457,21 @@ and Theorem (expr: Expr, proof:Proof) =
 module ProofOps =
     /// Apply rule to entire formula.
     let apply = RuleApplication.Apply
+
+    /// Apply rule at the first subterm position (leftmost-outermost) where it fires,
+    /// so a rule can be applied "wherever it fits" without hand-threading branch combinators.
+    let applyfirst = RuleApplication.ApplyFirst
+
+    /// Auto-instantiate a derived rule built from metavariable args: unify its L schema
+    /// against the first matching subterm to infer both the arguments and the position,
+    /// instead of spelling out the exact subterm and threading branch combinators.
+    /// e.g. `autoapply (golden_rule' (meta "a") (meta "b"))` applies the golden rule to the
+    /// first ∧ subterm anywhere in the expression.
+    let autoapply = RuleApplication.ApplyMatch
+
+    /// A metavariable proposition (a bool Var named "?<n>") for building rule schemas to
+    /// auto-instantiate with `autoapply`.
+    let meta (n: string) : Prop = boolvar ("?" + n)
 
     /// Apply rule to LHS of binary operation.
     let apply_left = ApplyLeft

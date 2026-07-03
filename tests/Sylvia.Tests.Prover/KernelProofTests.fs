@@ -268,6 +268,49 @@ type KernelProofTests() =
         let out2 = replace_first_expr target (expand p.Expr) out
         Assert.True(sequal out2 (expand (p + p).Expr), sprintf "second pass: got %s" (src out2))
 
+    // ===== applyfirst: apply a rule wherever it fires, no hand-addressing =====
+
+    [<Fact>]
+    member _.``applyfirst applies a rule at the first firing position without addressing`` () =
+        // idemp fires on the nested (p ∨ p); applyfirst finds it with no branch combinators,
+        // reducing (q ∨ (p ∨ p)) = (q ∨ p) to (q ∨ p) = (q ∨ p) which SEqual closes.
+        let goal = (q + (p + p)) == (q + p)
+        let pr = proof PropCalculus.prop_calculus goal [ applyfirst PropCalculus.idemp ]
+        Assert.True(pr.Complete, sprintf "applyfirst idemp should close; last state %s" (src pr.LastState))
+
+    [<Fact>]
+    member _.``applyfirst fires at the leftmost occurrence only`` () =
+        // With two nested (p ∨ p), applyfirst idemp collapses only the first; the goal
+        // needs a second application, proving it targets one occurrence at a time.
+        let e = expand ((p + p) + (q + (p + p))).Expr
+        let out = apply_first_firing EquationalLogic._idemp e
+        // leftmost (p ∨ p) -> p ; the second (p ∨ p) remains
+        let expected = expand (p + (q + (p + p))).Expr
+        Assert.True(sequal out expected, sprintf "expected %s got %s" (src expected) (src out))
+
+    // ===== autoapply: infer a derived rule's arguments and position by matching =
+
+    [<Fact>]
+    member _.``try_match binds metavariables and infers rule arguments`` () =
+        let a, b = meta "a", meta "b"
+        let schema = expand (a * b).Expr        // ?a ∧ ?b
+        let target = expand ((p + q) * r).Expr  // (p ∨ q) ∧ r
+        match try_match schema target with
+        | Some m ->
+            Assert.True(sequal m.["?a"] (expand (p + q).Expr), "?a should bind to (p ∨ q)")
+            Assert.True(sequal m.["?b"] (expand r.Expr), "?b should bind to r")
+        | None -> Assert.True(false, "schema ?a ∧ ?b should match (p ∨ q) ∧ r")
+        // a ∧-schema must not match a ∨-target
+        Assert.True((try_match schema (expand (p + q).Expr)).IsNone, "∧ schema must not match a ∨")
+
+    [<Fact>]
+    member _.``autoapply infers a derived rule's arguments and position`` () =
+        // golden rule applied to the NESTED (p ∧ q) under r ∨ _, with no explicit args and
+        // no branch combinators: autoapply unifies ?a ∧ ?b against the first ∧ subterm.
+        let goal = (r + (p * q)) == (r + (p == q == (p + q)))
+        let pr = proof PropCalculus.prop_calculus goal [ autoapply (PropCalculus.golden_rule' (meta "a") (meta "b")) ]
+        Assert.True(pr.Complete, sprintf "autoapply golden_rule' should close; last state %s" (src pr.LastState))
+
     // ===== Repaired theorems: contr and everything that depends on it =========
 
     [<Fact>]

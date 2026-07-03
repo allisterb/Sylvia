@@ -490,6 +490,91 @@ module FsExpr =
                     d, RebuildShapeCombination(c, args')
         go expr |> snd
 
+    /// A metavariable in a match pattern: a Var whose name starts with "?". Such a var
+    /// binds to whatever subterm sits in its position when a schema is matched.
+    let is_metavar (v: Var) = v.Name.StartsWith "?"
+
+    /// First-order match: bind the metavariables (Vars named "?...") in `pattern` to
+    /// subterms of `target`. A metavar occurring several times must bind consistently
+    /// (sequal). Concrete (non-meta) structure must match exactly. Binders are not
+    /// descended into (matched whole by sequal). Returns the binding map or None.
+    let rec try_match (pattern: Expr) (target: Expr) : Map<string, Expr> option =
+        let merge (a: Map<string, Expr>) (b: Map<string, Expr>) =
+            (Some a, b) ||> Map.fold (fun acc k v ->
+                match acc with
+                | None -> None
+                | Some m ->
+                    match Map.tryFind k m with
+                    | Some v0 -> if sequal v0 v then Some m else None
+                    | None -> Some (Map.add k v m))
+        match pattern with
+        | ShapeVar v when is_metavar v -> Some (Map.ofList [ v.Name, target ])
+        | ShapeVar v ->
+            match target with
+            | ShapeVar v2 when vequal v v2 -> Some Map.empty
+            | _ -> None
+        | ShapeLambda _ -> if sequal pattern target then Some Map.empty else None
+        | ShapeCombination (po, pargs) ->
+            match target with
+            | ShapeCombination (to_, targs) when po.Equals to_ && List.length pargs = List.length targs ->
+                (Some Map.empty, List.zip pargs targs) ||> List.fold (fun acc (pa, ta) ->
+                    match acc with
+                    | None -> None
+                    | Some m -> match try_match pa ta with None -> None | Some m2 -> merge m m2)
+            | _ -> None
+
+    /// Instantiate a schema by replacing each metavariable with its bound subterm.
+    let instantiate_schema (bindings: Map<string, Expr>) (schema: Expr) : Expr =
+        (schema, bindings) ||> Map.fold (fun e name value -> replace_var_expr (Var(name, value.Type)) value e)
+
+    /// Rewrite the FIRST (leftmost-outermost) subterm matching schema `lhs` with `rhs`
+    /// instantiated by that match. Unifies the rule's own left-hand side against the
+    /// target, so the arguments (and the position) are inferred instead of spelled out.
+    /// No-op if `lhs` matches nowhere.
+    let apply_first_schema (lhs: Expr) (rhs: Expr) (expr: Expr) : Expr =
+        let rec go (e: Expr) : bool * Expr =
+            match try_match lhs e with
+            | Some bindings -> true, instantiate_schema bindings rhs
+            | None ->
+                match e with
+                | ShapeVar _ -> false, e
+                | ShapeLambda (v, body) -> let d, b = go body in d, Expr.Lambda(v, b)
+                | ShapeCombination (c, args) ->
+                    let rec loop acc =
+                        function
+                        | [] -> false, List.rev acc
+                        | x :: rest ->
+                            let d, x' = go x
+                            if d then true, List.rev acc @ (x' :: rest)
+                            else loop (x' :: acc) rest
+                    let d, args' = loop [] args
+                    d, RebuildShapeCombination(c, args')
+        go expr |> snd
+
+    /// Apply the transform `f` at the FIRST (leftmost-outermost, pre-order) subterm
+    /// position where it actually fires — i.e. produces a change — and rebuild the whole
+    /// expression. Returns the expression unchanged if `f` fires nowhere. Lets a rule be
+    /// applied "wherever it fits" without hand-threading branch combinators to the target.
+    let apply_first_firing (f: Expr -> Expr) (expr: Expr) : Expr =
+        let rec go (e: Expr) : bool * Expr =
+            let e' = f e
+            if not (sequal e' e) then true, e'
+            else
+                match e with
+                | ShapeVar _ -> false, e
+                | ShapeLambda (v, body) -> let d, b = go body in d, Expr.Lambda(v, b)
+                | ShapeCombination (c, args) ->
+                    let rec loop acc =
+                        function
+                        | [] -> false, List.rev acc
+                        | x :: rest ->
+                            let d, x' = go x
+                            if d then true, List.rev acc @ (x' :: rest)
+                            else loop (x' :: acc) rest
+                    let d, args' = loop [] args
+                    d, RebuildShapeCombination(c, args')
+        go expr |> snd
+
     let get_vars expr =
         let rec rget_vars prev expr =
             match expr with

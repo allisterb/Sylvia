@@ -106,16 +106,29 @@ an (oriented) rewrite set:
 `auto` is explicitly **incomplete** — the Isabelle contract: it handles the routine,
 the user finishes the rest.
 
-## 4. Enabling infrastructure: position enumeration
+## 4. Enabling infrastructure: position enumeration & matching
 
-The one shared primitive the search layer needs is *"try a rule at every subterm
+The one shared primitive the search layer needs is *"try a rule at a subterm
 position,"* i.e. enumerate positions and rebuild the whole term after a local
 rewrite. `simp` gets this implicitly from recursive traversal; `auto` needs it
 *explicitly* to branch the search. Building it also directly discharges two backlog
-items: declarative **subterm targeting** (address by pattern/occurrence instead of
-hand-threaded `left_branch`/`right_branch`) and **auto-instantiation** (unify a
-rule's LHS against the target rather than spelling out arguments). So the primitive
-pays for itself several times over.
+items: declarative **subterm targeting** and **auto-instantiation**.
+
+**Shipped (2026-07-02):**
+- `FsExpr.apply_first_firing (f:Expr->Expr) expr` — apply a rule at the first
+  (leftmost-outermost) position where it fires; surfaced as the `applyfirst`
+  combinator. Removes hand-threaded `apply_left |> left_branch` navigation.
+- `FsExpr.try_match : Expr -> Expr -> Map<string,Expr> option` — first-order matcher;
+  metavariables are Vars named `?…`, multi-occurrence bindings must agree (sequal).
+  With `instantiate_schema` and `apply_first_schema`, this powers the `autoapply`
+  combinator: a derived rule invoked on metavar args (`meta "a"`) carries its L→R
+  schema in its proof, so unifying L against the target infers **both** the
+  arguments and the position (no spelling out subterms, no addressing).
+
+`try_match` is the reusable unification primitive the `auto` search layer will reuse
+for rewriting with the oriented Gries theorem bank. What remains for full search is
+enumerating *all* positions (not just the first) to branch over — a small extension
+of the same traversal.
 
 ## 5. Soundness & verification strategy
 
