@@ -251,8 +251,10 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
                     | Argument(_, _, cj) -> cj 
                     | _ -> failwithf "%s is not a logical implication with an antecedent and consequent." (print_formula p.Stmt)
                 if conjs |> List.forall(fun v -> List.exists(fun v' -> sequal v v') current_conjuncts.Value) |> not then
-                    failwithf "The conjunct %s in deduction rule at step %i (%s) is not in the antecedent of %s." 
-                        (conjs |> List.find(fun v -> List.exists(fun v' -> not (sequal v v')) current_conjuncts.Value) |> print_formula) stepId n (print_formula a)
+                    // Report the conjunct that is present in NO current conjunct (the complement of
+                    // the forall condition above), so the message names the actually-missing one.
+                    failwithf "The conjunct %s in deduction rule at step %i (%s) is not in the antecedent of %s."
+                        (conjs |> List.find(fun v -> not (List.exists(fun v' -> sequal v v') current_conjuncts.Value)) |> print_formula) stepId n (print_formula a)
                 if not step.RightApplication then failwith "A deduction rule can only be applied to the consequent of a logical implication."
             | _ -> ()
         // For an Auto step, `rule` above already holds the searched-for rule (rf _state); reuse

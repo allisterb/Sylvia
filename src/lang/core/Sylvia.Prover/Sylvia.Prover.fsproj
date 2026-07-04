@@ -26,6 +26,7 @@
     <Compile Include="Tactics.fs" />
     <Compile Include="Parsers.fs" />
     <Compile Include="Theories\PropCalculus.fs" />
+    <Compile Include="Theories\Calc.fs" />
     <Compile Include="Theories\PredCalculus.fs" />
   </ItemGroup>
 

@@ -461,6 +461,100 @@ type KernelProofTests() =
         let th = PropCalculus.Cases t1 t2
         Assert.True(sequal th.Stmt (expand (p + !!p).Expr), sprintf "Cases produced %s" (src th.Stmt))
 
+    [<Fact>]
+    member _.``malformed deduction names the missing antecedent conjunct`` () =
+        // Deducing strengthen_and x y ((x∧y)⇒x) into a goal whose antecedent is only x must
+        // fail naming a genuinely-missing conjunct (x∧y) — the guard's report must not pick a
+        // present conjunct nor throw KeyNotFound.
+        let x, y, z = boolvar "x", boolvar "y", boolvar "z"
+        let t = PropCalculus.strengthen_and x y
+        let msg =
+            try proof PropCalculus.prop_calculus (x ==> (x * z)) [ Deduce t |> apply_right ] |> ignore; ""
+            with e -> e.Message
+        Assert.Contains("is not in the antecedent", msg)
+        Assert.Contains("x ∧ y", msg)
+
+    // ===== Calculational (mixed-relation) proofs — Gries Ch. 4 ================
+    // A calc chain produces a genuine Theorem of `start REL end`; relations compose by
+    // transitivity (= identity, ⇒∘⇒=⇒), and ⇒/⇐ cannot be mixed.
+
+    [<Fact>]
+    member _.``calc: stated = goal, pure = chain`` () =
+        // Goal stated up front; `from` restates the start (checked); chain must deliver the goal.
+        let th =
+            Calc.calc ((p * q) == (q * p)) {
+                do! Calc.from (p * q)
+                do! Calc.eq (PropCalculus.commute_and p q |> apply)
+            }
+        Assert.True(sequal th.Stmt (expand ((p * q) == (q * p)).Expr), sprintf "calc = produced %s" (src th.Stmt))
+
+    [<Fact>]
+    member _.``calc: stated => goal, mixed = then => chain`` () =
+        let th =
+            Calc.calc (p * q ==> q) {
+                do! Calc.from (p * q)
+                do! Calc.eq  (PropCalculus.commute_and p q |> apply)   //  p ∧ q  =  q ∧ p
+                do! Calc.imp (PropCalculus.strengthen_and q p)         //  q ∧ p  ⇒  q
+            }
+        Assert.True(sequal th.Stmt (expand (p * q ==> q).Expr), sprintf "calc =/=> produced %s" (src th.Stmt))
+
+    [<Fact>]
+    member _.``calc: all-= chain under a => goal is weakened to =>`` () =
+        // The chain only uses `=`, but the stated goal is `⇒`, so the result is weakened to `⇒`.
+        let th =
+            Calc.calc (p * q ==> (q * p)) {
+                do! Calc.from (p * q)
+                do! Calc.eq (PropCalculus.commute_and p q |> apply)
+            }
+        Assert.True(sequal th.Stmt (expand (p * q ==> (q * p)).Expr), sprintf "produced %s" (src th.Stmt))
+
+    [<Fact>]
+    member _.``calc: multi-step = chain proves p and (q and r) = r and (p and q)`` () =
+        let th =
+            Calc.calc ((p * (q * r)) == (r * (p * q))) {
+                do! Calc.from (p * (q * r))
+                do! Calc.eq (PropCalculus.left_assoc_and p q r |> apply)   //  p ∧ (q ∧ r)  =  p ∧ q ∧ r
+                do! Calc.eq (PropCalculus.commute_and (p * q) r |> apply)  //  =  r ∧ (p ∧ q)
+            }
+        Assert.True(sequal th.Stmt (expand ((p * (q * r)) == (r * (p * q))).Expr), sprintf "calc multi produced %s" (src th.Stmt))
+
+    [<Fact>]
+    member _.``calc: exploratory derive concludes start REL end`` () =
+        let th =
+            Calc.derive (p * q) {
+                do! Calc.eq  (PropCalculus.commute_and p q |> apply)
+                do! Calc.imp (PropCalculus.strengthen_and q p)
+            }
+        Assert.True(sequal th.Stmt (expand (p * q ==> q).Expr), sprintf "derive produced %s" (src th.Stmt))
+
+    [<Fact>]
+    member _.``calc: composing => with <= is rejected`` () =
+        let msg = try Calc.composeRel Calc.RImp Calc.RConseq |> ignore; "" with e -> e.Message
+        Assert.Contains("cannot mix", msg)
+
+    [<Fact>]
+    member _.``calc: `from` not matching the goal's left side is rejected`` () =
+        let msg =
+            try
+                (Calc.calc (p * q ==> q) {
+                    do! Calc.from (q * p)                            // ≠ goal LHS (p ∧ q)
+                    do! Calc.imp (PropCalculus.strengthen_and q p)
+                 } |> ignore); ""
+            with e -> e.Message
+        Assert.Contains("does not match the starting formula", msg)
+
+    [<Fact>]
+    member _.``calc: chain ending at the wrong endpoint is rejected`` () =
+        let msg =
+            try
+                (Calc.calc (p * q ==> r) {                          // goal RHS is r
+                    do! Calc.from (p * q)
+                    do! Calc.eq  (PropCalculus.commute_and p q |> apply)
+                    do! Calc.imp (PropCalculus.strengthen_and q p)  // reaches q, not r
+                 } |> ignore); ""
+            with e -> e.Message
+        Assert.Contains("right side is", msg)
+
     // ===== Whole-theory regression guard ======================================
     // Every static PropCalculus member returning Rule/Theorem with all-Prop
     // parameters must construct (Theorem/derived-rule construction throws if the
