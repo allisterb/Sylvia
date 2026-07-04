@@ -194,7 +194,7 @@ module PropCalculus =
 
     (* Tactics for proofs *)
 
-    let MutualImplication stmt = Tactics.MutualImplication prop_calculus Taut mutual_implication stmt
+    let MutualImplication stmt = Tactics.MutualImplication prop_calculus Taut mutual_implication reduce stmt
 
     (* Automation *)
 
@@ -927,6 +927,14 @@ module PropCalculus =
         def_false p |> apply
     ]
     
+    /// (¬p ⇒ F) = p  (reductio: Gries 3.74 with p:=¬p, then double negation) — the identity
+    /// underpinning proof by contradiction.
+    [<DerivedRule "(¬p ⇒ F) = p">]
+    let contradiction_id (p:Prop) = ident prop_calculus ((!!p ==> F) == p) [
+        ident_implies_false_not (!!p) |> apply_left
+        double_negation p |> apply_left
+    ]
+
     /// p ∧ q ⇒ r = (p ⇒ (q ⇒ r))  (Gries 3.65)
     [<DerivedRule "p ∧ q ⇒ r = (p ⇒ (q ⇒ r))">]
     let shunt' p q r = ident prop_calculus (p * q ==> r == (p ==> (q ==> r))) [
@@ -960,6 +968,14 @@ module PropCalculus =
         excluded_middle |> apply_left |> left_branch
         ident_conseq_true r |> Taut' |> apply
     ]
+
+    /// Proof by contradiction (Gries §4.2): from a proof of ¬P ⇒ F, conclude the theorem P.
+    let Contradiction (t:Theorem) =
+        Tactics.Contradiction prop_calculus Taut Commute (fun pe -> contradiction_id (pe |> expand_as<bool> |> Prop)) t
+
+    /// Proof by cases (Gries 3.79 / §4.2): from proofs of Q ⇒ P and ¬Q ⇒ P, conclude the theorem P.
+    let Cases (t1:Theorem) (t2:Theorem) =
+        Tactics.Cases prop_calculus Taut Commute reduce (fun qe pe -> case_analysis_2 (qe |> expand_as<bool> |> Prop) (pe |> expand_as<bool> |> Prop)) t1 t2
 
     /// (p ⇒ q) ∧ (q ⇒ p) = (p == q)  (Gries 3.80)
     [<DerivedRule "(p ⇒ q) ∧ (q ⇒ p) = (p = q)">]

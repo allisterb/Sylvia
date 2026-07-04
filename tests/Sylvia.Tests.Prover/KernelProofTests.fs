@@ -432,6 +432,35 @@ type KernelProofTests() =
     member _.``weaken_and_or proves: p and q implies p or q`` () =
         PropCalculus.weaken_and_or p q |> ignore
 
+    // ===== Proof-technique tactics (Gries Ch. 4) ==============================
+    // Each tactic must produce a *complete* Theorem (construction throws otherwise).
+
+    [<Fact>]
+    member _.``MutualImplication closes: proves (p and q) = (q and p)`` () =
+        // Gries 3.80: prove an identity from its two implications; must NOT stop at T and T.
+        let stmt = expand ((p * q) == (q * p)).Expr
+        let lB, rB, pB = PropCalculus.MutualImplication stmt
+        let th = Theorem(pB (lB [ PropCalculus.commute_and p q |> apply_left ])
+                            (rB [ PropCalculus.commute_and q p |> apply_left ]))
+        Assert.True(sequal th.Stmt stmt, sprintf "MutualImplication produced %s" (src th.Stmt))
+
+    [<Fact>]
+    member _.``contradiction_id proves: (not p => F) = p`` () =
+        PropCalculus.contradiction_id p |> ignore
+
+    [<Fact>]
+    member _.``Contradiction (reductio): from (not P => F) concludes P`` () =
+        let notP_imp_F = Theorem(PropCalculus.autoproof_anf (!!(p + !!p) ==> F))
+        let th = PropCalculus.Contradiction notP_imp_F
+        Assert.True(sequal th.Stmt (expand (p + !!p).Expr), sprintf "Contradiction produced %s" (src th.Stmt))
+
+    [<Fact>]
+    member _.``Cases (case analysis): from (Q => P) and (not Q => P) concludes P`` () =
+        let t1 = Theorem(PropCalculus.autoproof_anf (q ==> (p + !!p)))
+        let t2 = Theorem(PropCalculus.autoproof_anf (!!q ==> (p + !!p)))
+        let th = PropCalculus.Cases t1 t2
+        Assert.True(sequal th.Stmt (expand (p + !!p).Expr), sprintf "Cases produced %s" (src th.Stmt))
+
     // ===== Whole-theory regression guard ======================================
     // Every static PropCalculus member returning Rule/Theorem with all-Prop
     // parameters must construct (Theorem/derived-rule construction throws if the

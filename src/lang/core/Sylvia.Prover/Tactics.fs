@@ -177,9 +177,9 @@ module Tactics =
          let p = Proof(stmt, proof.Theory, ApplyRight rassoc :: proof.Steps, true) in 
          Theorem(stmt, p) |> Ident
 
-    let MutualImplication theory taut ident stmt =
-        let (l, r) = 
-            match stmt with 
+    let MutualImplication theory taut ident reduce stmt =
+        let (l, r) =
+            match stmt with
             | Equals(l, r) -> (l, r)
             | _ -> failwith "This statement is not an identity."
 
@@ -193,10 +193,48 @@ module Tactics =
             let p = Proof(s, theory, steps, true) in
             Theorem(s, p)
 
+        // Gries 3.80: (l = r) = (l ⇒ r) ∧ (r ⇒ l). After Taut-ing both proven
+        // implications to true we are left with T ∧ T; the final `reduce` collapses
+        // that to T so the proof actually closes (without it the proof ends at T ∧ T,
+        // which is not an axiom, and Theorem construction fails).
         let p lhs rhs = Proof(stmt, theory,  [
             ident |> Apply
             lhs |> taut |> ApplyLeft
             rhs |> taut |> ApplyRight
+            reduce |> Apply
         ])
 
         lhs, rhs, p
+
+    /// Proof by contradiction (reductio ad absurdum, Gries §4.2): from a proof of ¬P ⇒ F,
+    /// conclude P. `contradiction_id e` supplies the theory identity (¬e ⇒ F) = e (e.g. via
+    /// Gries 3.74 p⇒F = ¬p and double negation); `commute` is the Commute tactic and `taut`
+    /// the Taut tactic. The goal P is rewritten into ¬P ⇒ F, then discharged to T by the
+    /// supplied proof.
+    let Contradiction theory (taut:Theorem->Rule) commute (contradiction_id:Expr->Rule) (t:Theorem) =
+        let pexpr =
+            match t.Stmt with
+            | Implies(Not pp, False) -> pp
+            | _ -> failwithf "Proof by contradiction requires a theorem of the form ¬P ⇒ F; %s is not." ((theory:Theory).PrintFormula t.Stmt)
+        let steps = [
+            contradiction_id pexpr |> commute |> Apply   // P → (¬P ⇒ F)
+            t |> taut |> Apply                           // (¬P ⇒ F) → T
+        ]
+        Theorem(pexpr, Proof(pexpr, theory, steps))
+
+    /// Proof by cases (case analysis, Gries 3.79): from proofs of Q ⇒ P and ¬Q ⇒ P, conclude P.
+    /// `case_analysis q p` supplies the theory identity (q ⇒ p) ∧ (¬q ⇒ p) = p; `reduce`
+    /// collapses the resulting T ∧ T to T. Q and P are read off the first theorem (Q ⇒ P);
+    /// a mismatched second theorem simply fails to close the proof.
+    let Cases theory (taut:Theorem->Rule) commute reduce (case_analysis:Expr->Expr->Rule) (t1:Theorem) (t2:Theorem) =
+        let (qexpr, pexpr) =
+            match t1.Stmt with
+            | Implies(q, p) -> q, p
+            | _ -> failwithf "Proof by cases requires the first theorem to have the form Q ⇒ P; %s does not." ((theory:Theory).PrintFormula t1.Stmt)
+        let steps = [
+            case_analysis qexpr pexpr |> commute |> Apply   // P → (Q ⇒ P) ∧ (¬Q ⇒ P)
+            t1 |> taut |> ApplyLeft                         // → T ∧ (¬Q ⇒ P)
+            t2 |> taut |> ApplyRight                        // → T ∧ T
+            reduce |> Apply                                 // → T
+        ]
+        Theorem(pexpr, Proof(pexpr, theory, steps))
