@@ -131,6 +131,22 @@ module PropCalculus =
     [<AdmissibleRule "Simplify expression.">]
     let simp = Theory.S.Rules.[30]
 
+    /// Rewrite ¬/∨/⇒/⇐/≡ in terms of ⊕ (≢) and ∧, toward Boolean-ring normal form.
+    [<AdmissibleRule "Rewrite expression with XOR and AND.">]
+    let elim_to_xor = Theory.S.Rules.[31]
+
+    /// Distribute ∧ over ⊕.
+    [<AdmissibleRule "Distribute AND over XOR.">]
+    let distrib_and_xor = Theory.S.Rules.[32]
+
+    /// Normalize a ∧ monomial: flatten, F-annihilate, drop T, dedup atoms (idempotence), sort.
+    [<AdmissibleRule "Normalize AND monomial.">]
+    let and_normalize = Theory.S.Rules.[33]
+
+    /// Normalize a ⊕ chain: flatten, cancel x⊕x, drop F, sort.
+    [<AdmissibleRule "Normalize XOR terms.">]
+    let xor_normalize = Theory.S.Rules.[34]
+
     (* Tactics for rules *)
 
     /// If A is a theorem then replace A with T.
@@ -204,6 +220,26 @@ module PropCalculus =
     let auto (e:Prop) = Proof.auto Taut autoproof e
 
     let Auto = Proof.Auto Taut autoproof |> RuleApplication.Auto
+
+    /// Complete, trace-emitting propositional prover via Boolean-ring normal form (ANF): drive the
+    /// goal to canonical form with the local admitted rewrites (eliminate ¬/∨/⇒/≡ into ⊕/∧,
+    /// distribute ∧ over ⊕, normalize ∧ monomials and ⊕ chains, reduce constants), greedily to a
+    /// fixpoint, returning a REAL replayable proof — a valid propositional goal collapses to T.
+    /// Complete for the propositional fragment (unlike the heuristic `autoproof` search); unlike
+    /// the `valid` oracle it produces a checkable derivation. Throws if the goal is not a
+    /// propositional theorem. (Candidate fallback for a complete hybrid `autoproof` — see notes.)
+    let autoproof_anf (e: Prop) : Proof =
+        let goal = expand e.Expr
+        let isComplete x = prop_calculus.AxEquiv x || Proof.Logic.AxEquiv x
+        let moves =
+            [ applyfirst elim_to_xor
+              applyfirst distrib_and_xor
+              applyfirst and_normalize
+              applyfirst xor_normalize
+              applyfirst reduce ]
+        match normalize_trace isComplete moves 2000 goal with
+        | Some steps -> proof prop_calculus e steps
+        | None -> failwithf "decide could not normalize %s to a proof (is it a propositional theorem?)." (prop_calculus.PrintFormula goal)
 
     /// Decision TOOL (not a proof step): does a proof of this propositional goal exist?
     /// Complete via algebraic normal form — use it to check that an identity is valid before

@@ -549,6 +549,65 @@ module EquationalLogic =
             else let e' = onepass e in if sequal e' e then e else fix (n - 1) e'
         fix 200
 
+    // ---- Boolean-ring (ANF) rewrite rules (PROTOTYPE, temporarily admitted) --------------
+    // Drive a formula toward canonical XOR-of-AND normal form using local rewrites.
+
+    /// Eliminate ¬, ∨, ⇒, ⇐, ≡ in favour of ⊕ (<>) and ∧.
+    let _elim_to_xor =
+        function
+        | Not a -> <@@ (%%a: bool) <> (%%tE: bool) @@>
+        | Or (a, b) -> <@@ ((%%a: bool) && (%%b: bool)) <> (%%a: bool) <> (%%b: bool) @@>
+        | Implies (a, b) -> <@@ ((%%a: bool) && (%%b: bool)) <> (%%a: bool) <> (%%tE: bool) @@>
+        | Conseq (a, b) -> <@@ ((%%a: bool) && (%%b: bool)) <> (%%b: bool) <> (%%tE: bool) @@>
+        | Equals (a, b) when a.Type = typeof<bool> -> <@@ (%%a: bool) <> (%%b: bool) <> (%%tE: bool) @@>
+        | expr -> expr
+
+    /// Distribute ∧ over ⊕: a ∧ (b ⊕ c) = (a∧b) ⊕ (a∧c).
+    let _distrib_and_xor =
+        function
+        | And (a, NotEquals (b, c)) -> <@@ ((%%a: bool) && (%%b: bool)) <> ((%%a: bool) && (%%c: bool)) @@>
+        | And (NotEquals (b, c), a) -> <@@ ((%%b: bool) && (%%a: bool)) <> ((%%c: bool) && (%%a: bool)) @@>
+        | expr -> expr
+
+    /// Normalize a ∧ monomial: flatten, F annihilates, drop T, DEDUP atoms (idempotence
+    /// x∧x=x), sort. Needed because AC-normalize alone does not collapse repeated atoms in a
+    /// nested ∧ (e.g. p ∧ (p ∧ q)), which would then fail to cancel at the ⊕ level.
+    let _and_normalize =
+        let rec flatten e = match e with | And (l, r) -> flatten l @ flatten r | x -> [x]
+        function
+        | And (_, _) as e ->
+            let ops = flatten e
+            if ops |> List.exists (fun x -> sequal x fE) then fE
+            else
+                let kept =
+                    ops
+                    |> List.filter (fun x -> not (sequal x tE))
+                    |> List.distinctBy (fun (x: Expr) -> x.ToString())
+                    |> List.sortBy (fun (x: Expr) -> x.ToString())
+                match kept with
+                | [] -> tE
+                | [ x ] -> x
+                | xs -> xs |> List.reduce (fun a b -> <@@ (%%a: bool) && (%%b: bool) @@>)
+        | expr -> expr
+
+    /// Normalize a ⊕ chain: flatten, cancel equal pairs (x⊕x = 0), drop the ⊕-identity F, sort.
+    let _xor_normalize =
+        let rec flatten e = match e with | NotEquals (l, r) -> flatten l @ flatten r | x -> [x]
+        function
+        | NotEquals (_, _) as e ->
+            let ops = flatten e |> List.filter (fun x -> not (sequal x fE))
+            let counts = ops |> List.countBy (fun (x: Expr) -> x.ToString())
+            let kept =
+                ops
+                |> List.distinctBy (fun (x: Expr) -> x.ToString())
+                |> List.filter (fun (x: Expr) -> (counts |> List.find (fun (k, _) -> k = x.ToString()) |> snd) % 2 = 1)
+                |> List.sortBy (fun (x: Expr) -> x.ToString())
+            match kept with
+            | [] -> fE
+            | [ x ] -> x
+            | xs -> xs |> List.reduce (fun a b -> <@@ (%%a: bool) <> (%%b: bool) @@>)
+        | expr -> expr
+
     /// Algebraic normal form (ANF / Zhegalkin) over the Boolean ring (⊕, ∧, true), the
     /// canonical form on which propositional E-equivalence is DECIDABLE: every formula is a
     /// unique XOR of AND-monomials, and two formulas are equivalent iff their ANFs are equal.

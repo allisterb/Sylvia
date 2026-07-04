@@ -109,10 +109,42 @@ succeed) while the actual proof remains a real derivation. It is cross-checked a
 independent truth-table oracle (they agree on every input). Worst case is exponential
 (monomial blowup), fine for textbook goals.
 
-An earlier iteration admitted a `decide` *rule* (tautology → `T`); it was pulled from the
-trusted base for exactly this reason. A future refinement could instead emit the ANF
-canonicalization as real rule steps — a genuine checkable trace rather than an oracle
-appeal — which *would* be admissible.
+An earlier iteration admitted a whole-algorithm `decide` *rule* (tautology → `T`); it was
+pulled from the trusted base for exactly this reason. `valid`/`equiv` remain as the *check*.
+
+### 3.2b `autoproof_anf` — complete trace-emitting decider — DONE
+
+Separately from the check, there is now a **complete, trace-emitting** decider that produces
+a real derivation: `PropCalculus.autoproof_anf : Prop -> Proof`. It drives the goal to
+Boolean-ring (ANF) normal form using four **admitted, oracle-verified, local rewrites**:
+
+- `elim_to_xor` (`¬/∨/⇒/⇐/≡ → ⊕/∧`), `distrib_and_xor` (`∧` over `⊕`),
+- `and_normalize` (flatten a `∧` monomial, `F`-annihilate, drop `T`, **dedup atoms**, sort),
+- `xor_normalize` (flatten a `⊕` chain, cancel `x⊕x`, drop `F`, sort).
+
+A **deterministic** driver (`Auto.normalize_trace`) applies these greedily to a fixpoint —
+*not* best-first search, because the rules grow the term before it collapses, so a size
+heuristic would avoid them. A tautology collapses to `T`; `autoproof_anf` returns the
+replayable proof, or throws on a non-theorem. It is **complete and sound**: it closes a goal
+iff `valid` says it is a theorem (cross-checked in `KernelProofTests`), with proofs ≤ ~28
+steps, and it closes the `(p⇒q)∧(q⇒p) = (p≡q)` that `auto` missed.
+
+This is admitted rules, not a black-box oracle: each is a *local rewrite* producing one
+visible step of a normalization — the same character as `distrib`/`golden_rule`/`normalize`/
+`simp` — and all four are in the truth-table oracle sweep, so their equivalence-preservation
+is guarded on every test run. The decision *emerges from the trace*, so nothing is proved by
+oracle appeal.
+
+Two hard-won lessons are baked in here:
+- The first attempt was **incomplete** and reverted; the bug was a **confluence** gap
+  (missing `∧`-monomial dedup — `simp`/`normalize` sort but don't collapse repeated atoms in
+  a nested `∧`), *not* an unsoundness. "Complete by construction" was wrong; only running the
+  oracle caught it. Completeness bugs are safe (the decider fails/throws, never fabricates);
+  soundness is what the oracle guards.
+- The elimination identities are *derivable* in principle, but proving them by search costs
+  47–108 s **each** (unusable at load), and explicit hand-proofs are very finicky `⊕`-algebra.
+  Admitting the four verified rewrites was the pragmatic, sound choice. Hand-deriving the
+  `⊕`-introduction identities later (keeping the two AC-normalizers admitted) remains open.
 
 ### 3.3 `auto` — bounded heuristic search — DONE
 
@@ -239,10 +271,11 @@ benchmark, and it dovetails with the "goal + applicable-rules view" backlog item
    a sub-identity, use it as a step) and the `RuleApplication.Auto` case /
    `PropCalculus.Auto` (discharge the current obligation). The discharge dispatches
    `Equals → Ident`, everything else → `Taut` (not `Deduce`).
-5. **`decide`** — DONE (§3.2), as a **checking tool** (`EquationalLogic.Anf` +
-   `PropCalculus.valid`/`equiv`), deliberately kept OUT of the trusted base. Complete for
-   propositional (recognizes `auto`'s one miss); cross-checked against the truth-table
-   oracle. Answers "does a proof exist?"; it does not close proofs.
-6. **Later**: emit the ANF canonicalization as real rule steps (a checkable trace that
-   *would* be admissible, unlike the oracle); enumerate *all* positions to branch `auto`'s
-   search; fold the Gries theorem bank into `auto`'s moves via `try_match`; predicate/quantifier.
+5. **`decide`** — DONE, in two forms: (a) a **checking tool** (`Anf` + `valid`/`equiv`), out
+   of the trusted base, answers "does a proof exist?"; (b) a **complete trace-emitting
+   decider** `autoproof_anf` (§3.2b) via four admitted, oracle-verified ANF rewrites +
+   `normalize_trace`. Both complete; cross-checked against the truth-table oracle; `autoproof_anf`
+   closes `auto`'s one miss with a ≤~28-step real proof.
+6. **Later**: hand-derive the `⊕`-introduction identities to shrink the trusted base by two
+   (keep the AC-normalizers admitted); enumerate *all* positions to branch `auto`'s search;
+   fold the Gries theorem bank into `auto`'s moves via `try_match`; predicate/quantifier.

@@ -80,6 +80,14 @@ type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =
 
         let simp = Admit("Simplify (expression)", EquationalLogic._simp)
 
+        let elim_to_xor = Admit("Rewrite (expression) with ⊕ and ∧", EquationalLogic._elim_to_xor)
+
+        let distrib_and_xor = Admit("Distribute ∧ over ⊕ in (expression)", EquationalLogic._distrib_and_xor)
+
+        let and_normalize = Admit("Normalize ∧ monomial in (expression)", EquationalLogic._and_normalize)
+
+        let xor_normalize = Admit("Normalize ⊕ terms in (expression)", EquationalLogic._xor_normalize)
+
         Theory(EquationalLogic.equational_logic_axioms, [
             reduce
             left_assoc
@@ -112,6 +120,10 @@ type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =
             normalize
             normalize_assoc
             simp
+            elim_to_xor
+            distrib_and_xor
+            and_normalize
+            xor_normalize
         ])
 
 and Axioms = (Expr -> AxiomDescription option)
@@ -652,6 +664,38 @@ module Auto =
                                 else frontier.Add(s, newPath)
                         | None -> ()
             result
+
+    /// Elaborate a step list: replay it once and replace each search-based `Auto` step with
+    /// the concrete rule it produced at that point (`Apply (rf state)`). An `Auto` step re-runs
+    /// its search on every `Proof` construction; compiling captures the result so the proof
+    /// (or a rule built from it) replays with no further search. Non-Auto steps pass through.
+    let compile_steps (goal: Expr) (steps: RuleApplication list) : RuleApplication list =
+        let mutable state = goal
+        [ for step in steps do
+            let concrete =
+                match step with
+                | RuleApplication.Auto rf -> RuleApplication.Apply(rf state)
+                | s -> s
+            state <- concrete.ApplyRule state
+            yield concrete ]
+
+    /// Deterministic trace-emitting normalizer for a *confluent* rewrite system (e.g. driving
+    /// to a canonical normal form). Greedily applies the first `move` (in priority order) that
+    /// fires, to a fixpoint — no size heuristic, so size-increasing normalization steps (like
+    /// eliminating ∨ into ⊕∧) aren't avoided. Emits the replayable step list that reaches an
+    /// `isComplete` state, or None if it reaches a fixpoint short of completion / exceeds budget.
+    let normalize_trace (isComplete: Expr -> bool) (moves: RuleApplication list) (budget: int) (goal: Expr) : RuleApplication list option =
+        let step (ra: RuleApplication) (e: Expr) =
+            try let e' = ra.ApplyRule e in if sequal e' e then None else Some e'
+            with _ -> None
+        let rec loop (e: Expr) path n =
+            if isComplete e then Some path
+            elif n <= 0 then None
+            else
+                match moves |> List.tryPick (fun m -> step m e |> Option.map (fun e' -> m, e')) with
+                | Some (m, e') -> loop e' (path @ [ m ]) (n - 1)
+                | None -> None
+        loop goal [] budget
 
 [<AutoOpen>]
 module Proof =

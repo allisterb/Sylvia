@@ -168,6 +168,15 @@ type KernelProofTests() =
                 [ e (p * T); e (p * F); e (p + F); e (p + T)
                   e (p * !!p); e (p + !!p); e (p * p); e (p + p)
                   e (p * (p + q)); e (p + (p * q)); e (!!(!!p)); e (T == p); e (F == p) ]
+            // Boolean-ring (ANF) rewrite rules used by autoproof_anf (⊕ = <>):
+            "elim_to_xor",        EquationalLogic._elim_to_xor,
+                [ e (!!p); e (p + q); e (p ==> q); e (p == q) ]
+            "distrib_and_xor",    EquationalLogic._distrib_and_xor,
+                [ raw <@@ (%%p.Expr:bool) && ((%%q.Expr:bool) <> (%%r.Expr:bool)) @@> ]
+            "and_normalize",      EquationalLogic._and_normalize,   // dedup repeated atom
+                [ raw <@@ (%%p.Expr:bool) && ((%%p.Expr:bool) && (%%q.Expr:bool)) @@> ]
+            "xor_normalize",      EquationalLogic._xor_normalize,   // cancel x⊕x
+                [ raw <@@ ((%%p.Expr:bool) <> (%%q.Expr:bool)) <> (%%p.Expr:bool) @@> ]
         ]
         let notEquiv = ResizeArray<string>()
         let noFire = ResizeArray<string>()
@@ -337,6 +346,35 @@ type KernelProofTests() =
     member _.``auto does not fabricate a proof of a non-theorem`` () =
         // p = q is invalid; auto must exhaust its budget and throw, never return a "proof".
         Assert.ThrowsAny<exn>(fun () -> PropCalculus.autoproof (p == q) |> ignore) |> ignore
+
+    // ===== autoproof_anf: complete, trace-emitting propositional decider ==================
+
+    [<Fact>]
+    member _.``autoproof_anf emits a complete, replayable proof for propositional theorems`` () =
+        let goals : Prop list =
+            [ (p + !!p) == T
+              ((p ==> q) * (q ==> p)) == (p == q)     // auto's search miss — decide closes it
+              (p * (q * r)) == ((p * q) * (p * r))
+              ((p ==> q) == (!!q ==> !!p))
+              (((p ==> q) ==> p) ==> p) ]             // Peirce's law
+        for g in goals do
+            let pr = PropCalculus.autoproof_anf g
+            Assert.True(pr.Complete, sprintf "autoproof_anf should close %s; last state %s" (src (expand g.Expr)) (src pr.LastState))
+
+    [<Fact>]
+    member _.``autoproof_anf throws on a non-theorem (never a false proof)`` () =
+        Assert.ThrowsAny<exn>(fun () -> PropCalculus.autoproof_anf (p == q) |> ignore) |> ignore
+
+    [<Fact>]
+    member _.``autoproof_anf closes exactly the valid goals (complete AND sound vs the oracle)`` () =
+        // autoproof_anf (which builds a real proof) must succeed on a goal iff `valid` (the ANF
+        // oracle) says it is a theorem — completeness and soundness of the trace-emitting decider.
+        let cases : Prop list =
+            [ (p + !!p); (p * !!p == F); (p * (p + q) == p); ((p ==> q) == (!!q ==> !!p))
+              (((p ==> q) * (q ==> p)) == (p == q)); (p == q); (p ==> q); (p + q); ((p == q) == r) ]
+        for c in cases do
+            let closes = try (PropCalculus.autoproof_anf c).Complete with _ -> false
+            Assert.Equal(PropCalculus.valid c, closes)
 
     // ===== valid/equiv: ANF decision TOOL (checks a proof exists; not a proof rule) =====
 
