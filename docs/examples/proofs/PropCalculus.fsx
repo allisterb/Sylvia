@@ -8,13 +8,14 @@ fsi.PrintLength <- 1000
 
 open Sylvia
 open PropCalculus
-
+open Calc
 
 let p,q,r = boolvar3 "p" "q" "r"
 
 
-
-proof prop_calculus ((p * (q * r)) == ((p * q) * (p * r))) [
-    Auto
-]
+calc (p * q ==> q) {
+    
+    eq (apply <| commute_and p q )
+    imp (strengthen_and q p)
+}
 

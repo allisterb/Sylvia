@@ -17,11 +17,11 @@ open PropCalculus
 /// and folding `⇒`-steps through `trans_implies` (Gries 3.82a) — so the result is sound with
 /// no new trusted primitive.
 ///
-///     calc (p * q ==> q) {                     //  GOAL stated up front
-///         do! from (p * q)                     //  start line (checked against the goal's LHS)
-///         do! eq  (commute_and p q |> apply)   //  p ∧ q  =  q ∧ p
-///         do! imp (strengthen_and q p)         //  q ∧ p  ⇒  q
-///     }                                        //  ⟹ Theorem: (p ∧ q) ⇒ q  (endpoints checked)
+///     calc (p * q ==> q) {                 //  GOAL stated up front
+///         from (p * q)                     //  start line (checked against the goal's LHS)
+///         eq  (commute_and p q |> apply)   //  p ∧ q  =  q ∧ p
+///         imp (strengthen_and q p)         //  q ∧ p  ⇒  q
+///     }                                    //  ⟹ Theorem: (p ∧ q) ⇒ q  (endpoints checked)
 ///
 /// Use `calc goal { from …; … }` to prove a stated goal (the chain is checked to deliver it),
 /// or `derive start { … }` to transform a formula and conclude whatever `start REL end` is
@@ -214,42 +214,41 @@ module Calc =
 
     // --- the computation expression -------------------------------------------
 
-    /// A calc step: threads the state forward.
-    type Step = CalcState -> CalcState
-
+    /// Calc CE builder. Each custom operation threads the `CalcState` forward, so steps read as
+    /// bare keywords with no `do!`; `Run` assembles the Theorem. Used by both `calc` and `derive`.
     type CalcBuilder(seed: CalcState) =
-        member _.Bind(m: Step, f: unit -> Step) : Step = fun s -> f () (m s)
-        member _.Zero() : Step = id
-        member _.Delay(f: unit -> Step) : Step = fun s -> f () s
-        member _.Combine(m1: Step, m2: Step) : Step = fun s -> m2 (m1 s)
-        member _.Run(m: Step) : Theorem = (m seed).Conclude()
+        member _.Yield(_) = seed
 
-    /// Begin a calculational proof of a STATED goal `A REL B`: the block starts from `A`
-    /// (restate it with `from A`), transforms it with `= `/`⇒` steps, and at the end checks
-    /// the chain delivered exactly the goal (weakening an all-`=` chain to `⇒` if the goal is
-    /// an implication). Evaluates to a Theorem of the stated goal.
+        /// Restate the starting formula (checked against the goal's left side; must be first).
+        /// Optional — the start is already seeded from the goal; `from` is a readability opener.
+        [<CustomOperation("from")>]
+        member _.From(s: CalcState, start: Prop) = s.From(expand start.Expr)
+
+        /// A `= ` step: apply an equational rule application to the current line (Leibniz).
+        [<CustomOperation("eq")>]
+        member _.Eq(s: CalcState, ra: RuleApplication) = s.Eq ra
+
+        /// A `⇒` step: weaken via a proven implication whose antecedent is the current line.
+        [<CustomOperation("imp")>]
+        member _.Imp(s: CalcState, t: Theorem) = s.Imp t
+
+        /// A `⇐` step: strengthen via a proven implication whose consequent is the current line.
+        [<CustomOperation("conseq")>]
+        member _.Conseq(s: CalcState, t: Theorem) = s.Conseq t
+
+        member _.Run(s: CalcState) : Theorem = s.Conclude()
+
+    /// Begin a calculational proof of a STATED goal `A REL B`: the chain starts from `A`
+    /// (optionally restated with `from A`), transforms with `eq`/`imp`/`conseq`, and is checked
+    /// to deliver the goal (weakening an all-`=` chain to `⇒`/`⇐` if needed). Evaluates to a
+    /// Theorem of the stated goal.
     ///
     ///     calc (p * q ==> q) {
-    ///         do! from (p * q)
-    ///         do! imp (strengthen_and q p)
+    ///         from (p * q)
+    ///         imp (strengthen_and q p)
     ///     }
     let calc (goal: Prop) = CalcBuilder(CalcState.InitGoal(expand goal.Expr))
 
     /// Begin an exploratory calculational proof from `start` (no goal stated): transform it and
     /// conclude whatever `start REL end` is reached.
     let derive (start: Prop) = CalcBuilder(CalcState.Init(expand start.Expr))
-
-    /// Restate the starting formula (checked against the goal's left side). Optional, for
-    /// readability, in a `calc`-with-goal block.
-    let from (start: Prop) : Step = fun s -> s.From(expand start.Expr)
-
-    /// A `= ` step: apply an equational rule application to the current line (Leibniz).
-    let eq (ra: RuleApplication) : Step = fun s -> s.Eq ra
-
-    /// A `⇒` step: weaken the current line via a proven implication whose antecedent is the
-    /// whole current line (top-level only in this prototype).
-    let imp (t: Theorem) : Step = fun s -> s.Imp t
-
-    /// A `⇐` step: strengthen the current line via a proven implication whose consequent is the
-    /// whole current line (top-level only). `t : next ⇒ current`.
-    let conseq (t: Theorem) : Step = fun s -> s.Conseq t

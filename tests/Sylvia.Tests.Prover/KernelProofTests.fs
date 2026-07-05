@@ -483,8 +483,8 @@ type KernelProofTests() =
         // Goal stated up front; `from` restates the start (checked); chain must deliver the goal.
         let th =
             Calc.calc ((p * q) == (q * p)) {
-                do! Calc.from (p * q)
-                do! Calc.eq (PropCalculus.commute_and p q |> apply)
+                from (p * q)
+                eq (PropCalculus.commute_and p q |> apply)
             }
         Assert.True(sequal th.Stmt (expand ((p * q) == (q * p)).Expr), sprintf "calc = produced %s" (src th.Stmt))
 
@@ -492,9 +492,9 @@ type KernelProofTests() =
     member _.``calc: stated => goal, mixed = then => chain`` () =
         let th =
             Calc.calc (p * q ==> q) {
-                do! Calc.from (p * q)
-                do! Calc.eq  (PropCalculus.commute_and p q |> apply)   //  p ∧ q  =  q ∧ p
-                do! Calc.imp (PropCalculus.strengthen_and q p)         //  q ∧ p  ⇒  q
+                from (p * q)
+                eq  (PropCalculus.commute_and p q |> apply)   //  p ∧ q  =  q ∧ p
+                imp (PropCalculus.strengthen_and q p)         //  q ∧ p  ⇒  q
             }
         Assert.True(sequal th.Stmt (expand (p * q ==> q).Expr), sprintf "calc =/=> produced %s" (src th.Stmt))
 
@@ -503,8 +503,8 @@ type KernelProofTests() =
         // The chain only uses `=`, but the stated goal is `⇒`, so the result is weakened to `⇒`.
         let th =
             Calc.calc (p * q ==> (q * p)) {
-                do! Calc.from (p * q)
-                do! Calc.eq (PropCalculus.commute_and p q |> apply)
+                from (p * q)
+                eq (PropCalculus.commute_and p q |> apply)
             }
         Assert.True(sequal th.Stmt (expand (p * q ==> (q * p)).Expr), sprintf "produced %s" (src th.Stmt))
 
@@ -512,9 +512,9 @@ type KernelProofTests() =
     member _.``calc: multi-step = chain proves p and (q and r) = r and (p and q)`` () =
         let th =
             Calc.calc ((p * (q * r)) == (r * (p * q))) {
-                do! Calc.from (p * (q * r))
-                do! Calc.eq (PropCalculus.left_assoc_and p q r |> apply)   //  p ∧ (q ∧ r)  =  p ∧ q ∧ r
-                do! Calc.eq (PropCalculus.commute_and (p * q) r |> apply)  //  =  r ∧ (p ∧ q)
+                from (p * (q * r))
+                eq (PropCalculus.left_assoc_and p q r |> apply)   //  p ∧ (q ∧ r)  =  p ∧ q ∧ r
+                eq (PropCalculus.commute_and (p * q) r |> apply)  //  =  r ∧ (p ∧ q)
             }
         Assert.True(sequal th.Stmt (expand ((p * (q * r)) == (r * (p * q))).Expr), sprintf "calc multi produced %s" (src th.Stmt))
 
@@ -522,8 +522,8 @@ type KernelProofTests() =
     member _.``calc: exploratory derive concludes start REL end`` () =
         let th =
             Calc.derive (p * q) {
-                do! Calc.eq  (PropCalculus.commute_and p q |> apply)
-                do! Calc.imp (PropCalculus.strengthen_and q p)
+                eq  (PropCalculus.commute_and p q |> apply)
+                imp (PropCalculus.strengthen_and q p)
             }
         Assert.True(sequal th.Stmt (expand (p * q ==> q).Expr), sprintf "derive produced %s" (src th.Stmt))
 
@@ -532,7 +532,7 @@ type KernelProofTests() =
         // From q, strengthen to q ∧ p  (since (q ∧ p) ⇒ q); conclude  q <=== (q ∧ p).
         let th =
             Calc.derive q {
-                do! Calc.conseq (PropCalculus.strengthen_and q p)
+                conseq (PropCalculus.strengthen_and q p)
             }
         Assert.True(sequal th.Stmt (expand (Calc.follows_from q (q * p)).Expr), sprintf "derive <= produced %s" (src th.Stmt))
 
@@ -540,8 +540,8 @@ type KernelProofTests() =
     member _.``calc: stated <= goal via follows_from`` () =
         let th =
             Calc.calc (Calc.follows_from q (q * p)) {
-                do! Calc.from q
-                do! Calc.conseq (PropCalculus.strengthen_and q p)
+                from q
+                conseq (PropCalculus.strengthen_and q p)
             }
         Assert.True(sequal th.Stmt (expand (Calc.follows_from q (q * p)).Expr), sprintf "calc <= produced %s" (src th.Stmt))
 
@@ -549,8 +549,8 @@ type KernelProofTests() =
     member _.``calc: mixed = then <= chain`` () =
         let th =
             Calc.derive (p * q) {
-                do! Calc.eq (PropCalculus.commute_and p q |> apply)         //  p∧q = q∧p
-                do! Calc.conseq (PropCalculus.strengthen_and (q * p) r)     //  q∧p ⇐ (q∧p)∧r
+                eq (PropCalculus.commute_and p q |> apply)         //  p∧q = q∧p
+                conseq (PropCalculus.strengthen_and (q * p) r)     //  q∧p ⇐ (q∧p)∧r
             }
         Assert.True(sequal th.Stmt (expand (Calc.follows_from (p * q) ((q * p) * r)).Expr), sprintf "mixed =/<= produced %s" (src th.Stmt))
 
@@ -564,8 +564,8 @@ type KernelProofTests() =
         let msg =
             try
                 (Calc.calc (p * q ==> q) {
-                    do! Calc.from (q * p)                            // ≠ goal LHS (p ∧ q)
-                    do! Calc.imp (PropCalculus.strengthen_and q p)
+                    from (q * p)                            // ≠ goal LHS (p ∧ q)
+                    imp (PropCalculus.strengthen_and q p)
                  } |> ignore); ""
             with e -> e.Message
         Assert.Contains("does not match the starting formula", msg)
@@ -575,8 +575,8 @@ type KernelProofTests() =
         let msg =
             try
                 (Calc.calc ((p * q) == (q * p)) {
-                    do! Calc.eq (PropCalculus.commute_and p q |> apply)   // a step ran first
-                    do! Calc.from (p * q)                                 // `from` no longer allowed
+                    eq (PropCalculus.commute_and p q |> apply)   // a step ran first
+                    from (p * q)                                 // `from` no longer allowed
                  } |> ignore); ""
             with e -> e.Message
         Assert.Contains("must be the first step", msg)
@@ -585,10 +585,10 @@ type KernelProofTests() =
     member _.``calc: chain ending at the wrong endpoint is rejected`` () =
         let msg =
             try
-                (Calc.calc (p * q ==> r) {                          // goal RHS is r
-                    do! Calc.from (p * q)
-                    do! Calc.eq  (PropCalculus.commute_and p q |> apply)
-                    do! Calc.imp (PropCalculus.strengthen_and q p)  // reaches q, not r
+                (Calc.calc (p * q ==> r) {                    // goal RHS is r
+                    from (p * q)
+                    eq  (PropCalculus.commute_and p q |> apply)
+                    imp (PropCalculus.strengthen_and q p)     // reaches q, not r
                  } |> ignore); ""
             with e -> e.Message
         Assert.Contains("right side is", msg)
