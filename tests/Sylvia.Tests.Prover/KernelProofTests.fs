@@ -528,6 +528,33 @@ type KernelProofTests() =
         Assert.True(sequal th.Stmt (expand (p * q ==> q).Expr), sprintf "derive produced %s" (src th.Stmt))
 
     [<Fact>]
+    member _.``calc: exploratory derive with a <= (conseq) step`` () =
+        // From q, strengthen to q ∧ p  (since (q ∧ p) ⇒ q); conclude  q <=== (q ∧ p).
+        let th =
+            Calc.derive q {
+                do! Calc.conseq (PropCalculus.strengthen_and q p)
+            }
+        Assert.True(sequal th.Stmt (expand (Calc.follows_from q (q * p)).Expr), sprintf "derive <= produced %s" (src th.Stmt))
+
+    [<Fact>]
+    member _.``calc: stated <= goal via follows_from`` () =
+        let th =
+            Calc.calc (Calc.follows_from q (q * p)) {
+                do! Calc.from q
+                do! Calc.conseq (PropCalculus.strengthen_and q p)
+            }
+        Assert.True(sequal th.Stmt (expand (Calc.follows_from q (q * p)).Expr), sprintf "calc <= produced %s" (src th.Stmt))
+
+    [<Fact>]
+    member _.``calc: mixed = then <= chain`` () =
+        let th =
+            Calc.derive (p * q) {
+                do! Calc.eq (PropCalculus.commute_and p q |> apply)         //  p∧q = q∧p
+                do! Calc.conseq (PropCalculus.strengthen_and (q * p) r)     //  q∧p ⇐ (q∧p)∧r
+            }
+        Assert.True(sequal th.Stmt (expand (Calc.follows_from (p * q) ((q * p) * r)).Expr), sprintf "mixed =/<= produced %s" (src th.Stmt))
+
+    [<Fact>]
     member _.``calc: composing => with <= is rejected`` () =
         let msg = try Calc.composeRel Calc.RImp Calc.RConseq |> ignore; "" with e -> e.Message
         Assert.Contains("cannot mix", msg)
@@ -542,6 +569,17 @@ type KernelProofTests() =
                  } |> ignore); ""
             with e -> e.Message
         Assert.Contains("does not match the starting formula", msg)
+
+    [<Fact>]
+    member _.``calc: `from` after a step is rejected (must be first)`` () =
+        let msg =
+            try
+                (Calc.calc ((p * q) == (q * p)) {
+                    do! Calc.eq (PropCalculus.commute_and p q |> apply)   // a step ran first
+                    do! Calc.from (p * q)                                 // `from` no longer allowed
+                 } |> ignore); ""
+            with e -> e.Message
+        Assert.Contains("must be the first step", msg)
 
     [<Fact>]
     member _.``calc: chain ending at the wrong endpoint is rejected`` () =

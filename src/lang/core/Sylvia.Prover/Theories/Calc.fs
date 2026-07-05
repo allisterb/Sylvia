@@ -25,11 +25,13 @@ open PropCalculus
 ///
 /// Use `calc goal { from …; … }` to prove a stated goal (the chain is checked to deliver it),
 /// or `derive start { … }` to transform a formula and conclude whatever `start REL end` is
-/// reached. An all-`=` chain under a `⇒` goal is weakened to `⇒` to match.
+/// reached. An all-`=` chain under a `⇒`/`⇐` goal is weakened to match. Steps: `eq` (=),
+/// `imp` (⇒, weaken), `conseq` (⇐, strengthen). State a `⇐` goal with `follows_from a b`
+/// (= `a <=== b`).
 ///
-/// PROTOTYPE SCOPE: `imp` steps are top-level only (the whole current line must be the
-/// supplied theorem's antecedent); subterm-monotonic `⇒` (weakening inside ∧/∨, which needs
-/// polarity tracking) and `⇐` conclusions are future work.
+/// PROTOTYPE SCOPE: `imp`/`conseq` steps are top-level only (the whole current line must be
+/// the supplied theorem's antecedent/consequent); subterm-monotonic `⇒`/`⇐` (weakening inside
+/// ∧/∨, which needs polarity tracking) is future work.
 module Calc =
 
     // --- relation algebra ------------------------------------------------------
@@ -76,12 +78,32 @@ module Calc =
                 Taut (trans_implies pa pb pc) |> apply ]
         | _ -> failwithf "calc: %s / %s are not both implications" (src t1.Stmt) (src t2.Stmt)
 
+    /// Build the consequence proposition `a <=== b`  (= Conseq(a, b) = `b ⇒ a`).
+    let private conseqP (a: Prop) (b: Prop) : Prop = Prop <@ (%a.Expr <=== %b.Expr) @>
+
+    /// State a `⇐` goal readably: `follows_from a b` is `a <=== b` (a follows from b, i.e. b ⇒ a).
+    let follows_from (a: Prop) (b: Prop) : Prop = conseqP a b
+
+    /// End ⇒ Start  ⟼  Start <=== End  (rewrite the consequence into its implication via the
+    /// Consequence axiom, then discharge with the supplied proof).
+    let impToConseq (t: Theorem) : Theorem =
+        match t.Stmt with
+        | Implies(endE, startE) ->
+            let ps, pe = pOf startE, pOf endE
+            theorem prop_calculus (conseqP ps pe) [
+                id_ax prop_calculus ((conseqP ps pe) == (pe ==> ps)) |> apply
+                Taut t |> apply ]
+        | _ -> failwithf "calc: impToConseq expected an implication, got %s" (src t.Stmt)
+
     // --- threaded state --------------------------------------------------------
 
-    /// One recorded step: an equational rewrite (rule + before/after), or a supplied implication.
+    /// One recorded step: an equational rewrite (rule + before/after), or a supplied
+    /// implication used forward (`⇒`, antecedent = current line) or backward (`⇐`, consequent
+    /// = current line).
     type Fact =
         | FEq of RuleApplication * Expr * Expr
         | FImp of Theorem
+        | FConseq of Theorem
 
     /// Split a stated goal `A REL B` into its two sides and connecting relation.
     let internal parseGoal (g: Expr) =
@@ -96,10 +118,12 @@ module Calc =
           /// The stated goal's (right side, relation), when a goal was declared with `calc`.
           /// `None` for the exploratory `derive` form. `Start` is always the goal's left side.
           Goal: (Expr * Rel) option
+          /// True until the first step (of any kind) runs — `from` is only allowed while fresh.
+          Fresh: bool
           Facts: Fact list; Log: string list }
 
         static member private mk start goal =
-            { Start = start; Current = start; Relation = REq; Goal = goal; Facts = []
+            { Start = start; Current = start; Relation = REq; Goal = goal; Fresh = true; Facts = []
               Log = [ sprintf "    %s" (prop_calculus.PrintFormula start) ] }
         /// Exploratory: transform `start`, conclude whatever `start REL end` is reached.
         static member Init (start: Expr) = CalcState.mk start None
@@ -107,13 +131,16 @@ module Calc =
         static member InitGoal (goal: Expr) = let (a, b, rel) = parseGoal goal in CalcState.mk a (Some(b, rel))
 
         member private s.Push rel next fact line =
-            { s with Current = next; Relation = composeRel s.Relation rel; Facts = s.Facts @ [ fact ]; Log = s.Log @ [ line ] }
+            { s with Fresh = false; Current = next; Relation = composeRel s.Relation rel; Facts = s.Facts @ [ fact ]; Log = s.Log @ [ line ] }
 
-        /// Restate (and check) the starting formula — must match the seeded start / goal LHS.
+        /// Restate (and check) the starting formula — must be the FIRST step, and match the
+        /// seeded start / goal LHS.
         member s.From (e: Expr) =
+            if not s.Fresh then
+                failwith "calc: `from` must be the first step of the proof"
             if not (sequal e s.Start) then
                 failwithf "calc: `from %s` does not match the starting formula %s" (src e) (src s.Start)
-            s
+            { s with Fresh = false }
 
         member s.Eq (ra: RuleApplication) =
             let next = ra.ApplyRule s.Current
@@ -127,6 +154,15 @@ module Calc =
             | Implies(a, _) -> failwithf "calc: '⇒' step antecedent %s does not match the current line %s" (src a) (src s.Current)
             | _ -> failwithf "calc: '⇒' step %s is not an implication" (src t.Stmt)
 
+        /// A `⇐` step: strengthen the current line via a proven implication whose CONSEQUENT is
+        /// the current line (top-level only). `t : next ⇒ current` moves the chain to `next`.
+        member s.Conseq (t: Theorem) =
+            match t.Stmt with
+            | Implies(b, a) when sequal a s.Current ->
+                s.Push RConseq b (FConseq t) (sprintf "  ⇐ { %s }\n    %s" t.Name (prop_calculus.PrintFormula b))
+            | Implies(_, a) -> failwithf "calc: '⇐' step consequent %s does not match the current line %s" (src a) (src s.Current)
+            | _ -> failwithf "calc: '⇐' step %s is not an implication" (src t.Stmt)
+
         /// Assemble the genuine Theorem the chain establishes. With a stated goal, target that
         /// goal's relation (weakening an all-`=` chain to `⇒` when the goal is an implication)
         /// and check the chain actually ended at the goal's right side. Silences per-step
@@ -138,27 +174,40 @@ module Calc =
                 | Some(rhs, goalRel) ->
                     if not (sequal s.Current rhs) then
                         failwithf "calc: the chain ended at %s but the goal's right side is %s" (src s.Current) (src rhs)
+                    // The chain's relation must be compatible with (at least as strong as) the goal's.
                     match goalRel, s.Relation with
-                    | REq, RImp | REq, RConseq -> failwithf "calc: the goal is an equivalence (=) but the chain only established %s" (relSym s.Relation)
-                    | _ -> goalRel        // ⇒ goal accepts an = chain (weaken); = goal needs an = chain
+                    | REq, REq -> REq
+                    | RImp, (REq | RImp) -> RImp
+                    | RConseq, (REq | RConseq) -> RConseq
+                    | _ -> failwithf "calc: the goal is %s but the chain established %s" (relSym goalRel) (relSym s.Relation)
                 | None -> s.Relation
             let saved = Proof.LogLevel
-            let impOf =
+            // Each fact as a forward `from ⇒ to` implication (for a `⇒` conclusion)...
+            let impFwd =
                 function
                 | FEq(ra, a, b) -> eqToImp (theorem prop_calculus ((pOf a) == (pOf b)) [ left_branch ra ])
-                | FImp t -> t
+                | FImp t | FConseq t -> t
+            // ...and as a backward `to ⇒ from` implication (for a `⇐` conclusion).
+            let impBwd =
+                function
+                | FEq(ra, a, b) -> eqToImp (theorem prop_calculus ((pOf b) == (pOf a)) [ right_branch ra ])
+                | FImp t | FConseq t -> t
             let thm =
                 try
                     Proof.LogLevel <- 0
                     match target with
                     | REq ->
                         theorem prop_calculus ((pOf s.Start) == (pOf s.Current))
-                            (s.Facts |> List.map (function FEq(ra, _, _) -> left_branch ra | FImp _ -> failwith "calc: unreachable"))
+                            (s.Facts |> List.map (function FEq(ra, _, _) -> left_branch ra | _ -> failwith "calc: unreachable"))
                     | RImp ->
-                        match s.Facts |> List.map impOf with
+                        match s.Facts |> List.map impFwd with
                         | [] -> theorem prop_calculus ((pOf s.Start) ==> (pOf s.Current)) []   // reflexive: Start = Current
                         | h :: rest -> List.fold chainImp h rest
-                    | RConseq -> failwith "calc: ⇐ conclusions are not yet supported"
+                    | RConseq ->
+                        // Fold the backward `to ⇒ from` facts in reverse to get End ⇒ Start, then wrap as Start <=== End.
+                        match s.Facts |> List.map impBwd |> List.rev with
+                        | [] -> impToConseq (theorem prop_calculus ((pOf s.Current) ==> (pOf s.Start)) [])   // reflexive
+                        | h :: rest -> impToConseq (List.fold chainImp h rest)
                 finally Proof.LogLevel <- saved
             if saved >= 1 then printfn "%s   [%s]" (String.concat "\n" s.Log) (relSym target)
             thm
@@ -200,3 +249,7 @@ module Calc =
     /// A `⇒` step: weaken the current line via a proven implication whose antecedent is the
     /// whole current line (top-level only in this prototype).
     let imp (t: Theorem) : Step = fun s -> s.Imp t
+
+    /// A `⇐` step: strengthen the current line via a proven implication whose consequent is the
+    /// whole current line (top-level only). `t : next ⇒ current`.
+    let conseq (t: Theorem) : Step = fun s -> s.Conseq t
