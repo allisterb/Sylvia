@@ -832,3 +832,9 @@ module Pred =
     let exists<'t when 't: equality> (x:Term<'t>, R:Pred<'t>, B:Pred<'t>) = Prop <@ exists_expr %(x.Expr) %(R[x].Expr) %(B[x].Expr) @>
 
     let realpred s = symbolic_pred<real> s
+
+    let intpred s = symbolic_pred<int> s
+
+    let ratpred s = symbolic_pred<rat> s
+
+    let boolpred s = symbolic_pred<bool> s
