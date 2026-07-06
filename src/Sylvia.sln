@@ -71,11 +71,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Examples", "Examples", "{90
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Math", "Math", "{3A68D4C0-A48F-4845-A351-D09DB7870E09}"
 	ProjectSection(SolutionItems) = preProject
-		..\docs\examples\math\Economics.fsx = ..\docs\examples\math\Economics.fsx
-		..\docs\examples\math\Include.fsx = ..\docs\examples\math\Include.fsx
-		..\docs\examples\math\LinearAlgebra.fsx = ..\docs\examples\math\LinearAlgebra.fsx
-		..\docs\examples\math\RealAnalysis.fsx = ..\docs\examples\math\RealAnalysis.fsx
-		..\docs\examples\math\Statistics.fsx = ..\docs\examples\math\Statistics.fsx
+		..\examples\math\Economics.fsx = ..\examples\math\Economics.fsx
+		..\examples\math\Include.fsx = ..\examples\math\Include.fsx
+		..\examples\math\LinearAlgebra.fsx = ..\examples\math\LinearAlgebra.fsx
+		..\examples\math\RealAnalysis.fsx = ..\examples\math\RealAnalysis.fsx
+		..\examples\math\Statistics.fsx = ..\examples\math\Statistics.fsx
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solvers", "Solvers", "{AC1672AD-A327-414A-93AB-68F47D244C93}"
@@ -136,8 +136,9 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Tests.Prover", "..\t
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Proofs", "Proofs", "{7F85747F-BE97-4C16-A6D7-CA7F93DC9819}"
 	ProjectSection(SolutionItems) = preProject
-		..\docs\examples\proofs\PredCalculus.fsx = ..\docs\examples\proofs\PredCalculus.fsx
-		..\docs\examples\proofs\PropCalculus.fsx = ..\docs\examples\proofs\PropCalculus.fsx
+		..\examples\proofs\Include.fsx = ..\examples\proofs\Include.fsx
+		..\examples\proofs\PredCalculus.fsx = ..\examples\proofs\PredCalculus.fsx
+		..\examples\proofs\PropCalculus.fsx = ..\examples\proofs\PropCalculus.fsx
 	EndProjectSection
 EndProject
 Global

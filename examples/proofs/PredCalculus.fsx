@@ -1,5 +1,4 @@
 #load "Include.fsx"
-#nowarn "3391"   // a bare rule as a proof step is the implicit "apply to the whole expression"
 
 // Predicate calculus (Gries & Schneider, "A Logical Approach to Discrete Math", ch. 8-9).
 // Constructing, displaying and machine-checking quantified (∀ / ∃) theorems in Sylvia.
@@ -17,10 +16,12 @@ open PredCalculus
 // dummy x — the distributivity/trading laws require such an x-free operand (¬occurs(x, pp)).
 let x = intvar "x"
 let y = intvar "y"
-let N = symbolic_pred<int> "N"
-let P = symbolic_pred<int> "P"
-let Q = symbolic_pred<int> "Q"
-let R = symbolic_pred<int> "R"
+let N = intpred "N"
+let P = intpred "P"
+let P' = boolvar "P"
+let Q = intpred "Q"
+let Q' = boolvar "Q"
+let R = intpred "R"
 let pp = boolvar "pp"
 let qq = boolvar "qq"
 
@@ -106,66 +107,61 @@ let bodyLemma (p: Prop) (r: Prop) (q: Prop) =
 let trueRange (x: TermVar<'t>) (P: Prop) (B: Pred<'t>) =
     id_ax pred_calculus ((P + forall'(x, B)) == qall x T (P + B[x]))
 
-let ex_9_1 (x: TermVar<'t>) (R: Pred<'t>) (Q: Pred<'t>) (P: Prop) =
-    ident pred_calculus ((P + forall(x, R, Q)) == qall x R[x] (P + Q[x])) [
+printfn "9.1  general (9.5) from true-range: pp ∨ (∀x|R:Q) = (∀x|R: pp∨Q)"
+let ex_9_1 = ident pred_calculus ((P' + forall(x, R, Q)) == qall x R[x] (P' + Q[x])) [
         trade_forall_implies x R Q |> at [left_branch; right_branch]  // ∀x|R:Q → ∀x|: R⇒Q   (Trading)
-        trueRange x P (R ==> Q) |> at_left                            // pull pp inside (the given law)
-        bodyLemma P R[x] Q[x] |> at [left_branch; select_body]        // pp∨(R⇒Q) → R⇒(pp∨Q)
+        trueRange x P' (R ==> Q) |> at_left                            // pull pp inside (the given law)
+        bodyLemma P' R[x] Q[x] |> at [left_branch; select_body]        // pp∨(R⇒Q) → R⇒(pp∨Q)
         trade_body |> at_right                                       // RHS ∀x|R:(pp∨Q) → ∀x|: R⇒(pp∨Q)
     ]
-
-check "9.1  general (9.5) from true-range: pp ∨ (∀x|R:Q) = (∀x|R: pp∨Q)" (fun () -> ex_9_1 x R Q pp |> ignore)
-
 // Exercise 9.6. Range split for ∀ WITHOUT the range-split axiom (8.18):
 //   (∀x|R:P) ∧ (∀x|Q:P) = (∀x|R∨Q:P),  from Trading (9.2), Distributivity (8.15) and Case analysis (3.78).
-let ex_9_6 (x: TermVar<'t>) (R: Pred<'t>) (Q: Pred<'t>) (P: Pred<'t>) =
-    ident pred_calculus (((forall(x,R,P)) * (forall(x,Q,P))) == forall(x, R + Q, P)) [
+printfn "9.6  range split w/o axiom 8.18: (∀x|R:P)∧(∀x|Q:P) = (∀x|R∨Q:P)"
+let ex_9_6 = ident pred_calculus (((forall(x,R,P)) * (forall(x,Q,P))) == forall(x, R + Q, P)) [
         trade_forall_implies x R P |> at [left_branch; left_branch]
         trade_forall_implies x Q P |> at [left_branch; right_branch]
         collect_forall_and' x truepred (R ==> P) (Q ==> P) |> at_left    // (∀x|:A)∧(∀x|:B) → ∀x|:(A∧B)
         case_analysis_1 R[x] Q[x] P[x] |> at [left_branch; select_body]  // (R⇒P)∧(Q⇒P) → (R∨Q⇒P)
         trade_forall_implies x (R + Q) P |> at_right
     ]
-check "9.6  range split w/o axiom 8.18: (∀x|R:P)∧(∀x|Q:P) = (∀x|R∨Q:P)" (fun () -> ex_9_6 x R Q P |> ignore)
+
 
 // Exercise 9.27.  (∃x|R:P) ⇒ Q  =  (∀x|R: P⇒Q)   (Q x-free) — an ∃ in an antecedent becomes a ∀.
-let ex_9_27 (x: TermVar<'t>) (R: Pred<'t>) (P: Pred<'t>) (Q: Prop) =
-    ident pred_calculus (((exists(x,R,P)) ==> Q) == qall x R[x] (P[x] ==> Q)) [
-        ident_implies_not_or (exists(x,R,P)) Q |> at_left                  // → ¬(∃x|R:P) ∨ Q
+printfn "9.27 ∃-antecedent: (∃x|R:P) ⇒ Q = (∀x|R: P⇒Q)"
+let ex_9_27 = ident pred_calculus (((exists(x,R,P)) ==> Q') == qall x R[x] (P[x] ==> Q')) [
+        ident_implies_not_or (exists(x,R,P)) Q' |> at_left                  // → ¬(∃x|R:P) ∨ Q
         ident_not_exists_forall_not x R P |> at [left_branch; left_branch] // ¬(∃x|R:P) → (∀x|R:¬P)
-        commute_or (forall(x,R,-P)) Q |> at_left
-        distrib_or_forall' x R Q (-P) |> at_left                          // Q ∨ (∀x|R:¬P) → (∀x|R: Q∨¬P)
-        commute_or Q (-(P[x])) |> at [left_branch; select_body]
-        ident_implies_not_or P[x] Q |> Commute |> at [left_branch; select_body]  // ¬P∨Q → P⇒Q
+        commute_or (forall(x,R,-P)) Q' |> at_left
+        distrib_or_forall' x R Q' (-P) |> at_left                          // Q ∨ (∀x|R:¬P) → (∀x|R: Q∨¬P)
+        commute_or Q' (-(P[x])) |> at [left_branch; select_body]
+        ident_implies_not_or P[x] Q' |> Commute |> at [left_branch; select_body]  // ¬P∨Q → P⇒Q
     ]
-check "9.27 ∃-antecedent: (∃x|R:P) ⇒ Q = (∀x|R: P⇒Q)" (fun () -> ex_9_27 x R P qq |> ignore)
 
 // Exercise 9.20 → Trading ∨ out of ∃ (9.23), a CONDITIONAL identity discharged with a `Deduce`
 // on the range-nonempty assumption:  (∃x|:R) ⇒ ((∃x|R:pp∨Q) = pp ∨ (∃x|R:Q))   (pp x-free).
 let collectMixed (x: TermVar<'t>) (R: Pred<'t>) (P: Prop) (Q: Pred<'t>) =
     id_ax pred_calculus (((qex x R[x] P) + exists(x,R,Q)) == qex x R[x] (P + Q[x]))
-let ex_9_23 (x: TermVar<'t>) (R: Pred<'t>) (P: Prop) (Q: Pred<'t>) =
-    theorem pred_calculus (exists'(x, R) ==> ((qex x R[x] (P + Q[x])) == (P + exists(x,R,Q)))) [
-        collectMixed x R P Q |> Commute |> at [right_branch; left_branch]
-        distrib_and_exists x R P |> at [right_branch; left_branch; left_branch]  // ∃x|R:pp → pp ∧ (∃x|:R)
+
+printfn "9.23 trade ∨ out of ∃ (conditional): (∃x|:R) ⇒ ((∃x|R:pp∨Q) = pp∨(∃x|R:Q))"
+let ex_9_23 = theorem pred_calculus (exists'(x, R) ==> ((qex x R[x] (P' + Q[x])) == (P' + exists(x,R,Q)))) [
+        collectMixed x R P' Q |> Commute |> at [right_branch; left_branch]
+        distrib_and_exists x R P' |> at [right_branch; left_branch; left_branch]  // ∃x|R:pp → pp ∧ (∃x|:R)
         axiom pred_calculus (exists'(x,R) ==> exists'(x,R)) |> Deduce |> at [right_branch; left_branch; left_branch; right_branch]  // assume (∃x|:R)
-        ident_and P |> at [right_branch; left_branch; left_branch]
-        def_true (P + exists(x,R,Q)) |> Commute |> at_right
+        ident_and P' |> at [right_branch; left_branch; left_branch]
+        def_true (P' + exists(x,R,Q)) |> Commute |> at_right
         implies_true (exists'(x, R)) |> Taut |> apply
     ]
-check "9.23 trade ∨ out of ∃ (conditional): (∃x|:R) ⇒ ((∃x|R:pp∨Q) = pp∨(∃x|R:Q))" (fun () -> ex_9_23 x R pp Q |> ignore)
 
 // Exercise 9.36.  Socrates: soundness of  (∀m|man:mortal) ∧ man.S ⇒ mortal.S,
 // by Shunting, Trading, and Universal Instantiation at the constant S.
-let man = symbolic_pred<int> "man"
-let mortal = symbolic_pred<int> "mortal"
-let m = intvar "m"
-let socratesS = intvar "S"
-let ex_9_36 () =
-    theorem pred_calculus ((forall(m, man, mortal) * man[socratesS]) ==> mortal[socratesS]) [
-        shunt                                         // (A∧B)⇒C → A⇒(B⇒C)
-        trade_forall_implies m man mortal |> at_left  // ∀m|man:mortal → ∀m|:(man⇒mortal); Instantiation then closes
-    ]
-check "9.36 Socrates: (∀m|man:mortal) ∧ man.S ⇒ mortal.S" (fun () -> ex_9_36 () |> ignore)
+printfn "9.36 Socrates: (∀m|man:mortal) ∧ man.Socrates ⇒ mortal.Socrates"
+let ex_9_36 = 
+    let man = intpred "man" 
+    let mortal = intpred "mortal" 
+    let m = intvar "m" 
+    let socrates = intvar "Socrates" 
 
-printfn "\nDone."
+    theorem pred_calculus ((forall(m, man, mortal) * man[socrates]) ==> mortal[socrates]) [
+            shunt                                         // (A∧B)⇒C → A⇒(B⇒C)
+            trade_forall_implies m man mortal |> at_left  // ∀m|man:mortal → ∀m|:(man⇒mortal); Instantiation then closes
+    ]
