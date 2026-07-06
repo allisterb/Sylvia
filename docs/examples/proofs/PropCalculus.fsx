@@ -19,3 +19,6 @@ calc (p * q ==> q) {
     imp (strengthen_and q p)
 }
 
+derive (p * q) {
+    eq (apply <| commute_and p q )
+}

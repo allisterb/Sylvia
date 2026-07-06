@@ -825,4 +825,10 @@ module Pred =
 
     let forall<'t when 't: equality> (x:Term<'t>, R:Pred<'t>, B:Pred<'t>) = Prop <@ forall_expr %(x.Expr) %(R[x].Expr) %(B[x].Expr) @>
 
+    /// Existential quantification with a true range: (∃x |: B). Mirrors `forall'`.
+    let exists'<'t when 't: equality> (x:TermVar<'t>, B:Pred<'t>) = Prop <@ exists_expr %(x.Expr) %(T.Expr) %(B[x].Expr) @>
+
+    /// Existential quantification (∃x | R : B). Mirrors `forall`.
+    let exists<'t when 't: equality> (x:Term<'t>, R:Pred<'t>, B:Pred<'t>) = Prop <@ exists_expr %(x.Expr) %(R[x].Expr) %(B[x].Expr) @>
+
     let realpred s = symbolic_pred<real> s

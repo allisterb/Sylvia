@@ -57,7 +57,17 @@ module PredCalculus =
    
     /// forall x (N1 ||| N2) P = ((forall x N1 P) |&| (forall x N2 P))
     let split_range_forall' (x:TermVar<'t>) (N1:Pred<'t>) (N2:Pred<'t>) (P:Pred<'t>) = id_ax pred_calculus (forall (x, (N1 + N2), P) == ((forall(x, N1, P) * (forall (x, N2, P)))))
-    
+
+    (* Universal instantiation (Gries 9.13) *)
+
+    /// Universal Instantiation (Gries 9.13): (∀x |: P) ⇒ P[x:=E]. Closed directly by the
+    /// Universal Instantiation axiom of S; `e` is the instantiating term E.
+    let inst (x:TermVar<'t>) (P:Pred<'t>) (e:Term<'t>) : Theorem = theorem pred_calculus ((forall'(x, P)) ==> (P[e])) []
+
+    /// Universal Instantiation specialized to the dummy itself (Gries 9.13 with E := x):
+    /// (∀x |: P) ⇒ P.
+    let inst' (x:TermVar<'t>) (P:Pred<'t>) : Theorem = inst x P x
+
     (* Module information members *)
 
     type private IModuleTypeLocator = interface end
