@@ -547,6 +547,14 @@ module ProofOps =
     let at (path: (RuleApplication -> RuleApplication) list) (r: Rule) : RuleApplication =
         List.foldBack (<|) path (apply r)
 
+    /// Concise single-hop `at` addressers (`rule |> at_left` = `rule |> at [ left_branch ]`), for
+    /// the common case of applying a rule one step in. Behave identically to apply_left/… but read
+    /// in the `at`-family vocabulary alongside the multi-hop `at [ … ]` paths.
+    let at_left  = at [left_branch]
+    let at_right = at [right_branch]
+    let at_body  = at [select_body]
+    let at_range = at [select_range]
+
     /// Branch left n times before rule application.
     let left_branch_n n (r:Rule->RuleApplication) (x:Rule) = 
         let mutable x' = r x
