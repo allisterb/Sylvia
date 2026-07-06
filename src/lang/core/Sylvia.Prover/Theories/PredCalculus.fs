@@ -34,28 +34,41 @@ module PredCalculus =
 
     let split_range_exists = Theory.S.Rules.[27]
 
+    (* Prop-body quantifier builders. The Pred-based `forall`/`exists` combinators apply a
+       predicate to the dummy, so every argument is forced to depend on x. Several Gries laws
+       (distributivity 9.5/9.21/9.22, trading-out 9.6) instead need a sub-formula that is
+       x-FREE (the ¬occurs side condition). These builders take the range and body as ready
+       propositions in x, so an x-free proposition can be written directly. *)
+
+    /// (∀ x | R : B) with range R and body B given as propositions in x.
+    let qall (x:TermVar<'t>) (R:Prop) (B:Prop) : Prop = Prop <@ Formula.forall_expr %x.Expr %R.Expr %B.Expr @>
+
+    /// (∃ x | R : B) with range R and body B given as propositions in x.
+    let qex (x:TermVar<'t>) (R:Prop) (B:Prop) : Prop = Prop <@ Formula.exists_expr %x.Expr %R.Expr %B.Expr @>
+
     (* Derived rules *)
 
-    /// forall x N P = (forall x true (N ==> P))
+    /// (∀x|N:P) = (∀x|: N⇒P)   (Gries 9.2, Trading)
     let trade_forall_implies (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) = id_ax pred_calculus (forall (x, N, P) == forall' (x, N ==> P))
-        
-    /// forall x (Q |&| N) P = (forall x Q (N ==> P))
+
+    /// (∀x|Q∧N:P) = (∀x|Q: N⇒P)   (Gries 9.4a)
     let trade_forall_and_implies (x:TermVar<'t>) (Q:Pred<'t>) (N:Pred<'t>) (P:Pred<'t>) = ident pred_calculus (forall(x, Q * N, P) == (forall (x, Q, N ==> P))) [
         trade_forall_implies x (Q * N) P |> apply_left
         shunt |> apply_body |> left_branch
         trade_forall_implies x Q  (N==>P) |> Commute |> apply_left
     ]
 
-    let trade_forall_or_not (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) = ident pred_calculus (forall (x, N, P) == (P[x] + forall'(x, -N))) [
+    /// (∀x|N:P) = P ∨ (∀x|:¬N)   (Gries 9.6). P is an x-free proposition (¬occurs(x,P)).
+    let trade_forall_or_not (x:TermVar<'t>) (N:Pred<'t>) (P:Prop) = ident pred_calculus (qall x N[x] P == (P + forall'(x, -N))) [
         distrib_or_forall |> apply_right
-        commute_or P[x] -N[x] |> apply_right
-        ident_implies_not_or N[x] P[x] |> Commute |> apply_right 
+        commute_or P (-(N[x])) |> apply_right
+        ident_implies_not_or N[x] P |> Commute |> apply_right
     ]
 
-    /// P ||| forall x N Q = (forall x N (P ||| Q))
-    let distrib_or_forall' (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) = id_ax pred_calculus (P[x] + forall(x, N, Q) == (forall(x, N, (P + Q))))
-   
-    /// forall x (N1 ||| N2) P = ((forall x N1 P) |&| (forall x N2 P))
+    /// P ∨ (∀x|N:Q) = (∀x|N: P∨Q)   (Gries 9.5). P is an x-free proposition (¬occurs(x,P)).
+    let distrib_or_forall' (x:TermVar<'t>) (N:Pred<'t>) (P:Prop) (Q:Pred<'t>) = id_ax pred_calculus ((P + forall(x, N, Q)) == qall x N[x] (P + Q[x]))
+
+    /// (∀x|N1∨N2:P) = ((∀x|N1:P) ∧ (∀x|N2:P))   (Gries 8.18, range split)
     let split_range_forall' (x:TermVar<'t>) (N1:Pred<'t>) (N2:Pred<'t>) (P:Pred<'t>) = id_ax pred_calculus (forall (x, (N1 + N2), P) == ((forall(x, N1, P) * (forall (x, N2, P)))))
 
     (* Universal instantiation (Gries 9.13) *)
@@ -68,219 +81,211 @@ module PredCalculus =
     /// (∀x |: P) ⇒ P.
     let inst' (x:TermVar<'t>) (P:Pred<'t>) : Theorem = inst x P x
 
+    (* Universal quantification: distributivity over ∧ and identities (Gries 9.6–9.9) *)
+
+    /// ((∀x|N:P) ∧ (∀x|N:Q)) = (∀x|N: P∧Q)   (Gries 8.15, distributivity of ∀ over ∧)
+    let collect_forall_and' (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) =
+        id_ax pred_calculus (((forall(x,N,P)) * (forall(x,N,Q))) == forall(x, N, P * Q))
+
+    /// (∀x|N: P∧Q) = ((∀x|N:P) ∧ (∀x|N:Q))
+    let distrib_forall_and' (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) = collect_forall_and' x N P Q |> Commute
+
+    /// (∀x|N:true) = true   (Gries 9.8)
+    let ident_forall_true (x:TermVar<'t>) (N:Pred<'t>) = ident pred_calculus (qall x N[x] T == T) [
+        trade_forall_or_not x N T |> apply_left
+        commute_or T (forall'(x, -N)) |> apply_left
+        zero_or (forall'(x, -N)) |> apply_left
+    ]
+
+    (* Existential quantification via Generalized De Morgan (Gries 9.17–9.18) *)
+
+    /// (∃x|N:P) = ¬(∀x|N:¬P)   (Gries 9.17, Generalized De Morgan)
+    let ident_exists_not_forall (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) =
+        id_ax pred_calculus (exists(x, N, P) == (-(forall(x, N, -P))))
+
+    /// ¬(∃x|N:¬P) = (∀x|N:P)   (Gries 9.18a)
+    let ident_not_exists_forall (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) =
+        ident pred_calculus ((-(exists(x, N, -P))) == forall(x, N, P)) [
+            ident_exists_not_forall x N (-P) |> apply_left
+            double_negation P[x] |> apply_left
+            double_negation (forall(x, N, P)) |> apply_left
+        ]
+
+    /// ¬(∃x|N:P) = (∀x|N:¬P)   (Gries 9.18b)
+    let ident_not_exists_forall_not (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) =
+        ident pred_calculus ((-(exists(x, N, P))) == forall(x, N, -P)) [
+            ident_exists_not_forall x N P |> apply_left
+            double_negation (forall(x, N, -P)) |> apply_left
+        ]
+
+    /// (∃x|N:¬P) = ¬(∀x|N:P)   (Gries 9.18c)
+    let ident_exists_not_forall_not (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) =
+        ident pred_calculus (exists(x, N, -P) == (-(forall(x, N, P)))) [
+            ident_not_exists_forall x N P |> Commute |> apply_right
+            double_negation (exists(x, N, -P)) |> apply_right
+        ]
+
+    (* Existential quantification: distributivity over ∨ and range split (Gries 8.15/8.18) *)
+
+    /// ((∃x|N:P) ∨ (∃x|N:Q)) = (∃x|N: P∨Q)   (Gries 8.15, distributivity of ∃ over ∨)
+    let collect_exists_or' (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) =
+        id_ax pred_calculus (((exists(x,N,P)) + (exists(x,N,Q))) == exists(x, N, P + Q))
+
+    /// (∃x|N: P∨Q) = ((∃x|N:P) ∨ (∃x|N:Q))
+    let distrib_exists_or' (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) = collect_exists_or' x N P Q |> Commute
+
+    /// (∃x|N1∨N2:P) = ((∃x|N1:P) ∨ (∃x|N2:P))   (Gries 8.18, range split)
+    let split_range_exists' (x:TermVar<'t>) (N1:Pred<'t>) (N2:Pred<'t>) (P:Pred<'t>) =
+        id_ax pred_calculus (exists(x, (N1 + N2), P) == ((exists(x,N1,P)) + (exists(x,N2,P))))
+
+    (* Existential quantification: trading (Gries 9.19–9.20) *)
+
+    /// (∃x|N:P) = (∃x|: N∧P)   (Gries 9.19, Trading)
+    let trade_exists_and (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) =
+        ident pred_calculus (exists(x, N, P) == exists'(x, N * P)) [
+            // rewrite both ∃ as ¬∀¬ (double_neg = generalized De Morgan), then show the two
+            // ∀ bodies equal:  N ⇒ ¬P  =  ¬(N ∧ P)  (both are ¬N ∨ ¬P).
+            double_neg |> apply_left
+            double_neg |> apply_right
+            trade_body |> apply |> apply_unary |> left_branch
+            ident_implies_not_or N[x] (-(P[x])) |> apply_body |> apply_unary |> left_branch
+            distrib_not_and N[x] P[x] |> apply_body |> apply_unary |> right_branch
+        ]
+
+    /// (∃x|Q∧N:P) = (∃x|Q: N∧P)   (Gries 9.20)
+    let trade_exists_and_and (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) =
+        ident pred_calculus (exists(x, Q * N, P) == (exists(x, Q, N * P))) [
+            trade_exists_and x (Q * N) P |> apply_left
+            right_assoc_and Q[x] N[x] P[x] |> apply_body |> left_branch
+            trade_exists_and x Q (N * P) |> Commute |> apply_left
+        ]
+
+    (* Universal quantification: body distributivity, weakening and monotonicity (Gries 9.9–9.12) *)
+
+    /// (∀x|N: P=Q) ⇒ ((∀x|N:P) = (∀x|N:Q))   (Gries 9.9)
+    let distrib_forall_body (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) =
+        theorem pred_calculus (forall(x, N, P == Q) ==> (forall(x,N,P) == forall(x,N,Q))) [
+            distrib_implies_eq_and (forall(x,N,P == Q)) (forall(x,N,P)) (forall(x,N,Q)) |> apply
+            collect_forall_and |> apply_left
+            collect_forall_and |> apply_right
+            commute_and (P[x] == Q[x]) P[x] |> apply_body |> left_branch
+            commute_and (P[x] == Q[x]) Q[x] |> apply_body |> right_branch
+            commute_eq P[x] Q[x] |> apply_body |> left_branch
+            ident_and_eq P[x] Q[x] |> apply_body |> left_branch
+            ident_and_eq Q[x] P[x] |> apply_body |> right_branch
+            commute_and Q[x] P[x] |> apply_body |> right_branch
+        ]
+
+    /// (∀x|N1∨N2:P) ⇒ (∀x|N1:P)   (Gries 9.10, range strengthening)
+    let strengthen_forall_range_or (x:TermVar<'t>) (N1:Pred<'t>) (N2:Pred<'t>) (P:Pred<'t>) =
+        theorem pred_calculus (forall(x, N1 + N2, P) ==> forall(x, N1, P)) [
+            split_range_forall |> apply_left
+            strengthen_and (forall(x,N1,P)) (forall(x,N2,P)) |> Taut |> apply
+        ]
+
+    /// (∀x|N: P∧Q) ⇒ (∀x|N:P)   (Gries 9.11, body strengthening)
+    let strengthen_forall_body_and (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) =
+        theorem pred_calculus (forall(x, N, P * Q) ==> forall(x, N, P)) [
+            distrib_forall_and' x N P Q |> apply_left
+            strengthen_and (forall(x,N,P)) (forall(x,N,Q)) |> Taut |> apply
+        ]
+
+    /// (∀x|N: Q⇒P) ⇒ ((∀x|N:Q) ⇒ (∀x|N:P))   (Gries 9.12, monotonicity of ∀)
+    let mono_forall_body (x:TermVar<'t>) (N:Pred<'t>) (Q:Pred<'t>) (P:Pred<'t>) =
+        theorem pred_calculus (forall(x, N, Q ==> P) ==> (forall(x,N,Q) ==> forall(x,N,P))) [
+            rshunt |> apply
+            collect_forall_and |> apply_left
+            commute_and (Q[x] ==> P[x]) Q[x] |> apply_body |> left_branch
+            ident_and_implies Q[x] P[x] |> apply_body |> left_branch
+            commute_and Q[x] P[x] |> apply_body |> left_branch
+            strengthen_forall_body_and x N P Q |> Taut |> apply
+        ]
+
+    (* Universal instantiation consequences, and existential weakening (Gries 9.13, 9.25–9.26) *)
+
+    /// (∀x|N:P) ⇒ (N⇒P)   (Gries 9.13 via Trading: instantiate the traded body at x)
+    let forall_implies (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) =
+        theorem pred_calculus (forall(x, N, P) ==> (N[x] ==> P[x])) [
+            trade_body |> apply_left   // (∀x|:N⇒P) ⇒ (N⇒P) is Universal Instantiation
+        ]
+
+    /// (∃x|N:P) ⇒ (∃x|Q∨N:P)   (Gries 9.25, range weakening)
+    let weaken_exists_range (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) =
+        theorem pred_calculus (exists(x, N, P) ==> exists(x, Q + N, P)) [
+            split_range_exists |> apply_right
+            commute |> apply_right
+            weaken_or (exists(x,N,P)) (exists(x,Q,P)) |> Taut |> apply
+        ]
+
+    /// (∃x|N:P) ⇒ (∃x|N: P∨Q)   (Gries 9.26, body weakening)
+    let weaken_exists_body (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) =
+        theorem pred_calculus (exists(x, N, P) ==> exists(x, N, P + Q)) [
+            distrib_exists_or' x N P Q |> apply_right
+            weaken_or (exists(x,N,P)) (exists(x,N,Q)) |> Taut |> apply
+        ]
+
+    (* Existential quantification: distributivity of ∧ over ∃ (Gries 9.21) *)
+
+    /// P ∧ (∃x|N:Q) = (∃x|N: P∧Q)   (Gries 9.21). P is an x-free proposition (¬occurs(x,P)).
+    /// Both ∃ are rewritten as ¬∀¬ (De Morgan), the x-free ¬P is pulled through the ∀ by
+    /// distributivity 9.5, and De Morgan folds the result back.
+    let distrib_and_exists_and (x:TermVar<'t>) (N:Pred<'t>) (P:Prop) (Q:Pred<'t>) =
+        ident pred_calculus ((P * exists(x,N,Q)) == qex x N[x] (P * Q[x])) [
+            double_neg |> apply_right |> left_branch
+            double_neg |> apply_right
+            distrib_not_and P Q[x] |> apply_body |> apply_unary |> right_branch
+            distrib_or_forall' x N (-P) (-Q) |> Commute |> apply |> apply_unary |> right_branch
+            distrib_not_or (-P) (forall(x,N,-Q)) |> apply_right
+            double_negation P |> apply_left |> right_branch
+        ]
+
+    /// (∃x|N:P) = (P ∧ (∃x|:N))   (Gries 9.22). P is an x-free proposition (¬occurs(x,P)).
+    let distrib_and_exists (x:TermVar<'t>) (N:Pred<'t>) (P:Prop) =
+        ident pred_calculus (qex x N[x] P == (P * exists'(x, N))) [
+            double_neg |> apply_left
+            trade_forall_or_not x N (-P) |> apply |> apply_unary |> left_branch
+            distrib_not_or (-P) (forall'(x, -N)) |> apply_left
+            double_negation P |> apply_left |> left_branch
+            double_neg |> apply_right |> right_branch
+        ]
+
+    /// (∃x|N:false) = false   (Gries 9.24). Via De Morgan: ∃N F = ¬∀N¬F = ¬∀N true = ¬true = false.
+    let ident_exists_false (x:TermVar<'t>) (N:Pred<'t>) =
+        ident pred_calculus (qex x N[x] F == F) [
+            double_neg |> apply_left
+            not_false |> apply_body |> apply_unary |> left_branch
+            ident_forall_true x N |> apply |> apply_unary |> left_branch
+            not_false |> Commute |> apply |> apply_unary |> left_branch
+            double_negation F |> apply_left
+        ]
+
+    /// (∀x|N: Q⇒P) ⇒ ((∃x|N:Q) ⇒ (∃x|N:P))   (Gries 9.27, monotonicity of ∃).
+    /// The ∃'s become ¬∀¬ (De Morgan); the consequent contrapositive turns ∃Q⇒∃P into
+    /// ∀¬P⇒∀¬Q, and Q⇒P is the contrapositive of ¬P⇒¬Q, so ∀-monotonicity 9.12 closes it.
+    let mono_exists (x:TermVar<'t>) (N:Pred<'t>) (Q:Pred<'t>) (P:Pred<'t>) =
+        theorem pred_calculus (forall(x, N, Q ==> P) ==> (exists(x,N,Q) ==> exists(x,N,P))) [
+            ident_exists_not_forall x N Q |> apply |> left_branch |> right_branch
+            ident_exists_not_forall x N P |> apply |> right_branch |> right_branch
+            def_implies_contr (-(forall(x,N,-Q))) (-(forall(x,N,-P))) |> apply |> right_branch
+            double_negation (forall(x,N,-P)) |> apply |> left_branch |> right_branch
+            double_negation (forall(x,N,-Q)) |> apply |> right_branch |> right_branch
+            def_implies_contr Q[x] P[x] |> apply_body |> left_branch
+            mono_forall_body x N (-P) (-Q) |> Taut |> apply
+        ]
+
     (* Module information members *)
 
     type private IModuleTypeLocator = interface end
     
     let Type = match typeof<IModuleTypeLocator>.DeclaringType with | NonNull m -> m | _ -> failwith "Failed to locate module type."
-    
-    
-    (*
-  
-   
-    /// ((forall x N P) |&| (forall x N Q)) = (forall x N (P |&| Q)) 
-    let collect_forall_and' x N P Q = id_ax pred_calculus <@ ((forall %x %N %P) |&| (forall %x %N %Q)) = (forall %x %N (%P |&| %Q)) @>
 
-    /// (forall x N (P |&| Q))  = ((forall x N P) |&| (forall x N Q))
-    let distrib_forall_and' x N P Q = collect_forall_and' x N P Q |> Commute
-
-    /// not (forall x true (not N)) ==> (forall x N (P |&| Q) = (P |&| forall x N Q))
-    let distrib_forall_and_cond x N P Q = ident pred_calculus <@ not (forall' %x (not %N)) ==> (forall %x %N (%P |&| %Q) = (%P |&| forall %x %N %Q)) @> [
-        let lemma1 = theorem pred_calculus <@ not (forall' %x (not %N)) ==> (forall' %x (not %N) = false) @> [
-            distrib_implies_eq_and <@ (not (forall' %x (not %N))) @> <@ forall' %x (not %N) @> <@ false @> |> LR
-            contr <@ forall' %x (not %N) @> |> CommuteL |> L
-            zero_and <@ not (forall' %x (not %N)) @> |> R   
-        ]
-        distrib_forall_and' x N P Q |> R
-        trade_forall_or_not x N P |> R
-        deduce' lemma1 |> R
-        ident_or P |> R
-        def_true <@ %P |&| forall %x %N %Q @> |> Commute |> R
-    ]
-
-    /// forall x N true = true
-    let ident_forall_true x N = ident pred_calculus <@ forall %x %N true = true @> [
-        trade_forall_implies x N <@ true @> |> apply_left
-        implies_true  N |> Taut |> apply_left
-        trade_forall_or_not x <@ true @> <@ true @> |> apply_left
-        commute |> apply_left
-        zero_or <@ forall' %x (not true ) @> |> apply_left
-    ]
-
-    /// forall x true true = true
-    let ident_forall_true' x = ident_forall_true x <@ true @>
-
-    /// forall x N (P = Q) ==> (forall x N P = (forall x N Q))
-    let distrib_forall_body x N P Q = theorem pred_calculus <@ forall %x %N (%P = %Q) ==> (forall %x %N %P  = (forall %x %N %Q)) @> [
-        distrib_implies_eq_and <@ forall %x %N (%P = %Q) @> <@ forall %x %N %P @> <@ forall %x %N %Q @> |> LR
-        collect_forall_and |> L
-        collect_forall_and |> R
-        commute_and <@ %P = %Q @> P |> L
-        commute_and <@ %P = %Q @> Q |> R
-        commute_eq P Q |> L
-        ident_and_eq P Q |> L
-        ident_and_eq Q P |> R
-        commute_and Q P |> R
-    ]
-
-    /// forall x (R1 ||| R2) P ==> (forall x R1 P)
-    let strengthen_forall_range_or x R1 R2 P = theorem pred_calculus <@ (forall %x (%R1 ||| %R2) %P) ==> (forall %x %R1 %P) @> [
-        split_range_forall |> L
-        strengthen_and <@ forall %x %R1 %P @> <@ forall %x %R1 %P @> |> Lemma
-    ]
-
-    /// forall x N (P |&| Q) ==> (forall x N P)
-    let strengthen_forall_body_and x N P Q = theorem pred_calculus <@ (forall %x %N (%P |&| %Q)) ==> (forall %x %N %P) @> [
-        distrib_forall_and' x N P Q |> L
-        strengthen_and <@ forall %x %N %P @> <@ forall %x %N %Q @> |> Lemma
-    ]
-
-    /// forall x N (Q ==> P) ==> ((forall x N Q) ==> (forall x N P))
-    let mono_forall_body x N Q P = theorem pred_calculus <@ forall %x %N (%Q ==> %P) ==> ((forall %x %N %Q) ==> (forall %x %N %P))@> [
-        rshunt |> LR
-        collect_forall_and |> L
-        commute_and <@ %Q ==> %P @> Q |> L
-        ident_and_implies Q P |> L
-        commute_and Q P |> L
-        strengthen_forall_body_and x N P Q |> Lemma
-    ]
-
-    /// P ==> forall' %x %P
-    let forall_conseq x P = theorem pred_calculus <@ %P ==> forall' %x %P @> [
-        axiom pred_calculus <@ %P ==> %P @> |> Deduce |> R
-        ident_forall_true' x |> R
-    ]
-
-    /// forall x N P ==> (N ==> P)
-    let forall_implies x N P = theorem pred_calculus <@ forall %x %N %P ==> (%N ==> %P) @> [
-        trade_body |> apply_left
-    ]
-
-
-    /// N ==> P ==> forall x N P
-    let forall_conseq_trade_body x N P = theorem pred_calculus <@ %N ==> %P ==> (forall %x %N %P) @> [
-        trade_body |> R
-        forall_conseq x <@ %N ==> %P @> |> Lemma
-        trade_forall_implies x N P |> Commute |> R
-    ]
-
-    /// exists x N P = not (forall x N (not P))
-    let ident_exists_not_forall x N P = id_ax pred_calculus <@ exists %x %N %P = not (forall %x %N (not %P)) @>
-
-    /// not (exists x N (not P)) = forall x N P
-    let ident_not_exists_forall x N P = ident pred_calculus <@ not (exists %x %N (not %P)) = forall %x %N %P @> [
-        ident_exists_not_forall x N <@ not %P @> |> L 
-        double_negation P |> L 
-        double_negation <@ forall %x %N %P @> |> L
-    ]
-
-    /// not (exists x N P) = forall x N (not P)
-    let ident_not_exists_forall_not x N P = ident pred_calculus <@ not (exists %x %N %P) = forall %x %N (not %P) @> [
-        ident_exists_not_forall x N P |> L 
-        double_negation <@ forall %x %N (not %P) @> |> L 
-    ]
-
-    /// not (exists' x P) = forall' x (not P)
-    let ident_not_exists_forall_not' x P = ident_not_exists_forall_not x <@ true @> P
-
-    /// exists x N (not P) = not (forall x N P)
-    let ident_exists_not_forall_not x N P = ident pred_calculus <@ exists %x %N (not %P) = not (forall %x %N %P) @> [
-        ident_not_exists_forall x N P |> Commute |> R
-        double_negation <@ exists %x %N (not %P) @> |> R
-    ]
-
-    /// exists x N P = exists true x (N |&| P)
-    let trade_exists_and x N P = ident pred_calculus <@ exists %x %N %P = (exists' %x (%N |&| %P)) @> [
-        double_neg |> L
-        double_neg |> R
-        trade_body |> LR |> LR' |> L'
-        distrib_not_and N P |> R
-        ident_implies_not_or N <@ not %P@> |> LR |> LR' |> L'
-    ]
-
-    /// exists x (Q |&| N) P = (exists x Q (N |&| P))
-    let trade_exists_and_and x N P Q = ident pred_calculus <@ exists %x (%Q |&| %N) %P = (exists %x %Q (%N |&| %P)) @> [
-        trade_exists_and x <@ %Q |&| %N @> P |> L
-        right_assoc_and Q N P |> LR |> L'
-        trade_exists_and x Q <@ %N |&| %P @> |> Commute |> L
-    ]
-
-    /// exists x (N1 ||| N2) P = ((exists x N1 P) |&| (exists x N2 P))
-    let split_range_exists' x N1 N2 P = id_ax pred_calculus <@ exists %x (%N1 ||| %N2) P = ((exists %x %N1 P) |&| (exists %x %N2 P)) @>
-    
-    /// ((exists x N P) ||| (exists x N Q)) = (exists x N (P ||| Q)) 
-    let collect_exists_or' x N P Q = id_ax pred_calculus <@ ((exists %x %N %P) ||| (exists %x %N %Q)) = (exists %x %N (%P ||| %Q)) @>
-
-    /// exists x N (P ||| Q) = ((exists x N P) ||| (exists x N Q))   
-    let distrib_exists_or' x N P Q = collect_exists_or' x N P Q |> Commute
-
-    /// P |&| exists x N Q = (exists x N (P |&| Q)) 
-    let distrib_and_exists_and x N P Q = ident pred_calculus <@ %P |&| exists %x %N %Q = (exists %x %N (%P |&| %Q)) @> [
-        do fail_if_occurs_free x P  
-        double_neg |> R |> L'
-        double_negation P |> Commute |> L |> L'
-        collect_not_or <@ not %P @> <@ forall %x %N (not %Q) @> |> L
-        distrib_or_forall' x N <@ not %P @> <@ not %Q @> |> LR |> LR' |> L'
-        double_neg |> R
-        distrib_not_and P Q |> LR |> LR' |> R' 
-    ]
-
-    /// exists x N P = (P |&| (exists x true N))
-    let distrib_and_exists x N P = ident pred_calculus <@ exists %x %N %P = (%P |&| (exists' %x %N)) @> [
-        do fail_if_occurs_free x P
-        distrib_and_exists_and x <@ true @> P N |> R
-        trade_exists_and x N P |> L
-        commute_and N P |> LR |> L'
-    ]
-
-    /// exists x true N ==> ((exists x N (P ||| Q)) = (P ||| exists x N Q))
-    let trade_exists_or x N P Q = theorem pred_calculus <@ exists' %x %N ==> ((exists %x %N (%P ||| %Q)) = (%P ||| exists %x %N %Q)) @> [
-        do fail_if_occurs_free x P
-        distrib_and_exists x N <@ %P ||| %Q @> |> L |> R'
-        distrib_and_or <@ exists' %x %N @> P Q |> CommuteL |> L |> R'
-        distrib_and_exists x N Q |> Commute |> CommuteL |> L |> R'
-        axiom prop_calculus <@ exists' %x %N ==> exists' %x %N @> |> Deduce |> L |> R'
-        ident_and P |> CommuteL |> L |> R'
-        def_true <@ %P ||| (exists %x %N %Q) @> |> Commute |> R
-    ]
-
-    /// exists x N (false) = false
-    let ident_exists_false x N = ident pred_calculus <@ exists %x %N (false) = false @> [
-        distrib_and_exists x N <@ false @> |> L
-        commute |> L
-        zero_and <@ exists' %x %N @> |> L
-    ]
-
-    /// exists x N P ==> (exists x (Q ||| N) P)
-    let weaken_exists_range x N P Q = theorem pred_calculus <@ exists %x %N %P ==> (exists %x (%Q ||| %N) %P) @> [
-        split_range_exists |> R
-        commute |> R
-        weaken_or <@ exists %x %N %P @> <@ exists %x %Q %P @> |> Lemma   
-    ]
-
-    /// exists x N P ==> (exists x N (P ||| Q))
-    let weaken_exists_body x N P Q = theorem pred_calculus <@ exists %x %N %P ==> (exists %x %N (%P ||| %Q)) @> [
-        distrib_exists_or' x N P Q |> R 
-        weaken_or <@ exists %x %N %P @> <@ exists %x %N %Q @> |> Lemma
-    ]
-    *)
-    (*
-    /// exists' x (forall' y P) ==> (forall' y (exists' x P))
-    let exists_forall_interchange' x y P= theorem pred_calculus <@ exists' %x (forall' %y %P) ==> (forall' %y (exists' %x %P)) @> [        
-        def_implies |> LR
-        distrib_or_forall |> L
-        collect_exists_or' x <@ true @> <@ forall' %y %P @> P |> QB |> L'
-        inst' y P |> L |> QB' |> QB' |> L'
-        idemp |> QB |> QB' |> L'
-    ]
-    *)
-    /// exists x N P ==> Q ==> (N |&| P ==> Q)
-    (*
-    let ident_exists_implies x N P Q = ident pred_calculus <@ exists %x %N %P ==> %Q = (%N |&| %P ==> %Q) @> [
-        trade_body |> L |> L'
-        ident_implies_not_or <@ (exists' %x (%N |&| %P)) @> Q |> L
-        ident_not_exists_forall_not' x <@ %N |&| %P@> |> L |> L'
-        inst' x <@ not (%N |&| %P)@> |> L |> L'
-        ident_implies_not_or <@ %N |&| %P@> Q |> Commute |> L   
-    ]
-    *)
+    (* Deferred (not yet ported from the previous F#-quotation version):
+         - distrib_forall_and_cond (Gries 9.7): conditional distributivity of ∧ over ∀.
+         - trade_exists_or (Gries 9.23): conditional trading-out of ∨ over ∃ (uses Deduce on the
+           range-nonempty antecedent).
+         - exists_intro (Gries 9.28), P[x:=E] ⇒ (∃x|:P): blocked by the textual `is_inst_expr`
+           matcher, whose token scan does not stop at ')', so instantiation with a negated body
+           (¬(P E)) is not recognised. Needs a structural instantiation check.
+         - exists_forall_interchange (Gries 9.29): ∃∀ ⇒ ∀∃ interchange.
+         - forall_conseq / forall_conseq_trade_body (metatheorem 9.16 direction) and
+           ident_exists_implies (metatheorem Witness): need the P⇒(∀x|:P) metatheorem for x-free P. *)
