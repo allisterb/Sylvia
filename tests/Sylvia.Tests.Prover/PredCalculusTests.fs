@@ -36,8 +36,13 @@ type PredCalculusTests() =
         strengthen_forall_body_and x N P Q |> ignore
         mono_forall_body x N Q P |> ignore
         forall_implies x N P |> ignore
+        ident_forall_true' x |> ignore
+        forall_conseq x pp |> ignore
         inst x P (Scalar<int> 3) |> ignore
         inst' x P |> ignore
+        // instantiation with a negated body exercises the structural is_inst_expr fix
+        inst x (-P) (Scalar<int> 3) |> ignore
+        exists_intro x P (Scalar<int> 3) |> ignore
 
     [<Fact>]
     member _.``existential quantification theorems (Gries 9.17-9.27) prove`` () =
@@ -56,3 +61,11 @@ type PredCalculusTests() =
         weaken_exists_range x N P Q |> ignore
         weaken_exists_body x N P Q |> ignore
         mono_exists x N Q P |> ignore
+
+    [<Fact>]
+    member _.``existential/universal interchange (Gries 9.29) proves`` () =
+        let y = intvar "y"
+        // a proposition depending on both dummies x and y
+        let qv = FSharp.Quotations.Var("q2", typeof<int -> int -> bool>)
+        let pxy = FSharp.Quotations.Expr.Application(FSharp.Quotations.Expr.Application(FSharp.Quotations.Expr.Var qv, x.Expr), y.Expr) |> expand_as<bool> |> Prop
+        exists_forall_interchange x y pxy |> ignore

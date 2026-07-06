@@ -826,18 +826,30 @@ module FsExpr =
         | x::[] -> recombine_func [x] expr |> expand_as<'t->'t> |> ev
         | _ -> failwithf "Expression %A is not an expression of a single variable." expr
 
-    let is_inst_expr (bv:Var) (l:Expr) (r:Expr)=
-        let s = src l
-        let s' = src r
-        let m = l.Substitute(fun v -> if vequal v bv then Expr.Var(new Var("$$_$$", l.Type)) |> Some else None)
-        let p = (src m).IndexOf("$$_$$")
-        if p = -1 || p > s'.Length - 1 then
-            sequal l r
-            
-        else 
-            let v = s' |> Seq.skip p |> Seq.takeWhile(fun c -> c <> ' ') |> Seq.toArray |> String
-            let s'' = (src m).Replace("$$_$$", v)
-            s' = s''
+    /// True iff `r` is `l` with the (bound) variable `bv` textually substituted by some
+    /// expression E, i.e. r = l[bv := E] — the shape recognized by Universal Instantiation.
+    /// Structural (not textual): walk `l` and `r` in parallel to read a candidate E off `r`
+    /// wherever `l` is exactly `bv`, then verify by substituting that E for every occurrence of
+    /// `bv` in `l`. This handles E appearing in any position (e.g. `¬(P E)`) and enforces that
+    /// all occurrences of `bv` map to the same E, which the previous textual scan (that stopped
+    /// only at a space, so a trailing ')' corrupted the token) got wrong.
+    let is_inst_expr (bv:Var) (l:Expr) (r:Expr) =
+        // First E read off r at a position where l is bv; None if the shapes diverge first.
+        let rec findE (l:Expr) (r:Expr) : Expr option =
+            match l with
+            | ShapeVar v when vequal v bv -> Some r
+            | ShapeVar _ -> None
+            | ShapeLambda(_, lb) -> match r with | ShapeLambda(_, rb) -> findE lb rb | _ -> None
+            | ShapeCombination(_, largs) ->
+                match r with
+                | ShapeCombination(_, rargs) when largs.Length = rargs.Length ->
+                    List.zip largs rargs |> List.tryPick (fun (a, b) -> findE a b)
+                | _ -> None
+        if not (occurs [bv] l) then sequal l r
+        else
+            match findE l r with
+            | Some e -> sequal (replace_var_expr bv e l) r
+            | None -> false
 
     let find_expr s t expr =
         let dict = new System.Collections.Generic.List<Expr>()

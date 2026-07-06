@@ -46,6 +46,11 @@ module PredCalculus =
     /// (∃ x | R : B) with range R and body B given as propositions in x.
     let qex (x:TermVar<'t>) (R:Prop) (B:Prop) : Prop = Prop <@ Formula.exists_expr %x.Expr %R.Expr %B.Expr @>
 
+    /// A predicate constantly equal to the truth constant T. Its application to any term
+    /// reduces to T (the named True), so it stands in for a `true` range/body where the
+    /// Pred-based combinators need a predicate.
+    let truepred<'t when 't:equality> : Pred<'t> = Pred(func = <@ fun (_z:'t) -> %T.Expr @>)
+
     (* Derived rules *)
 
     /// (∀x|N:P) = (∀x|: N⇒P)   (Gries 9.2, Trading)
@@ -95,6 +100,16 @@ module PredCalculus =
         trade_forall_or_not x N T |> apply_left
         commute_or T (forall'(x, -N)) |> apply_left
         zero_or (forall'(x, -N)) |> apply_left
+    ]
+
+    /// (∀x|:true) = true   (Gries 9.8 at the true range)
+    let ident_forall_true' (x:TermVar<'t>) = ident_forall_true x truepred
+
+    /// P ⇒ (∀x|:P)   (Gries 9.16, ⇐ direction of the metatheorem). P is an x-free proposition:
+    /// under the antecedent P the body becomes true, and (∀x|:true) = true.
+    let forall_conseq (x:TermVar<'t>) (P:Prop) = theorem pred_calculus (P ==> qall x T P) [
+        Deduce (axiom prop_calculus (P ==> P)) |> apply_right
+        ident_forall_true' x |> apply_right
     ]
 
     (* Existential quantification via Generalized De Morgan (Gries 9.17–9.18) *)
@@ -209,6 +224,16 @@ module PredCalculus =
             trade_body |> apply_left   // (∀x|:N⇒P) ⇒ (N⇒P) is Universal Instantiation
         ]
 
+    /// P[x:=E] ⇒ (∃x|:P)   (Gries 9.28, ∃-introduction). The contrapositive of instantiation of
+    /// ¬P: (∀x|:¬P) ⇒ ¬P[E], recast through De Morgan (∃x|:P = ¬∀x|:¬P).
+    let exists_intro (x:TermVar<'t>) (P:Pred<'t>) (e:Term<'t>) =
+        theorem pred_calculus (P[e] ==> exists'(x, P)) [
+            double_neg |> apply_right
+            def_implies_contr P[e] (-(forall'(x, -P))) |> apply
+            double_negation (forall'(x, -P)) |> apply_left
+            inst x (-P) e |> Taut |> apply
+        ]
+
     /// (∃x|N:P) ⇒ (∃x|Q∨N:P)   (Gries 9.25, range weakening)
     let weaken_exists_range (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) =
         theorem pred_calculus (exists(x, N, P) ==> exists(x, Q + N, P)) [
@@ -273,19 +298,35 @@ module PredCalculus =
             mono_forall_body x N (-P) (-Q) |> Taut |> apply
         ]
 
+    (* Existential/universal interchange (Gries 9.29) *)
+
+    /// (∃x|:(∀y|:P)) ⇒ (∀y|:(∃x|:P))   (Gries 9.29, interchange of quantifications). P is a
+    /// proposition in both dummies x and y. One direction only (the converse is invalid). Recast
+    /// ⇒ via def of ⇒, pull ∃x∀yP into ∀y (9.5), collect the two ∃x (8.15), and absorb
+    /// (∀y|:P) ∨ P into P by instantiation ((∀y|:P) ⇒ P).
+    let exists_forall_interchange (x:TermVar<'t>) (y:TermVar<'t>) (P:Prop) =
+        let absorb = lemma pred_calculus (((qall y T P) + P) == P) [
+            def_implies' (qall y T P) P |> Commute |> apply   // ((∀y|:P)∨P = P) ⇐ (∀y|:P)⇒P (Universal Instantiation)
+        ]
+        theorem pred_calculus (qex x T (qall y T P) ==> qall y T (qex x T P)) [
+            def_implies |> apply
+            distrib_or_forall |> apply_left
+            collect_exists_or |> apply_body |> left_branch
+            absorb |> Ident |> apply_body |> select_body |> left_branch
+        ]
+
     (* Module information members *)
 
     type private IModuleTypeLocator = interface end
     
     let Type = match typeof<IModuleTypeLocator>.DeclaringType with | NonNull m -> m | _ -> failwith "Failed to locate module type."
 
-    (* Deferred (not yet ported from the previous F#-quotation version):
+    (* Deferred (not yet ported from the previous F#-quotation version). These are conditional /
+       metatheorem-Witness results whose OLD proofs relied on the (now-fixed) under-reporting
+       occurs_free — they distributed an x-free P through a quantifier using the Pred-based
+       `distrib_*` theorems applied to x-dependent bodies. A correct port needs Prop-body
+       variants of the ∃/∀ distributivity theorems and the range-nonempty assumption discharged
+       by Deduce, following Gries' own proofs:
          - distrib_forall_and_cond (Gries 9.7): conditional distributivity of ∧ over ∀.
-         - trade_exists_or (Gries 9.23): conditional trading-out of ∨ over ∃ (uses Deduce on the
-           range-nonempty antecedent).
-         - exists_intro (Gries 9.28), P[x:=E] ⇒ (∃x|:P): blocked by the textual `is_inst_expr`
-           matcher, whose token scan does not stop at ')', so instantiation with a negated body
-           (¬(P E)) is not recognised. Needs a structural instantiation check.
-         - exists_forall_interchange (Gries 9.29): ∃∀ ⇒ ∀∃ interchange.
-         - forall_conseq / forall_conseq_trade_body (metatheorem 9.16 direction) and
-           ident_exists_implies (metatheorem Witness): need the P⇒(∀x|:P) metatheorem for x-free P. *)
+         - trade_exists_or (Gries 9.23): conditional trading-out of ∨ over ∃.
+         - ident_exists_implies / forall_conseq_trade_body (metatheorem Witness, 9.30). *)
