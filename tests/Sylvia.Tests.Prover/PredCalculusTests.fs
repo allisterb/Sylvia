@@ -61,6 +61,8 @@ type PredCalculusTests() =
         weaken_exists_range x N P Q |> ignore
         weaken_exists_body x N P Q |> ignore
         mono_exists x N Q P |> ignore
+        ident_exists_implies x N P pp |> ignore   // ex.9.27: (∃x|R:P)⇒Q = (∀x|R:P⇒Q)
+        trade_exists_or x N pp Q |> ignore         // 9.23 (conditional): (∃x|:R) ⇒ ((∃x|R:pp∨Q) = pp∨(∃x|R:Q))
 
     [<Fact>]
     member _.``existential/universal interchange (Gries 9.29) proves`` () =

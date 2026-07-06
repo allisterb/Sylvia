@@ -301,6 +301,37 @@ module PredCalculus =
             mono_forall_body x N (-P) (-Q) |> Taut |> apply
         ]
 
+    (* Existential quantification: an ∃ antecedent, and conditional trading of ∨ (Gries 9.23, ex.9.27) *)
+
+    /// (∃x|R:P) ⇒ Q  =  (∀x|R: P⇒Q)   (Gries ch.9 ex.9.27). Q is an x-free proposition. An ∃ in an
+    /// antecedent becomes a ∀: ¬(∃x|R:P) is (∀x|R:¬P) (De Morgan), the x-free Q distributes through
+    /// the ∀ (9.5), and ¬P∨Q folds back to P⇒Q.
+    let ident_exists_implies (x:TermVar<'t>) (R:Pred<'t>) (P:Pred<'t>) (Q:Prop) =
+        ident pred_calculus (((exists(x,R,P)) ==> Q) == qall x R[x] (P[x] ==> Q)) [
+            ident_implies_not_or (exists(x,R,P)) Q |> at_left                  // → ¬(∃x|R:P) ∨ Q
+            ident_not_exists_forall_not x R P |> at [left_branch; left_branch] // ¬(∃x|R:P) → (∀x|R:¬P)
+            commute_or (forall(x,R,-P)) Q |> at_left
+            distrib_or_forall' x R Q (-P) |> at_left                          // Q ∨ (∀x|R:¬P) → (∀x|R: Q∨¬P)
+            commute_or Q (-(P[x])) |> at [left_branch; select_body]
+            ident_implies_not_or P[x] Q |> Commute |> at [left_branch; select_body]  // ¬P∨Q → P⇒Q
+        ]
+
+    /// (∃x|:R) ⇒ ((∃x|R: P∨Q) = (P ∨ (∃x|R:Q)))   (Gries 9.23). P is an x-free proposition. A
+    /// CONDITIONAL law (the ∨ can only be traded out when the range is nonempty): split the body
+    /// (8.15), pull the x-free P out of the P-disjunct (9.22), then the assumption (∃x|:R) discharges
+    /// it to true. The range-nonempty assumption is supplied by `Deduce`.
+    let trade_exists_or (x:TermVar<'t>) (R:Pred<'t>) (P:Prop) (Q:Pred<'t>) =
+        // ((∃x|R:P) ∨ (∃x|R:Q)) = (∃x|R: P∨Q) with the left body x-free (structural QuantifierCollect axiom).
+        let collect_mixed = id_ax pred_calculus (((qex x R[x] P) + exists(x,R,Q)) == qex x R[x] (P + Q[x]))
+        theorem pred_calculus (exists'(x, R) ==> ((qex x R[x] (P + Q[x])) == (P + exists(x,R,Q)))) [
+            collect_mixed |> Commute |> at [right_branch; left_branch]                             // ∃x R (P∨Q) → (∃x R P) ∨ (∃x R Q)
+            distrib_and_exists x R P |> at [right_branch; left_branch; left_branch]                // ∃x R P → P ∧ (∃x|:R)
+            axiom pred_calculus (exists'(x,R) ==> exists'(x,R)) |> Deduce |> at [right_branch; left_branch; left_branch; right_branch]  // assume (∃x|:R)
+            ident_and P |> at [right_branch; left_branch; left_branch]                             // P ∧ true → P
+            def_true (P + exists(x,R,Q)) |> Commute |> at_right                                    // consequent Y=Y → T
+            implies_true (exists'(x, R)) |> Taut |> apply                                          // (∃x|:R) ⇒ T → true
+        ]
+
     (* Existential/universal interchange (Gries 9.29) *)
 
     /// (∃x|:(∀y|:P)) ⇒ (∀y|:(∃x|:P))   (Gries 9.29, interchange of quantifications). P is a
@@ -324,12 +355,8 @@ module PredCalculus =
     
     let Type = match typeof<IModuleTypeLocator>.DeclaringType with | NonNull m -> m | _ -> failwith "Failed to locate module type."
 
-    (* Deferred (not yet ported from the previous F#-quotation version). These are conditional /
-       metatheorem-Witness results whose OLD proofs relied on the (now-fixed) under-reporting
-       occurs_free — they distributed an x-free P through a quantifier using the Pred-based
-       `distrib_*` theorems applied to x-dependent bodies. A correct port needs Prop-body
-       variants of the ∃/∀ distributivity theorems and the range-nonempty assumption discharged
-       by Deduce, following Gries' own proofs:
+    (* Deferred. `trade_exists_or` (9.23) and `ident_exists_implies` (ex.9.27) are now done above,
+       following Gries' own exercise derivations (Prop-body distributivity + the range-nonempty
+       assumption discharged by Deduce). Still deferred:
          - distrib_forall_and_cond (Gries 9.7): conditional distributivity of ∧ over ∀.
-         - trade_exists_or (Gries 9.23): conditional trading-out of ∨ over ∃.
-         - ident_exists_implies / forall_conseq_trade_body (metatheorem Witness, 9.30). *)
+         - forall_conseq_trade_body (metatheorem Witness, 9.30). *)
