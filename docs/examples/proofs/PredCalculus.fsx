@@ -1,4 +1,5 @@
 #load "Include.fsx"
+#nowarn "3391"   // a bare rule as a proof step is the implicit "apply to the whole expression"
 
 // Predicate calculus (Gries & Schneider, "A Logical Approach to Discrete Math", ch. 8-9).
 // Constructing, displaying and machine-checking quantified (∀ / ∃) theorems in Sylvia.
@@ -19,6 +20,7 @@ let y = intvar "y"
 let N = symbolic_pred<int> "N"
 let P = symbolic_pred<int> "P"
 let Q = symbolic_pred<int> "Q"
+let R = symbolic_pred<int> "R"
 let pp = boolvar "pp"
 
 let show (title: string) (p: Prop) = printfn "  %-34s %s" title (Theory.S.PrintFormula (expand p.Expr))
@@ -81,3 +83,36 @@ check "9.29  interchange:        (∃x|:∀y|:P) ⇒ (∀y|:∃x|:P)"           
 printfn "\n===== A worked proof: trading a conjunctive range (Gries 9.4a) ====="
 Proof.LogLevel <- 1
 trade_forall_and_implies x Q N P |> ignore
+
+// ---------------------------------------------------------------------------
+// Exercise 9.1. Derive Distributivity of ∨ over ∀ (9.5) for an arbitrary range,
+//   pp ∨ (∀x|R:Q)  =  (∀x|R: pp∨Q)     (pp x-free),
+// from ONLY the true-range version   pp ∨ (∀x|:B) = (∀x|: pp∨B)   plus Trading —
+// i.e. show the general axiom follows from the simpler one. The recipe (per Gries):
+// trade the range into the body, apply the given true-range law, then trade back.
+printfn "\n===== Exercise 9.1: derive (9.5) from its true-range version ====="
+Proof.LogLevel <- 0
+
+// The propositional body identity used along the way:  pp ∨ (R⇒Q) = R ⇒ (pp∨Q).
+let bodyLemma (p: Prop) (r: Prop) (q: Prop) =
+    ident prop_calculus ((p + (r ==> q)) == (r ==> (p + q))) [
+        ident_implies_not_or r q |> at [left_branch; right_branch]
+        ident_implies_not_or r (p + q) |> at_right
+        normalize
+    ]
+
+// The GIVEN simpler axiom (distributivity over a true range only):
+let trueRange (x: TermVar<'t>) (P: Prop) (B: Pred<'t>) =
+    id_ax pred_calculus ((P + forall'(x, B)) == qall x T (P + B[x]))
+
+let ex_9_1 (x: TermVar<'t>) (R: Pred<'t>) (Q: Pred<'t>) (P: Prop) =
+    ident pred_calculus ((P + forall(x, R, Q)) == qall x R[x] (P + Q[x])) [
+        trade_forall_implies x R Q |> at [left_branch; right_branch]  // ∀x|R:Q → ∀x|: R⇒Q   (Trading)
+        trueRange x P (R ==> Q) |> at_left                            // pull pp inside (the given law)
+        bodyLemma P R[x] Q[x] |> at [left_branch; select_body]        // pp∨(R⇒Q) → R⇒(pp∨Q)
+        trade_body |> at_right                                       // RHS ∀x|R:(pp∨Q) → ∀x|: R⇒(pp∨Q)
+    ]
+
+check "9.1  general (9.5) from true-range: pp ∨ (∀x|R:Q) = (∀x|R: pp∨Q)" (fun () -> ex_9_1 x R Q pp |> ignore)
+
+printfn "\nDone."
