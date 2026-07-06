@@ -13,6 +13,7 @@
     <Compile Include="DisplayTests.fs" />
     <Compile Include="ParserTests.fs" />
     <Compile Include="KernelProofTests.fs" />
+    <Compile Include="QuantifierKernelTests.fs" />
   </ItemGroup>
 
   <ItemGroup>

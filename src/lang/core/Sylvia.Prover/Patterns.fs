@@ -21,21 +21,28 @@ module Patterns =
         | BoundVars _ -> ()
         | n -> failwithf "The expression %s is not a bound variables expression." (src n)
 
-    let rec occurs_free (vars:Var list) = 
-        function
-        | Quantifier(_, bound, _, Quantifier(_, _, _, body)) -> 
-            let all_vars = body |> get_vars
-            vars |> List.exists (fun v -> (all_vars |> List.exists (fun av -> vequal av v)) && not (bound |> List.exists (fun bv -> vequal bv v)))
-        | Quantifier(_,bound, _, body) -> 
-            let all_vars = body |> get_vars
-            vars |> List.exists (fun v -> (all_vars |> List.exists (fun av -> vequal av v)) && not (bound |> List.exists (fun bv -> vequal bv v)))
-        | Quantifier(_,_,_,Application(_, _)) -> false 
-        | ShapeVar _ -> false
-        | ShapeLambda (bound, body) -> 
-            let all_vars = body |> get_vars
-            vars |> List.exists (fun v -> (all_vars |> List.exists (fun av -> vequal av v)) && not (vequal bound v))
-        | ShapeCombination (_, exprs) -> List.map (occurs_free vars) exprs |> List.contains(true)
-        
+    /// True iff any variable in `vars` occurs FREE in the expression. Standard binder-aware
+    /// definition: recurse, removing a binder's bound variables when descending into it, and
+    /// detect an occurrence at a variable leaf. A quantifier binds its dummies in BOTH its
+    /// range and body, so both are searched with the bound dummies removed.
+    ///
+    /// NB: the ¬occurs('x',E) side conditions on the quantifier axioms/rules (One-point,
+    /// Trading's ∨-distributivity, Interchange, Nesting, Renaming, Universal Instantiation)
+    /// depend on this being correct — an under-reporting version silently bypasses those
+    /// guards and makes the affected rewrites unsound (e.g. distributing an x-dependent term
+    /// into a ∀x). The previous implementation returned false at every variable leaf and
+    /// ignored the range, so predicate applications like `R x` were reported as NOT containing x.
+    let rec occurs_free (vars:Var list) expr =
+        match expr with
+        | Quantifier(_, bound, range, body) ->
+            let inner = vars |> List.filter (fun v -> not (bound |> List.exists (fun bv -> vequal bv v)))
+            occurs_free inner range || occurs_free inner body
+        | ShapeVar v -> vars |> List.exists (fun bv -> vequal bv v)
+        | ShapeLambda (bound, body) ->
+            let inner = vars |> List.filter (fun v -> not (vequal bound v))
+            occurs_free inner body
+        | ShapeCombination (_, exprs) -> exprs |> List.exists (occurs_free vars)
+
     let not_occurs_free (vars:Var list) expr  = not (occurs_free vars expr)
     
     let get_quantifiers expr =
@@ -247,12 +254,16 @@ module Patterns =
             pattern_desc "the One-Point Rule" <@ fun x E P -> (forall_expr x (x = E) P) = P @> |> Some
         | _ -> None
 
+    // Nesting (Gries 8.20): (★x,y | R∧Q : P) = (★x | R : (★y | Q : P)), provided ¬occurs(y,R).
+    // The first form is the Q:=R instance (the split range R∧R collapses to R by idempotence),
+    // requiring ¬occurs(y,R). (Both were previously mislabeled "Interchange Variables"; the
+    // genuine interchange of dummies, Gries 8.19, is the separate `Interchange` axiom.)
     let (|Nesting|_|) =
         function
-        | Equals(Quantifier(_, x::y, R1, P), Quantifier(_, [x'], R2, Quantifier(_,y', R3, P'))) 
-            when not_occurs_free y R1 && vequal x x' && vequal' y y' && sequal P P' && sequal R1 R2 && sequal R2 R3-> pattern_name "Interchange Variables" |> Some
-        | Equals(Quantifier(_, x::y, And(R, Q), P), Quantifier(_, [x'], R',Quantifier(_,y', Q', P'))) 
-            when not_occurs_free y R && vequal x x' && vequal' y y' && sequal3 R Q P R' Q' P'-> pattern_name "Interchange Variables" |> Some
+        | Equals(Quantifier(_, x::y, R1, P), Quantifier(_, [x'], R2, Quantifier(_,y', R3, P')))
+            when not_occurs_free y R1 && vequal x x' && vequal' y y' && sequal P P' && sequal R1 R2 && sequal R2 R3-> pattern_name "Nesting" |> Some
+        | Equals(Quantifier(_, x::y, And(R, Q), P), Quantifier(_, [x'], R',Quantifier(_,y', Q', P')))
+            when not_occurs_free y R && vequal x x' && vequal' y y' && sequal3 R Q P R' Q' P'-> pattern_name "Nesting" |> Some
         | _ -> None
 
     let (|Renaming|_|) =

@@ -144,7 +144,11 @@ module EquationalLogic =
     
     let (|UniversalInstantiation|_|) =
         function
-        | Implies(ForAll(_, [x], True, P), P') when is_inst_expr x P P' && not_occurs_free [x] P -> 
+        // Instantiation (Gries 9.13): (∀x |: P) ⇒ P[x:=E]. Holds for any term E, so there is no
+        // ¬occurs side condition — `is_inst_expr` verifies P' is P with x textually replaced.
+        // (A former `not_occurs_free [x] P` guard here was spurious: P is the body and DOES
+        // contain x, so with occurs_free corrected the guard would block every instantiation.)
+        | Implies(ForAll(_, [x], True, P), P') when is_inst_expr x P P' ->
                 pattern_desc "Universal Instantiation" <@ fun x P P' -> (forall_expr x true P) = P' @> |> Some
         | _ -> None
 
@@ -406,8 +410,8 @@ module EquationalLogic =
 
     let _collect_forall_and =
         function
-        | And(ForAll(_, b1, R, P), ForAll(_, b2, R', Q)) when vequal' b1 b2 && sequal R R' -> 
-            let t = vars_to_tuple b1 in call <@ forall @> (t::R::(<@@(%%P:bool) && (%%Q:bool)@@>)::[]) 
+        | And(ForAll(_, b1, R, P), ForAll(_, b2, R', Q)) when vequal' b1 b2 && sequal R R' ->
+            let t = vars_to_tuple b1 in call <@ forall_expr @> (t::R::(<@@(%%P:bool) && (%%Q:bool)@@>)::[])
         | expr -> expr
 
     let _collect_exists_or =
