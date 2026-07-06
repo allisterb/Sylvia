@@ -145,14 +145,19 @@ with
         | Derive(n, _, _) -> n
         | Deduce(n,_,_) -> n
         | Define(n, _) -> n
-    member x.Apply = 
+    member x.Apply =
         match x with
         | Admit(_, r) -> r
         | Derive(_, p, r) -> r p
         | Deduce(_, p, r) -> r p
         | Define(_, r) -> r
-        
-and Rules = Rule list 
+    /// A bare rule used where a RuleApplication is expected (e.g. as a proof step) means "apply
+    /// the rule to the whole expression". This is the implicit form of `apply r` / `r |> apply`.
+    /// (F# only applies this in a directly-typed position such as a RuleApplication-list element,
+    /// NOT through a `|>` pipe — an addressed step must still say where via `at`/`apply_left`/…)
+    static member op_Implicit (r: Rule) : RuleApplication = RuleApplication.Apply r
+
+and Rules = Rule list
 
 and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
     /// The logical theory used for the proof.
@@ -531,6 +536,16 @@ module ProofOps =
 
     /// Select range of quantification formula before rule application.
     let select_range = RuleApplication.SelectRange
+
+    /// Apply a rule at the position reached by the OUTSIDE-IN navigation `path`, whose steps are
+    /// the pure-navigation combinators `left_branch` / `right_branch` / `apply_unary` /
+    /// `select_body` / `select_range`. E.g. `commute |> at [ left_branch; select_body ]` commutes
+    /// the quantifier body inside the left operand. `at []` is `apply` (the whole expression); the
+    /// rule application is fused in at the deepest point, so `at [ …; select_body ] r` equals the
+    /// manual `r |> apply_body |> … `. Reads outside-in, keeping the rule (the "what") first and
+    /// the address (the "where") as a top-down path — clearer than a reverse-order `|>` chain.
+    let at (path: (RuleApplication -> RuleApplication) list) (r: Rule) : RuleApplication =
+        List.foldBack (<|) path (apply r)
 
     /// Branch left n times before rule application.
     let left_branch_n n (r:Rule->RuleApplication) (x:Rule) = 

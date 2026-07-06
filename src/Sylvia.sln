@@ -136,6 +136,7 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Tests.Prover", "..\t
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Proofs", "Proofs", "{7F85747F-BE97-4C16-A6D7-CA7F93DC9819}"
 	ProjectSection(SolutionItems) = preProject
+		..\docs\examples\proofs\PredCalculus.fsx = ..\docs\examples\proofs\PredCalculus.fsx
 		..\docs\examples\proofs\PropCalculus.fsx = ..\docs\examples\proofs\PropCalculus.fsx
 	EndProjectSection
 EndProject
