@@ -129,7 +129,8 @@ applies `rule` at the position reached by that **outside-in** navigation — the
 read top-down with the rule first. The path uses the pure navigators (`left_branch` / `right_branch`
 / `apply_unary` / `select_body` / `select_range`); the rule application is fused in at the deepest
 point (so the terminal `apply_body`/`apply_left`/… of a `|>` chain becomes the navigator
-`select_body`/`left_branch`/…). `at []` is `apply`.
+`select_body`/`left_branch`/…). `at []` is `apply`. For the common single hop, `at_left` / `at_right`
+/ `at_body` / `at_range` abbreviate `at [ left_branch ]` / … (e.g. `commute |> at_left`).
 
 **Bare rule = whole expression.** A rule used directly as a step (no addressing) means "apply to the
 whole expression" — `def_implies` is `def_implies |> apply` — via an implicit `Rule -> RuleApplication`
