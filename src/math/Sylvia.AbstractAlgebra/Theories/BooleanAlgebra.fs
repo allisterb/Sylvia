@@ -29,8 +29,8 @@ module BooleanAlgebra =
         | Identity <@(=)@> join zero x
         | Identity <@(=)@> meet one x
                 
-        | Inverse <@(=)@> join comp zero x
-        | Inverse <@(=)@> meet comp one x
+        | Inverse <@(=)@> join comp one x
+        | Inverse <@(=)@> meet comp zero x
 
         | Distrib <@(=)@> join meet x 
         | Distrib <@(=)@> meet join x -> desc x |> set_axiom_desc_theory theoryName |> Some
@@ -48,7 +48,7 @@ module BooleanAlgebra =
         function
         | Binary join (a1, Binary join (a2, a3)) -> <@@ (%join) ((%join) %%a1 %%a2) %%a3 @@>
         | Binary meet (a1, Binary meet (a2, a3)) -> <@@ (%meet) ((%meet) %%a1 %%a2) %%a3 @@>
-        | expr -> traverse expr (_left_assoc meet meet)
+        | expr -> traverse expr (_left_assoc join meet)
 
     let rec _commute (join: Expr<'t->'t->'t>) (meet: Expr<'t->'t->'t>) =
         function
@@ -70,8 +70,9 @@ module BooleanAlgebra =
 
     let rec _comp (join: Expr<'t->'t->'t>) (meet: Expr<'t->'t->'t>) (zero: Expr<'t>) (one: Expr<'t>) (comp:Expr<'t -> 't>) =
          function
-         | Binary join (a1, Unary comp a2) when sequal a1 a2 -> <@@ zero @@>
-         | Binary join (a1, Unary comp a2) when sequal a1 a2 -> <@@ one @@>
+         // a ∪ ~a = one (e.g. the universe U);  a ∩ ~a = zero (e.g. the empty set ∅)
+         | Binary join (a1, Unary comp a2) when sequal a1 a2 -> <@@ %one @@>
+         | Binary meet (a1, Unary comp a2) when sequal a1 a2 -> <@@ %zero @@>
          | expr -> traverse expr (_comp join meet zero one comp)
 
     let rec _distrib (join: Expr<'t->'t->'t>) (meet: Expr<'t->'t->'t>) =
@@ -105,14 +106,25 @@ module BooleanAlgebra =
     /// (expression) is distributive
     let distrib join meet = Admit("(expression) is distributive", _distrib join meet)
 
-    type BooleanAlgebra<'t when 't: equality>(theoryName: string, join: Expr<'t->'t->'t>, meet: Expr<'t->'t->'t>, zero: Expr<'t>, one: Expr<'t>, comp: Expr<'t->'t>, 
-        ?axioms:Axioms, ?rules:Rules, ?formula_printer:Expr->string) = 
-        inherit Theory(boolean_algebra_axioms theoryName join meet zero one comp, [
-            left_assoc join meet
-            right_assoc join meet
-            commute join meet
-            idemp join meet zero one comp
-            ident_ join meet zero one comp
-            complement join meet zero one comp
-            distrib join meet
-        ])
+    /// Compose two axiom recognizers: try `extra` first, then fall back to `base'`. Used to layer a
+    /// subclass's extra axioms on top of the base Boolean-algebra axioms rather than dropping them.
+    let combine_axioms (extra: Axioms) (base': Axioms) : Axioms =
+        fun e -> match extra e with | Some d -> Some d | None -> base' e
+
+    type BooleanAlgebra<'t when 't: equality>(theoryName: string, join: Expr<'t->'t->'t>, meet: Expr<'t->'t->'t>, zero: Expr<'t>, one: Expr<'t>, comp: Expr<'t->'t>,
+        ?axioms:Axioms, ?rules:Rules, ?formula_printer:Expr->string) =
+        // A subclass may supply extra axioms/rules; compose them with (not discard) the Boolean-algebra
+        // ones. Extra axioms are tried first (so a subclass can specialize); extra rules are appended
+        // AFTER the seven built-ins so their fixed indices (used by SetAlgebra) are preserved.
+        inherit Theory(
+            combine_axioms (defaultArg axioms (fun _ -> None)) (boolean_algebra_axioms theoryName join meet zero one comp),
+            [
+                left_assoc join meet
+                right_assoc join meet
+                commute join meet
+                idemp join meet zero one comp
+                ident_ join meet zero one comp
+                complement join meet zero one comp
+                distrib join meet
+            ] @ (defaultArg rules []),
+            ?formula_printer = formula_printer)
