@@ -21,12 +21,17 @@ module SetAlgebra =
     /// n-ary intersection of sets
     [<Formula>]
     let intersect<'t when 't : equality> (bound:int) (range:bool) (body:Set<'t>) = product Set.set_intersection "\u22c2" bound range body
+
+    /// Symbolic set comprehension {x | R : E} (Gries 11.1): dummy `bound`:'t, range `R`, body `E`:'t,
+    /// yielding a set of 't. A quantifier-shaped placeholder mirroring `forall_expr`/`exists_expr`
+    /// (Formula.fs); the theory's Set-Membership axiom (Gries 11.3) keys on the method name `set_comp`.
+    let set_comp<'t when 't : equality> (bound:'t) (range:bool) (body:'t) : Set<'t> = formula<Set<'t>>
     
     (* Theory *)
 
-    type SetAlgebra<'t when 't: equality>(?axioms:Axioms, ?rules:Rules) = 
-        inherit BooleanAlgebra<Set<'t>>("Set Algebra", <@ Set.set_union @>, <@ Set.set_intersection @>, <@ Set.Empty @>, <@ Set.U @>, <@ Set.(~-) @>, 
-            defaultArg axioms (fun _-> None), defaultArg rules [])
+    type SetAlgebra<'t when 't: equality>(?axioms:Axioms, ?rules:Rules) =
+        inherit BooleanAlgebra<Set<'t>>("Set Algebra", <@ Set.set_union @>, <@ Set.set_intersection @>, <@ Set.Empty @>, <@ Set.U @>, <@ Set.(~-) @>,
+            ?axioms = axioms, ?rules = rules)
     
     let set_algebra<'t when 't: equality> = SetAlgebra<'t>()
 

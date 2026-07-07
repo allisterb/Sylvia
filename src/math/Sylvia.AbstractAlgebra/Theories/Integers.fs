@@ -31,7 +31,7 @@ module Integers =
 
     let (|DefLessThan|_|) =
         function
-        | Equals(LessThan(l,r), SetTheory.ElementOf(Subtract(r', l'), Zpos::[])) when sequal2 l r l' r' -> pattern_name "Definition of <" |> Some
+        | Equals(LessThan(l,r), SetTheory.ElementOf(Subtract(r', l'), Zpos)) when sequal2 l r l' r' -> pattern_name "Definition of <" |> Some
         | _ -> None
 
     let integer_axioms =

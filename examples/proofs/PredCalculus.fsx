@@ -55,6 +55,7 @@ check "9.2   Trading:            (∀x|N:P) = (∀x|: N⇒P)"                  (
 check "9.5   ∨ over ∀:           pp ∨ (∀x|N:Q) = (∀x|N: pp∨Q)"          (fun () -> distrib_or_forall' x N pp Q |> ignore)
 check "9.6   trade out:          (∀x|N:pp) = pp ∨ (∀x|:¬N)"             (fun () -> trade_forall_or_not x N pp |> ignore)
 check "8.15  ∀ over ∧ (collect): (∀x|N:P) ∧ (∀x|N:Q) = (∀x|N: P∧Q)"     (fun () -> collect_forall_and' x N P Q |> ignore)
+check "9.7   ∧ over ∀ (cond):     ¬(∀x|:¬N) ⇒ ((∀x|N:pp∧Q) = pp∧(∀x|N:Q))" (fun () -> distrib_forall_and_cond x N pp Q |> ignore)
 check "9.8   empty body:         (∀x|N:true) = true"                    (fun () -> ident_forall_true x N |> ignore)
 check "9.9   distribute =:       (∀x|N:P=Q) ⇒ ((∀x|N:P)=(∀x|N:Q))"      (fun () -> distrib_forall_body x N P Q |> ignore)
 check "9.10  range strengthen:   (∀x|N1∨N2:P) ⇒ (∀x|N1:P)"              (fun () -> strengthen_forall_range_or x N P Q |> ignore)

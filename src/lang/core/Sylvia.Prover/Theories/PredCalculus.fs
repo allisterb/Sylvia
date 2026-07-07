@@ -349,14 +349,44 @@ module PredCalculus =
             Ident absorb |> at [left_branch; select_body; select_body]
         ]
 
+    (* Universal quantification: conditional distributivity of ∧ over ∀ (Gries 9.7) *)
+
+    /// ¬(∀x|:¬R) ⇒ ((∀x|R: P∧Q) = (P ∧ (∀x|R:Q)))   (Gries 9.7). P is an x-free proposition. A
+    /// CONDITIONAL law (the x-free P can only be pulled out of the body when the range is nonempty):
+    /// distribute ∧ over ∀ (8.15), trade the x-free P out of the P-conjunct (9.6) leaving
+    /// P ∨ (∀x|:¬R), then the range-nonempty assumption ¬(∀x|:¬R) collapses (∀x|:¬R) to false and
+    /// P∨false = P. The empty-range test is discharged to false by `Deduce'` and the local lemma.
+    let distrib_forall_and_cond (x:TermVar<'t>) (R:Pred<'t>) (P:Prop) (Q:Pred<'t>) =
+        // (∀x|R:P) ∧ (∀x|R:Q) = (∀x|R: P∧Q) with the left body x-free (structural QuantifierCollect axiom, 8.15).
+        let collect_mixed = id_ax pred_calculus (((qall x R[x] P) * forall(x,R,Q)) == qall x R[x] (P * Q[x]))
+        // ¬B ⇒ (B = false) for B = (∀x|:¬R): under the range-nonempty assumption the empty-range test is false.
+        let empty_is_false =
+            let B = forall'(x, -R)
+            lemma pred_calculus ((-B) ==> (B == F)) [
+                distrib_implies_eq_and (-B) B F   // (¬B ⇒ (B=F)) → ((¬B ∧ B) = (¬B ∧ F))
+                commute_and (-B) B |> at_left     // ¬B∧B → B∧¬B
+                contr B |> at_left                // B∧¬B → false
+                zero_and (-B) |> at_right         // ¬B∧F → false
+                def_true F |> Commute |> apply    // F=F → true
+            ]
+        theorem pred_calculus ((-(forall'(x, -R))) ==> ((qall x R[x] (P * Q[x])) == (P * forall(x, R, Q)))) [
+            collect_mixed |> Commute |> at [right_branch; left_branch]                  // (∀x|R:P∧Q) → (∀x|R:P) ∧ (∀x|R:Q)
+            trade_forall_or_not x R P |> at [right_branch; left_branch; left_branch]    // (∀x|R:P) → P ∨ (∀x|:¬R)
+            empty_is_false |> Deduce' |> at [right_branch; left_branch; left_branch; right_branch]  // (∀x|:¬R) → false
+            ident_or P |> at [right_branch; left_branch; left_branch]                   // P∨false → P
+            def_true (P * forall(x, R, Q)) |> Commute |> at_right                       // consequent Y=Y → T
+            implies_true (-(forall'(x, -R))) |> Taut |> apply                           // ¬(∀x|:¬R) ⇒ T → true
+        ]
+
     (* Module information members *)
 
     type private IModuleTypeLocator = interface end
-    
+
     let Type = match typeof<IModuleTypeLocator>.DeclaringType with | NonNull m -> m | _ -> failwith "Failed to locate module type."
 
-    (* Deferred. `trade_exists_or` (9.23) and `ident_exists_implies` (ex.9.27) are now done above,
-       following Gries' own exercise derivations (Prop-body distributivity + the range-nonempty
-       assumption discharged by Deduce). Still deferred:
-         - distrib_forall_and_cond (Gries 9.7): conditional distributivity of ∧ over ∀.
-         - forall_conseq_trade_body (metatheorem Witness, 9.30). *)
+    (* Deferred. `trade_exists_or` (9.23), `ident_exists_implies` (ex.9.27) and `distrib_forall_and_cond`
+       (9.7) are now done above, following Gries' own derivations (Prop-body distributivity + the
+       range-nonempty assumption discharged by Deduce). Still deferred:
+         - forall_conseq_trade_body (metatheorem Witness, 9.30) — needs a fresh-witness / eigenvariable
+           introduction rule (∃-elimination) in the kernel; it is a statement about derivability, not an
+           object-level identity, so it cannot be a `theorem`/`ident` value with the current machinery. *)

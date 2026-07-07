@@ -248,9 +248,16 @@ module Patterns =
             -> pattern_desc "Left Cancellation" <@ fun a b c -> (a <> %zero) ===> (((%op) a b = (%op) a c)) = ((b = c)) @> |> Some
         | _ -> None
 
+    // (★x | x = E : P) = P[x := E]   (Gries 8.14, One-Point). Two generalizations over a naive reading:
+    //   * equality is symmetric, so the range may appear as `x = E` OR `E = x`;
+    //   * the substitution P[x:=E] is GENERAL (`replace_var_expr`), so a predicate-application body
+    //     such as `R x` correctly becomes `R E`. (`subst_var_value` only replaces the function
+    //     position of an application, leaving the argument — wrong for one-point.)
     let (|OnePoint|_|) =
         function
-        | Equals(Quantifier(_,[x], Equals(Var x', E), P), P') when not (occurs_free [x] E) && vequal x x' && sequal P' (subst_var_value x E P) -> 
+        | Equals(Quantifier(_,[x], Equals(Var x', E), P), P')
+        | Equals(Quantifier(_,[x], Equals(E, Var x'), P), P')
+            when not (occurs_free [x] E) && vequal x x' && sequal P' (replace_var_expr x E P) ->
             pattern_desc "the One-Point Rule" <@ fun x E P -> (forall_expr x (x = E) P) = P @> |> Some
         | _ -> None
 
