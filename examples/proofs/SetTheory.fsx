@@ -197,28 +197,36 @@ printfn "\n===== (K) Metatheorem 11.25(a): a tactic that mechanizes the set-alge
 
 open FSharp.Quotations.Patterns
 
-// Classify a set expression's head operator (∪ / ∩ / ~), else it is an atom (a set variable).
-let (|SUnion|SInter|SCompl|SAtom|) (s: SetTerm<int>) =
+// Classify a set expression's head: operator (∪ / ∩ / ~), the constants ∅ / U, else an atom (a set
+// variable). ∅ (`NewUnionCase Empty`) and U (`PropertyGet U`) stay structured because the SetTerm is
+// built inside a quotation (writing `Set.Empty` outside one embeds it as an opaque value).
+let (|SUnion|SInter|SCompl|SEmpty|SUniv|SAtom|) (s: SetTerm<int>) =
     match expand s.Expr with
     | Call(None, mi, [a; b]) when mi.Name = "op_BarPlusBar"     -> SUnion(SetTerm<int>(Expr.Cast a), SetTerm<int>(Expr.Cast b))
     | Call(None, mi, [a; b]) when mi.Name = "op_BarMultiplyBar" -> SInter(SetTerm<int>(Expr.Cast a), SetTerm<int>(Expr.Cast b))
     | Call(None, mi, [a])    when mi.Name = "op_UnaryNegation"  -> SCompl(SetTerm<int>(Expr.Cast a))
+    | NewUnionCase(uc, _)       when uc.Name = "Empty" -> SEmpty
+    | PropertyGet(None, pi, []) when pi.Name  = "U"     -> SUniv
     | _ -> SAtom
 
-// Definition 11.24, keeping each set variable's membership atom v∈S in place of a boolean variable.
+// Definition 11.24: ∪↦∨, ∩↦∧, ~↦¬, ∅↦false, U↦true, and each set variable ↦ its membership atom v∈S.
 let rec translate (s: SetTerm<int>) : Prop =
     match s with
     | SUnion(a, b) -> (translate a) + (translate b)   // ∪ ↦ ∨
     | SInter(a, b) -> (translate a) * (translate b)   // ∩ ↦ ∧
     | SCompl a     -> !! (translate a)                // ~ ↦ ¬
+    | SEmpty       -> F                               // ∅ ↦ false
+    | SUniv        -> T                               // U ↦ true
     | SAtom        -> memv s
 
 // A rewrite rule  (v ∈ s) = translate s, built by recursion mirroring the operator axioms
-// (11.18/11.20/11.21). Each level unfolds its own membership, then recurses into any compound operand.
+// (11.18/11.20/11.21) and the constant-membership axioms (v∈∅ = false, v∈U = true).
 let rec unfold (s: SetTerm<int>) : Rule =
     let sub (x: SetTerm<int>) addr = match x with SAtom -> [] | _ -> [ unfold x |> at addr ]   // skip atoms
     match s with
     | SAtom       -> id_ax st ((memv s) == (memv s))                                            // reflexivity
+    | SEmpty      -> id_ax st ((memv s) == F)                                                   // v∈∅ = false
+    | SUniv       -> id_ax st ((memv s) == T)                                                   // v∈U = true
     | SCompl a    -> ident st ((memv s) == (translate s))
                         ((id_ax st ((memv s) == (!! (memv a))) |> at_left) :: sub a [left_branch; apply_unary])
     | SUnion(a, b)-> ident st ((memv s) == (translate s))
@@ -236,7 +244,9 @@ let metaset (lhs: SetTerm<int>) (rhs: SetTerm<int>) : Theorem =
     theorem st goal ([ ext ] @ stepL @ stepR @ [ Taut' bodyRule |> at [select_body]; ident_forall_true' v ])
 
 let sU = setvar<int> "U"
-let metaproven l r = try (metaset l r).Proof.Complete with _ -> false
+let emptyT = SetTerm<int>(<@ Set.Empty @>)   // ∅ as a structured SetTerm (kept out of a value embedding)
+let uT     = SetTerm<int>(<@ Set.U @>)       // U, the universe
+let metaproven (l: SetTerm<int>) (r: SetTerm<int>) = try (metaset l r).Proof.Complete with _ -> false
 
 // The named Gries laws 11.26–11.42 — each proved with a single `metaset` call.
 ok "11.26 Symmetry of ∪        S∪T = T∪S"              (metaproven (sS |+| sT) (sT |+| sS))
@@ -284,6 +294,24 @@ ok "monotone                   S∩T ⊆ S∪T"             (subproven (sS |*| s
 // Soundness: a non-subset must be REJECTED (the implication Ep ⇒ Fp is not a tautology).
 ok "INVALID S ⊆ S∩T  rejected"                        (not (subproven sS (sS |*| sT)))
 ok "INVALID S∪T ⊆ S  rejected"                        (not (subproven (sS |+| sT) sS))
+
+printfn "\n===== (M) ∅ / U membership atoms: the identity, zero and complement laws ====="
+// With the constant-membership axioms  v∈∅ = false  and  v∈U = true  (added to SetTheory.fs), the
+// `metaset` tactic now also covers every Gries law that mentions ∅ or U. Metatheorem 11.25(c)
+// (`Es = U` valid iff Ep valid) needs no separate tactic — it is just `metaset Es U`, whose body
+// reduces to `Ep = true`.
+ok "v∈∅ = false  recognized (Empty axiom)"            (st.AxEquiv ((v |?| emptyT) == F).Expr)
+ok "v∈U = true   recognized (Universe axiom)"         (st.AxEquiv ((v |?| uT) == T).Expr)
+ok "11.30 Identity of ∪       S∪∅ = S"                (metaproven (sS |+| emptyT) sS)
+ok "11.34 Identity of ∩       S∩U = S"                (metaproven (sS |*| uT) sS)
+ok "11.29 Zero of ∪           S∪U = U"                (metaproven (sS |+| uT) uT)
+ok "11.35 Zero of ∩           S∩∅ = ∅"                (metaproven (sS |*| emptyT) emptyT)
+ok "11.32 Excluded middle     S∪~S = U"               (metaproven (sS |+| (neg sS)) uT)
+ok "11.39 Contradiction       S∩~S = ∅"               (metaproven (sS |*| (neg sS)) emptyT)
+ok "11.25(c) via Es=U         (S∪~S)∪∅ = U"           (metaproven ((sS |+| (neg sS)) |+| emptyT) uT)
+// Soundness with the constants:
+ok "INVALID S∪∅ = U  rejected"                        (not (metaproven (sS |+| emptyT) uT))
+ok "INVALID S∩U = ∅  rejected"                        (not (metaproven (sS |*| uT) emptyT))
 
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1

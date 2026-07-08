@@ -146,14 +146,12 @@ Check (C) confirms the corrected polarity is recognized and the inverted forms a
   on the `|+|`/`|*|` operators in *both* the algebra and the membership axioms, so one `S |+| T`
   expression matches both routes, and `S ⊆ T` is now a proposition. See `examples/proofs/SetTheory.fsx`
   checks H–J.
-- **Metatheorem (11.25a/b) tactics.** ✅ Done. `metaset` (a) mechanizes the membership-route proof
-  for *any* set identity over `{∪, ∩, ~, variables}` (each named law 11.26–11.42 in one call);
-  `metasubset` (b) proves `Es ⊆ Fs` via `Ep ⇒ Fp` (reflexivity 11.58, the ∩/∪ bound laws, …). See
-  §4c and `examples/proofs/SetTheory.fsx` sections K–L. Still open:
-  Difference/Power set/Size (11.22/11.23/11.12 — the last needs a Σ quantifier); the ∅/U identity,
-  zero, excluded-middle, contradiction laws (need `v∈∅ = false` / `v∈U = true` membership atoms —
-  ∅/U are runtime values, not symbolic constants, so their recognizers are the missing piece); and
-  Metatheorem part **(c)** `Es = U ↔ Ep` valid.
+- **Metatheorem (11.25a/b/c) tactics.** ✅ Done. `metaset` (a) mechanizes the membership-route proof
+  for *any* set identity over `{∪, ∩, ~, ∅, U, variables}` (each named law 11.26–11.42 in one call,
+  now including the ∅/U identity/zero/excluded-middle/contradiction laws via the `EmptyMember`/
+  `UniverseMember` axioms); `metasubset` (b) proves `Es ⊆ Fs` via `Ep ⇒ Fp` (reflexivity 11.58, the
+  ∩/∪ bound laws, …); (c) `Es = U` is just `metaset Es U`. See §4c and `examples/proofs/SetTheory.fsx`
+  sections K–M. Still open: Difference/Power set/Size (11.22/11.23/11.12 — the last needs a Σ quantifier).
 
 ## 4a. Two coherence issues — resolved
 
@@ -224,8 +222,21 @@ it. The goal `Es ⊆ Fs` is a bare proposition (not an equality), so we reduce i
 Same completeness/soundness guarantee: valid subset relations prove, non-subsets are rejected
 (`autoproof_anf` throws on a non-tautological implication). Section L proves **11.58** reflexivity,
 the ∩ lower-bound (`S∩T ⊆ S`, `S∩T ⊆ T`), the ∪ upper-bound (`S ⊆ S∪T`, `T ⊆ S∪T`), `S∩T ⊆ S∪T`,
-and rejects `S ⊆ S∩T` / `S∪T ⊆ S`. Example is now **44/44**. Still open: part **(c)** `Es = U ↔ Ep`
-valid, and the ∅/U identity/zero laws (both need `v∈∅ = false` / `v∈U = true` membership atoms).
+and rejects `S ⊆ S∩T` / `S∪T ⊆ S`.
+
+### ∅ / U membership atoms → the identity/zero/complement laws + Metatheorem 11.25(c)
+
+Two constant-membership axioms were added to `SetTheory.fs`: **`EmptyMember`** `v∈∅ = false`
+(the empty set has no members; Gries ∅ = `{x|false}`) and **`UniverseMember`** `v∈U = true` (every
+value is in the universe). They match the *structured* forms `NewUnionCase Empty` and
+`PropertyGet U` — so a `∅`/`U` SetTerm must be built inside a quotation (`SetTerm<int>(<@ Set.Empty @>)`);
+writing `Set.Empty` outside one evaluates it to an opaque value that no axiom matches. With these,
+`translate` gains `∅ ↦ false`, `U ↦ true`, and `unfold` gains the terminal cases `v∈∅ → false`,
+`v∈U → true`, so `metaset` now covers every Gries law mentioning `∅` or `U`: **11.29/11.30** identity
+of ∪ and zero, **11.34/11.35** identity of ∩ and zero, **11.32** excluded middle `S∪~S = U`, **11.39**
+contradiction `S∩~S = ∅` (section M). **Metatheorem 11.25(c)** (`Es = U` valid iff `Ep` valid) needs
+*no* separate tactic — it is just `metaset Es U`, whose body reduces to `Ep = true`. Example is now
+**55/55**. Remaining ch.11: Difference (11.22), Power set (11.23), Size (11.12 — needs a Σ quantifier).
 
 ## 3a. One-Point (Gries 8.14) kernel fix
 
