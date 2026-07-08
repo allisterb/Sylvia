@@ -146,13 +146,14 @@ Check (C) confirms the corrected polarity is recognized and the inverted forms a
   on the `|+|`/`|*|` operators in *both* the algebra and the membership axioms, so one `S |+| T`
   expression matches both routes, and `S ⊆ T` is now a proposition. See `examples/proofs/SetTheory.fsx`
   checks H–J.
-- **Metatheorem (11.25a) tactic.** ✅ Done (equality fragment). A `metaset` tactic mechanizes the
-  membership-route proof for *any* set identity over `{∪, ∩, ~, variables}`, proving each named
-  law 11.26–11.42 with one call. See §4c and `examples/proofs/SetTheory.fsx` section K. Still open:
+- **Metatheorem (11.25a/b) tactics.** ✅ Done. `metaset` (a) mechanizes the membership-route proof
+  for *any* set identity over `{∪, ∩, ~, variables}` (each named law 11.26–11.42 in one call);
+  `metasubset` (b) proves `Es ⊆ Fs` via `Ep ⇒ Fp` (reflexivity 11.58, the ∩/∪ bound laws, …). See
+  §4c and `examples/proofs/SetTheory.fsx` sections K–L. Still open:
   Difference/Power set/Size (11.22/11.23/11.12 — the last needs a Σ quantifier); the ∅/U identity,
   zero, excluded-middle, contradiction laws (need `v∈∅ = false` / `v∈U = true` membership atoms —
   ∅/U are runtime values, not symbolic constants, so their recognizers are the missing piece); and
-  Metatheorem parts **(b)** `Es ⊆ Fs ↔ Ep ⇒ Fp` and **(c)** `Es = U ↔ Ep` valid.
+  Metatheorem part **(c)** `Es = U ↔ Ep` valid.
 
 ## 4a. Two coherence issues — resolved
 
@@ -203,6 +204,28 @@ proves exactly the valid identities over `{∪, ∩, ~, variables}` and **reject
 Named laws proved by a single `metaset` call: **11.26/11.36** symmetry, **11.27** associativity,
 **11.28** idempotency, **11.40/11.41** distributivity, **11.42a/b** De Morgan, absorption,
 **11.19** double complement. This is the object-level payoff of §11.3 — the algebra laws "for free".
+
+### Metatheorem 11.25(b) — subset via implication (`metasubset`)
+
+Gries (11.56) states that `Es ⊆ Fs` iff the characteristic predicate of `Es` *implies* that of `Fs`
+— i.e. Metatheorem 11.25(b): `Es ⊆ Fs` valid iff `Ep ⇒ Fp` valid. `metasubset` (section L) mechanizes
+it. The goal `Es ⊆ Fs` is a bare proposition (not an equality), so we reduce it to `true`:
+
+1. **Subset (11.13)** rewrites `Es ⊆ Fs` to `(∀v | v∈Es : v∈Fs)`.
+2. **Trading (9.2)** `trade_forall_implies` rewrites that to `(∀v |: v∈Es ⇒ v∈Fs)`. The trade uses the
+   *simple* membership predicates `(·∈Es)` / `(·∈Fs)` (`memPred`, a one-line `Pred`), so no recursion
+   is needed here — the compound structure is untouched until the next step.
+3. The section-K **`unfold`** lemmas rewrite the antecedent `v∈Es → Ep` (`at [select_body; left_branch]`)
+   and consequent `v∈Fs → Fp` (`at [select_body; right_branch]`).
+4. The body `Ep ⇒ Fp` is a tautology; **`autoproof_anf`** proves it and **`Taut`** (not `Taut'` — the
+   body is an implication, a bare proposition, not an equality) replaces it with `true`.
+5. `ident_forall_true'` closes.
+
+Same completeness/soundness guarantee: valid subset relations prove, non-subsets are rejected
+(`autoproof_anf` throws on a non-tautological implication). Section L proves **11.58** reflexivity,
+the ∩ lower-bound (`S∩T ⊆ S`, `S∩T ⊆ T`), the ∪ upper-bound (`S ⊆ S∪T`, `T ⊆ S∪T`), `S∩T ⊆ S∪T`,
+and rejects `S ⊆ S∩T` / `S∪T ⊆ S`. Example is now **44/44**. Still open: part **(c)** `Es = U ↔ Ep`
+valid, and the ∅/U identity/zero laws (both need `v∈∅ = false` / `v∈U = true` membership atoms).
 
 ## 3a. One-Point (Gries 8.14) kernel fix
 
