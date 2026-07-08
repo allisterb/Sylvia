@@ -3,6 +3,7 @@
 open FSharp.Quotations
 open FSharp.Quotations.Patterns
 
+open FsExpr
 open Formula
 open Descriptions
 
@@ -65,10 +66,51 @@ module SetTheory =
             when sequal s s1 && sequal t t1 && vequal' xv (get_vars xe1) && vequal' xv (get_vars xe2) -> desc "Set Extensionality"
         | _ -> None
 
-    let set_theory_axioms = 
+    (* Operator definitions — each reduces membership in a compound set to a propositional/predicate
+       combination of memberships (Gries 11.13-11.23). All are keyed on the SetTerm OPERATOR methods
+       (∪ = op_BarPlusBar `|+|`, ∩ = op_BarMultiplyBar `|*|`, ~ = op_UnaryNegation `-`, ⊆ = op_BarLessBar
+       `|<|`) — the SAME methods the §11.3 Boolean-algebra layer (SetAlgebra) keys its join/meet/complement
+       on — so a single expression `S |+| T` is usable by BOTH the membership route and the algebra route.
+       (The method name is checked with the `Op "…"` name pattern rather than `Binary <@ (|+|) @>`,
+       because `Binary`'s type guard would pin the axiom to one element type; the name check is
+       element-type-agnostic.) *)
+
+    /// v ∈ S∪T = v∈S ∨ v∈T   (Gries 11.20, Union).
+    let (|UnionMember|_|) =
         function
-        | Membership x 
-        | Extensionality x -> Some x
+        | Equals(ElementOf(v, Call(None, Op "op_BarPlusBar", s::t::[])), Or(ElementOf(v1, s1), ElementOf(v2, t1)))
+            when sequal2 v s v1 s1 && sequal2 v t v2 t1 -> desc "Set Union"
+        | _ -> None
+
+    /// v ∈ S∩T = v∈S ∧ v∈T   (Gries 11.21, Intersection).
+    let (|IntersectMember|_|) =
+        function
+        | Equals(ElementOf(v, Call(None, Op "op_BarMultiplyBar", s::t::[])), And(ElementOf(v1, s1), ElementOf(v2, t1)))
+            when sequal2 v s v1 s1 && sequal2 v t v2 t1 -> desc "Set Intersection"
+        | _ -> None
+
+    /// v ∈ ~S = ¬(v∈S)   (Gries 11.18, Complement; 11.17 with the implicit universe v∈U elided).
+    let (|ComplementMember|_|) =
+        function
+        | Equals(ElementOf(v, Call(None, Op "op_UnaryNegation", s::[])), Not(ElementOf(v1, s1)))
+            when sequal2 v s v1 s1 -> desc "Set Complement"
+        | _ -> None
+
+    /// S ⊆ T = (∀x | x∈S : x∈T)   (Gries 11.13, Subset).
+    let (|SubsetDef|_|) =
+        function
+        | Equals(Call(None, Op "op_BarLessBar", s::t::[]), ForAll(_, xv, ElementOf(xe1, s1), ElementOf(xe2, t1)))
+            when sequal s s1 && sequal t t1 && vequal' xv (get_vars xe1) && vequal' xv (get_vars xe2) -> desc "Subset"
+        | _ -> None
+
+    let set_theory_axioms =
+        function
+        | Membership x
+        | Extensionality x
+        | UnionMember x
+        | IntersectMember x
+        | ComplementMember x
+        | SubsetDef x -> Some x
         | _ -> None
     (* Theory *)
 
