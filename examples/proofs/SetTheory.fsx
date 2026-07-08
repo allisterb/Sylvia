@@ -253,5 +253,37 @@ ok "Double complement 11.19   ~~S = S"                 (metaproven (neg (neg sS)
 ok "INVALID S∪T = S∩T  rejected"                       (not (metaproven (sS |+| sT) (sS |*| sT)))
 ok "INVALID ~(S∪T) = ~S∪~T  rejected"                  (not (metaproven (neg (sS |+| sT)) ((neg sS) |+| (neg sT))))
 
+printfn "\n===== (L) Metatheorem 11.25(b): subset via implication  Es ⊆ Fs ↔ Ep ⇒ Fp ====="
+// Gries (11.56) — one set is a subset of another iff its characteristic predicate IMPLIES the other's
+// — is exactly Metatheorem 11.25(b). We mechanize it like (a), but the goal `Es ⊆ Fs` is a bare
+// proposition (not an equality), so we reduce it to `true`: apply Subset (11.13) to get
+// `(∀v | v∈Es : v∈Fs)`; TRADE (9.2) to `(∀v |: v∈Es ⇒ v∈Fs)` (using the simple membership predicates,
+// so no recursion is needed for the trade); unfold each side of the implication with the section-K
+// `unfold` lemmas to reach the body `Ep ⇒ Fp`; discharge that tautology with `autoproof_anf` folded
+// via `Taut` (a proven proposition → true); close with `(∀v|:true) = true`.
+
+let memPred (s: SetTerm<int>) : Pred<int> = Pred<int>(func = <@ fun (z:int) -> z |?| %s.Expr @>)
+
+let metasubset (lhs: SetTerm<int>) (rhs: SetTerm<int>) : Theorem =
+    let goal   = lhs |<| rhs
+    let subAx  = id_ax st (goal == qall v (v |?| lhs) (v |?| rhs))            // Subset 11.13
+    let trade  = trade_forall_implies v (memPred lhs) (memPred rhs)           // Trading 9.2: (∀v|N:P)=(∀v|:N⇒P)
+    let stepA  = match lhs with SAtom -> [] | _ -> [ unfold lhs |> at [select_body; left_branch] ]   // antecedent
+    let stepC  = match rhs with SAtom -> [] | _ -> [ unfold rhs |> at [select_body; right_branch] ]  // consequent
+    let bodyThm = autoproof_anf ((translate lhs) ==> (translate rhs)) |> Theorem   // Ep ⇒ Fp (complete)
+    theorem st goal ([ subAx; trade ] @ stepA @ stepC @ [ Taut bodyThm |> at [select_body]; ident_forall_true' v ])
+
+let subproven l r = try (metasubset l r).Proof.Complete with _ -> false
+
+ok "11.58 Reflexivity          S ⊆ S"                  (subproven sS sS)
+ok "∩ lower bound              S∩T ⊆ S"                (subproven (sS |*| sT) sS)
+ok "∩ lower bound              S∩T ⊆ T"                (subproven (sS |*| sT) sT)
+ok "∪ upper bound              S ⊆ S∪T"                (subproven sS (sS |+| sT))
+ok "∪ upper bound              T ⊆ S∪T"                (subproven sT (sS |+| sT))
+ok "monotone                   S∩T ⊆ S∪T"             (subproven (sS |*| sT) (sS |+| sT))
+// Soundness: a non-subset must be REJECTED (the implication Ep ⇒ Fp is not a tautology).
+ok "INVALID S ⊆ S∩T  rejected"                        (not (subproven sS (sS |*| sT)))
+ok "INVALID S∪T ⊆ S  rejected"                        (not (subproven (sS |+| sT) sS))
+
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1
