@@ -38,6 +38,12 @@ module SetTheory =
         | SetComp e -> Some e
         | _ -> None
 
+    /// The universe U (`Set.U`, a static property) — the domain of discourse every value belongs to.
+    let (|SetUniverse|_|) =
+        function
+        | PropertyGet(None, pi, []) when pi.Name = "U" -> Some ()
+        | _ -> None
+
     /// e ∈ S  →  (e, S). The set operand S is returned RAW — it may be a set variable (SetVar), a
     /// comprehension, or any set-typed expression. Callers destructure it (e.g. via `SetComp`) as
     /// needed; membership on a bare set variable (as in Extensionality) must not require a literal set.
@@ -103,6 +109,18 @@ module SetTheory =
             when sequal s s1 && sequal t t1 && vequal' xv (get_vars xe1) && vequal' xv (get_vars xe2) -> desc "Subset"
         | _ -> None
 
+    /// v ∈ ∅ = false   (the empty set has no members; Gries: ∅ = {x | false}, Exercise 11.4).
+    let (|EmptyMember|_|) =
+        function
+        | Equals(ElementOf(_, SetEmpty _), False) -> desc "Empty Set Membership"
+        | _ -> None
+
+    /// v ∈ U = true   (every value belongs to the universe of discourse).
+    let (|UniverseMember|_|) =
+        function
+        | Equals(ElementOf(_, SetUniverse), True) -> desc "Universe Membership"
+        | _ -> None
+
     let set_theory_axioms =
         function
         | Membership x
@@ -110,7 +128,9 @@ module SetTheory =
         | UnionMember x
         | IntersectMember x
         | ComplementMember x
-        | SubsetDef x -> Some x
+        | SubsetDef x
+        | EmptyMember x
+        | UniverseMember x -> Some x
         | _ -> None
     (* Theory *)
 
