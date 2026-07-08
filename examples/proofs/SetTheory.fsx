@@ -27,30 +27,33 @@ let ok label cond =
     if not cond then failures <- failures + 1
     printfn "  %s  %s" (if cond then "✓" else "✗") label
 
-// Free set variables S, T : Set<int>, as typed expressions for splicing into the theory's own
-// operator quotations (Set.set_union / set_intersection / ~-) — the same symbols the theory keys on.
-let uS : Expr<Set<int>> = Expr.Var(Var("S", typeof<Set<int>>)) |> Expr.Cast
-let uT : Expr<Set<int>> = Expr.Var(Var("T", typeof<Set<int>>)) |> Expr.Cast
+// Symbolic set variables S, T : Set<int>. Set operations are the SetTerm operators ∪ = `|+|`,
+// ∩ = `|*|`, ~ = `-`, ⊆ = `|<|` — the SAME symbols the theory keys on for both the algebra laws
+// and the membership axioms (so one expression is usable by both routes). `sS`/`sT` avoid clashing
+// with the truth constant `T`.
+let sS = setvar<int> "S"
+let sT = setvar<int> "T"
+let neg (s:SetTerm<int>) : SetTerm<int> = -s      // ~s, annotated to fix the operator's return type
 
 let sa = SetAlgebra.set_algebra<int>
 
 printfn "\n===== (B) Inherited Boolean-algebra axioms recognized after composition ====="
-ok "Idempotency      S ∪ S = S"              (sa.AxEquiv <@ Set.set_union %uS %uS = %uS @>)
-ok "Symmetry         S ∩ T = T ∩ S"          (sa.AxEquiv <@ Set.set_intersection %uS %uT = Set.set_intersection %uT %uS @>)
-ok "Identity of ∪     S ∪ ∅ = S"              (sa.AxEquiv <@ Set.set_union %uS Set.Empty = %uS @>)
+ok "Idempotency      S ∪ S = S"              (sa.AxEquiv <@ %((sS |+| sS).Expr) = %sS.Expr @>)
+ok "Symmetry         S ∩ T = T ∩ S"          (sa.AxEquiv <@ %((sS |*| sT).Expr) = %((sT |*| sS).Expr) @>)
+ok "Identity of ∪     S ∪ ∅ = S"              (sa.AxEquiv <@ (%sS.Expr |+| Set.Empty) = %sS.Expr @>)
 
 printfn "\n===== (C) Complement law recognized with correct polarity (Gries 11.32/11.39) ====="
-ok "Excluded middle  S ∪ ~S = U  recognized"    (sa.AxEquiv <@ Set.set_union %uS (Set.(~-) %uS) = Set.U @>)
-ok "Contradiction    S ∩ ~S = ∅  recognized"    (sa.AxEquiv <@ Set.set_intersection %uS (Set.(~-) %uS) = Set.Empty @>)
-ok "S ∪ ~S = ∅  rejected (was wrongly accepted)" (not (sa.AxEquiv <@ Set.set_union %uS (Set.(~-) %uS) = Set.Empty @>))
-ok "S ∩ ~S = U  rejected (was wrongly accepted)" (not (sa.AxEquiv <@ Set.set_intersection %uS (Set.(~-) %uS) = Set.U @>))
+ok "Excluded middle  S ∪ ~S = U  recognized"    (sa.AxEquiv <@ %((sS |+| (neg sS)).Expr) = Set.U @>)
+ok "Contradiction    S ∩ ~S = ∅  recognized"    (sa.AxEquiv <@ %((sS |*| (neg sS)).Expr) = Set.Empty @>)
+ok "S ∪ ~S = ∅  rejected (was wrongly accepted)" (not (sa.AxEquiv <@ %((sS |+| (neg sS)).Expr) = Set.Empty @>))
+ok "S ∩ ~S = U  rejected (was wrongly accepted)" (not (sa.AxEquiv <@ %((sS |*| (neg sS)).Expr) = Set.U @>))
 
 printfn "\n===== (A) Injected axioms compose through the theory chain (previously dropped) ====="
-let marker = <@ Set.set_union %uS %uT = Set.U @>    // not a Boolean-algebra axiom on its own
+let marker = <@ %((sS |+| sT).Expr) = Set.U @>    // not a Boolean-algebra axiom on its own
 let extra : Axioms = fun e -> if sequal e (expand marker) then Descriptions.axiom_name "Marker" "Marker" |> Some else None
 let sa2 = SetAlgebra.SetAlgebra<int>(axioms = extra)
 ok "injected marker axiom recognized in sa2"     (sa2.AxEquiv marker)
-ok "base axiom still recognized in sa2"          (sa2.AxEquiv <@ Set.set_union %uS %uS = %uS @>)
+ok "base axiom still recognized in sa2"          (sa2.AxEquiv <@ %((sS |+| sS).Expr) = %sS.Expr @>)
 ok "marker NOT recognized in plain set_algebra"  (not (sa.AxEquiv marker))
 
 printfn "\n===== (D) Predicate-calculus base available under set_theory ====="
@@ -62,8 +65,6 @@ printfn "\n===== (E) Set Membership (11.3) and Extensionality (11.4) are live ax
 let x = intvar "x"
 let e = intvar "e"
 let R = intpred "R"
-let sS = setvar<int> "S"
-let sT = setvar<int> "T"
 
 // Membership (11.3), traditional-body form:  e ∈ {x | R x : x} = (∃x | R x : e = x)
 ok "Membership (11.3) recognized"
@@ -119,6 +120,67 @@ ok "11.5  S = {x | x∈S : x}  proven" (proven (fun () ->
         inner117 |> at [select_body; right_branch]                 // y∈{..} → y∈S
         def_true (Prop <@ %yinS @>) |> Commute |> at [select_body] // (y∈S = y∈S) → true
         ident_forall_true' y                                       // (∀y|: true) → true
+    ]))
+
+printfn "\n===== (H) Operator membership-reduction axioms (Gries 11.13-11.21) ====="
+let v = intvar "v"
+let vinS = Prop <@ %((v |?| sS).Expr): bool @>
+let vinT = Prop <@ %((v |?| sT).Expr): bool @>
+// The SAME `|+|`/`|*|` operator expressions match both the membership axioms here AND the
+// Boolean-algebra laws (checks B/C); subset `|<|` is now a proposition.
+ok "11.20 Union       v∈S∪T = v∈S ∨ v∈T"
+    (st.AxEquiv ((Prop <@ %((v |?| (sS |+| sT)).Expr): bool @>) == (vinS + vinT)).Expr)
+ok "11.21 Intersection v∈S∩T = v∈S ∧ v∈T"
+    (st.AxEquiv ((Prop <@ %((v |?| (sS |*| sT)).Expr): bool @>) == (vinS * vinT)).Expr)
+ok "11.18 Complement  v∈~S = ¬(v∈S)"
+    (st.AxEquiv ((Prop <@ %((v |?| (neg sS)).Expr): bool @>) == (!! vinS)).Expr)
+ok "11.13 Subset      S⊆T = (∀x|x∈S:x∈T)"
+    (st.AxEquiv (expand <@ %((sS |<| sT).Expr) = forall_expr %x.Expr %((x |?| sS).Expr) %((x |?| sT).Expr) @>))
+// coherence: the SAME |+| expression is also recognized by the Boolean-algebra layer
+ok "coherence: S∪T (|+|) matches algebra idempotency S∪S=S"
+    ((SetAlgebra.set_algebra<int>).AxEquiv <@ %((sS |+| sS).Expr) = %sS.Expr @>)
+
+printfn "\n===== (I) A worked set-algebra law via the membership route: Gries 11.28  S ∪ S = S ====="
+// Extensionality reduces S∪S=S to (∀v|: v∈(S∪S) = v∈S); the Union axiom (11.20) unfolds v∈(S∪S) to
+// v∈S ∨ v∈S; ∨-idempotency collapses it; reflexivity and (∀v|:true)=true close it.
+let SuS   = sS |+| sS
+let extU  = id_ax st (Prop <@ (%SuS.Expr = %sS.Expr) = forall_expr %v.Expr %T.Expr ((%((v |?| SuS).Expr):bool) = %((v |?| sS).Expr)) @>)
+let unionU = id_ax st ((Prop <@ %((v |?| SuS).Expr): bool @>) == (vinS + vinS))
+ok "11.28  S ∪ S = S  proven" (proven (fun () ->
+    ident st (Prop <@ %SuS.Expr = %sS.Expr @>) [
+        extU                                               // → (∀v|: v∈(S∪S) = v∈S)
+        unionU |> at [select_body; left_branch]            // v∈(S∪S) → v∈S ∨ v∈S
+        idemp_or vinS |> at [select_body; left_branch]      // v∈S ∨ v∈S → v∈S
+        def_true vinS |> Commute |> at [select_body]        // (v∈S = v∈S) → true
+        ident_forall_true' v                                // (∀v|: true) → true
+    ]))
+
+printfn "\n===== (J) De Morgan via the membership route: Gries 11.42a  ~(S∪T) = ~S ∩ ~T ====="
+// Extensionality; then each membership is reduced by the operator axioms (complement, union,
+// intersection); the propositional De Morgan (¬(p∨q) = ¬p∧¬q) equates the two sides; close as usual.
+let nS  : SetTerm<int> = neg sS
+let nsT : SetTerm<int> = neg sT
+let SuT      : SetTerm<int> = sS |+| sT
+let negSuT   : SetTerm<int> = neg SuT              // ~(S ∪ T)
+let nSinT    : SetTerm<int> = nS |*| nsT           // ~S ∩ ~T
+let memv (t:SetTerm<int>) = Prop <@ %((v |?| t).Expr): bool @>
+let compUnion = id_ax st ((memv negSuT) == (!! (memv SuT)))       // v∈~(S∪T) = ¬(v∈(S∪T))
+let unionR    = id_ax st ((memv SuT)    == (vinS + vinT))         // v∈(S∪T)  = v∈S ∨ v∈T
+let interR    = id_ax st ((memv nSinT)  == ((memv nS) * (memv nsT)))  // v∈(~S∩~T) = v∈~S ∧ v∈~T
+let compS     = id_ax st ((memv nS)     == (!! vinS))             // v∈~S = ¬(v∈S)
+let compT     = id_ax st ((memv nsT)    == (!! vinT))             // v∈~T = ¬(v∈T)
+let extDM = id_ax st (Prop <@ (%negSuT.Expr = %nSinT.Expr) = forall_expr %v.Expr %T.Expr ((%((v |?| negSuT).Expr):bool) = %((v |?| nSinT).Expr)) @>)
+ok "11.42a  ~(S∪T) = ~S ∩ ~T  proven" (proven (fun () ->
+    ident st (Prop <@ %negSuT.Expr = %nSinT.Expr @>) [
+        extDM                                                      // (∀v|: v∈~(S∪T) = v∈(~S∩~T))
+        compUnion |> at [select_body; left_branch]                 // v∈~(S∪T) → ¬(v∈(S∪T))
+        unionR    |> at [select_body; left_branch; apply_unary]    // v∈(S∪T) → v∈S ∨ v∈T
+        interR    |> at [select_body; right_branch]                // v∈(~S∩~T) → v∈~S ∧ v∈~T
+        compS     |> at [select_body; right_branch; left_branch]   // v∈~S → ¬(v∈S)
+        compT     |> at [select_body; right_branch; right_branch]  // v∈~T → ¬(v∈T)
+        distrib_not_or vinS vinT |> at [select_body; left_branch]  // ¬(v∈S ∨ v∈T) → ¬(v∈S) ∧ ¬(v∈T)
+        def_true ((!! vinS) * (!! vinT)) |> Commute |> at [select_body]   // (X = X) → true
+        ident_forall_true' v                                       // (∀v|: true) → true
     ]))
 
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures

@@ -137,11 +137,40 @@ Check (C) confirms the corrected polarity is recognized and the inverted forms a
   (`S = T = (∀x|: x∈S = x∈T)`). Both are live, recognized axioms. Also fixed **One-Point (8.14)** in the
   predicate-calculus kernel (see below) and proved (11.5) and (11.7) as cross-layer smoke tests
   (`examples/proofs/SetTheory.fsx`, checks E–G).
-- **Step 4 — operator axioms + the metatheorem.** ⬜ Planned. Add the membership-reduction axioms
-  for Union/Intersection/Complement/Difference/**Subset**/Power set/Size (11.12–11.23), and — if
-  worthwhile — represent **Metatheorem (11.25)** as a derivation tactic (a set identity `Es = Fs`
-  discharged by translating to `Ep = Fp` and proving that with the propositional automation, then
-  translating back). Note `⊆` corresponds to `⇒` (11.25b), so subset proofs reuse implication.
+- **Step 4 — operator axioms + the metatheorem.** ◐ Core done. Added the membership-reduction axioms
+  **Union (11.20)** `v∈S∪T = v∈S ∨ v∈T`, **Intersection (11.21)** `v∈S∩T = v∈S ∧ v∈T`,
+  **Complement (11.18)** `v∈~S = ¬(v∈S)`, **Subset (11.13)** `S⊆T = (∀x|x∈S:x∈T)` — all live,
+  recognized, keyed on the SetTerm operator methods (`|+|`/`|*|`/`-`/`|<|`). Proved **11.28**
+  `S ∪ S = S` via the membership route (extensionality → Union axiom → ∨-idempotency) and **De Morgan
+  (11.42a)** `~(S∪T) = ~S∩~T`. Resolved the two coherence issues (§4a): union/intersection are keyed
+  on the `|+|`/`|*|` operators in *both* the algebra and the membership axioms, so one `S |+| T`
+  expression matches both routes, and `S ⊆ T` is now a proposition. See `examples/proofs/SetTheory.fsx`
+  checks H–J. Still open:
+  Difference/Power set/Size (11.22/11.23/11.12 — the last needs a Σ quantifier); the rest of
+  11.26–11.42; and the **Metatheorem (11.25)** tactic (translate a set identity `Es = Fs` to `Ep = Fp`,
+  discharge with the propositional automation, translate back — `⊆` corresponds to `⇒` per 11.25b).
+
+## 4a. Two coherence issues — resolved
+
+- **Union/intersection representation.** ✅ Fixed by unifying on the `|+|`/`|*|` operators. Both
+  `SetAlgebra` (join/meet) and the Union/Intersection membership axioms now key on
+  `op_BarPlusBar`/`op_BarMultiplyBar`, so a single `S |+| T` expression written in the natural operator
+  notation is recognized by *both* the algebra laws and the membership axioms. The key insight: a
+  *type-annotated bare operator quotation* `<@ (|+|) : Set<'t> -> Set<'t> -> Set<'t> @>` is a direct
+  method reference that `SpecificCall` accepts (and it resolves generically over the element type). Only
+  an explicit *lambda* `<@ fun a b -> a |+| b @>` fails — that was the earlier red herring. The axiom
+  patterns check `mi.Name = "op_BarPlusBar"` directly rather than via `Binary <@ (|+|) @>`, because
+  `Binary`'s type guard would pin each axiom to a single element type. Complement already aligned
+  (`-`/`Set.(~-)` both `op_UnaryNegation`). *(The earlier `sunion`/`sinter` combinators are gone.)*
+- **Subset typing.** ✅ Fixed. The five `SetTerm.(|<|)` overloads (`Definitions/Set.fs`) now return
+  `Scalar<bool>` instead of `SetTerm`, so `S ⊆ T` is a proposition. (`ssubset` is also provided.)
+
+## 4b. De Morgan (11.42a)
+
+`~(S ∪ T) = ~S ∩ ~T` is proved via the membership route (`examples/proofs/SetTheory.fsx` section J):
+extensionality; the complement/union/intersection axioms reduce each membership; propositional
+De Morgan (`distrib_not_or`, `¬(p∨q) = ¬p ∧ ¬q`) equates the sides; then reflexivity and
+`(∀v|:true) = true`. It exercises all three Boolean operators together in one proof.
 
 ## 3a. One-Point (Gries 8.14) kernel fix
 

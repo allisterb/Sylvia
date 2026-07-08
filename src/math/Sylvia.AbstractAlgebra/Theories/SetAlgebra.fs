@@ -30,7 +30,13 @@ module SetAlgebra =
     (* Theory *)
 
     type SetAlgebra<'t when 't: equality>(?axioms:Axioms, ?rules:Rules) =
-        inherit BooleanAlgebra<Set<'t>>("Set Algebra", <@ Set.set_union @>, <@ Set.set_intersection @>, <@ Set.Empty @>, <@ Set.U @>, <@ Set.(~-) @>,
+        // Join/meet are the ∪ / ∩ SetTerm operators (op_BarPlusBar / op_BarMultiplyBar), so a set
+        // expression written `S |+| T` / `S |*| T` matches BOTH these Boolean-algebra laws AND the
+        // membership operator axioms in SetTheory. (`<@ (|+|) @>` is a direct method reference that
+        // SpecificCall accepts — unlike a `fun a b -> a |+| b` lambda, which it rejects.)
+        inherit BooleanAlgebra<Set<'t>>("Set Algebra",
+            <@ (|+|) : Set<'t> -> Set<'t> -> Set<'t> @>, <@ (|*|) : Set<'t> -> Set<'t> -> Set<'t> @>,
+            <@ Set.Empty @>, <@ Set.U @>, <@ Set.(~-) @>,
             ?axioms = axioms, ?rules = rules)
     
     let set_algebra<'t when 't: equality> = SetAlgebra<'t>()

@@ -139,6 +139,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Proofs", "Proofs", "{7F8574
 		..\examples\proofs\Include.fsx = ..\examples\proofs\Include.fsx
 		..\examples\proofs\PredCalculus.fsx = ..\examples\proofs\PredCalculus.fsx
 		..\examples\proofs\PropCalculus.fsx = ..\examples\proofs\PropCalculus.fsx
+		..\examples\proofs\SetTheory.fsx = ..\examples\proofs\SetTheory.fsx
 	EndProjectSection
 EndProject
 Global
