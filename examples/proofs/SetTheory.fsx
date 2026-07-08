@@ -38,8 +38,8 @@ let neg (s:SetTerm<int>) : SetTerm<int> = -s      // ~s, annotated to fix the op
 let sa = SetAlgebra.set_algebra<int>
 
 printfn "\n===== (B) Inherited Boolean-algebra axioms recognized after composition ====="
-ok "Idempotency      S ∪ S = S"              (sa.AxEquiv <@ %((sS |+| sS).Expr) = %sS.Expr @>)
-ok "Symmetry         S ∩ T = T ∩ S"          (sa.AxEquiv <@ %((sS |*| sT).Expr) = %((sT |*| sS).Expr) @>)
+ok "Idempotency      S ∪ S = S"              (sa.AxEquiv ((sS |+| sS) == sS).Expr)
+ok "Symmetry         S ∩ T = T ∩ S"          (sa.AxEquiv ((sS |*| sT) == (sT |*| sS)).Expr)
 ok "Identity of ∪     S ∪ ∅ = S"              (sa.AxEquiv <@ (%sS.Expr |+| Set.Empty) = %sS.Expr @>)
 
 printfn "\n===== (C) Complement law recognized with correct polarity (Gries 11.32/11.39) ====="
@@ -53,7 +53,7 @@ let marker = <@ %((sS |+| sT).Expr) = Set.U @>    // not a Boolean-algebra axiom
 let extra : Axioms = fun e -> if sequal e (expand marker) then Descriptions.axiom_name "Marker" "Marker" |> Some else None
 let sa2 = SetAlgebra.SetAlgebra<int>(axioms = extra)
 ok "injected marker axiom recognized in sa2"     (sa2.AxEquiv marker)
-ok "base axiom still recognized in sa2"          (sa2.AxEquiv <@ %((sS |+| sS).Expr) = %sS.Expr @>)
+ok "base axiom still recognized in sa2"          (sa2.AxEquiv ((sS |+| sS) == sS).Expr)
 ok "marker NOT recognized in plain set_algebra"  (not (sa.AxEquiv marker))
 
 printfn "\n===== (D) Predicate-calculus base available under set_theory ====="
@@ -74,7 +74,7 @@ ok "Membership non-instance rejected"
 
 // Extensionality (11.4):  S = T = (∀x |: x∈S = x∈T)   (S, T set variables)
 ok "Extensionality (11.4) recognized"
-    (st.AxEquiv <@ (%sS.Expr = %sT.Expr) = forall_expr %x.Expr %T.Expr ((%((x |?| sS).Expr):bool) = %((x |?| sT).Expr)) @>)
+    (st.AxEquiv ((sS == sT) == qall x T ((x |?| sS) == (x |?| sT))).Expr)
 ok "Extensionality with non-true range rejected"
     (not (st.AxEquiv <@ (%sS.Expr = %sT.Expr) = forall_expr %x.Expr %(R.[x].Expr) ((%((x |?| sS).Expr):bool) = %((x |?| sT).Expr)) @>))
 
@@ -124,30 +124,30 @@ ok "11.5  S = {x | x∈S : x}  proven" (proven (fun () ->
 
 printfn "\n===== (H) Operator membership-reduction axioms (Gries 11.13-11.21) ====="
 let v = intvar "v"
-let vinS = Prop <@ %((v |?| sS).Expr): bool @>
-let vinT = Prop <@ %((v |?| sT).Expr): bool @>
+let vinS = v |?| sS      // membership is now a Prop directly (SetTerm's `|?|` returns Prop)
+let vinT = v |?| sT
 // The SAME `|+|`/`|*|` operator expressions match both the membership axioms here AND the
 // Boolean-algebra laws (checks B/C); subset `|<|` is now a proposition.
 ok "11.20 Union       v∈S∪T = v∈S ∨ v∈T"
-    (st.AxEquiv ((Prop <@ %((v |?| (sS |+| sT)).Expr): bool @>) == (vinS + vinT)).Expr)
+    (st.AxEquiv ((v |?| (sS |+| sT)) == (vinS + vinT)).Expr)
 ok "11.21 Intersection v∈S∩T = v∈S ∧ v∈T"
-    (st.AxEquiv ((Prop <@ %((v |?| (sS |*| sT)).Expr): bool @>) == (vinS * vinT)).Expr)
+    (st.AxEquiv ((v |?| (sS |*| sT)) == (vinS * vinT)).Expr)
 ok "11.18 Complement  v∈~S = ¬(v∈S)"
-    (st.AxEquiv ((Prop <@ %((v |?| (neg sS)).Expr): bool @>) == (!! vinS)).Expr)
+    (st.AxEquiv ((v |?| (neg sS)) == (!! vinS)).Expr)
 ok "11.13 Subset      S⊆T = (∀x|x∈S:x∈T)"
-    (st.AxEquiv (expand <@ %((sS |<| sT).Expr) = forall_expr %x.Expr %((x |?| sS).Expr) %((x |?| sT).Expr) @>))
+    (st.AxEquiv ((sS |<| sT) == qall x (x |?| sS) (x |?| sT)).Expr)
 // coherence: the SAME |+| expression is also recognized by the Boolean-algebra layer
 ok "coherence: S∪T (|+|) matches algebra idempotency S∪S=S"
-    ((SetAlgebra.set_algebra<int>).AxEquiv <@ %((sS |+| sS).Expr) = %sS.Expr @>)
+    ((SetAlgebra.set_algebra<int>).AxEquiv ((sS |+| sS) == sS).Expr)
 
 printfn "\n===== (I) A worked set-algebra law via the membership route: Gries 11.28  S ∪ S = S ====="
 // Extensionality reduces S∪S=S to (∀v|: v∈(S∪S) = v∈S); the Union axiom (11.20) unfolds v∈(S∪S) to
 // v∈S ∨ v∈S; ∨-idempotency collapses it; reflexivity and (∀v|:true)=true close it.
 let SuS   = sS |+| sS
-let extU  = id_ax st (Prop <@ (%SuS.Expr = %sS.Expr) = forall_expr %v.Expr %T.Expr ((%((v |?| SuS).Expr):bool) = %((v |?| sS).Expr)) @>)
-let unionU = id_ax st ((Prop <@ %((v |?| SuS).Expr): bool @>) == (vinS + vinS))
+let extU  = id_ax st ((SuS == sS) == qall v T ((v |?| SuS) == (v |?| sS)))
+let unionU = id_ax st ((v |?| SuS) == (vinS + vinS))
 ok "11.28  S ∪ S = S  proven" (proven (fun () ->
-    ident st (Prop <@ %SuS.Expr = %sS.Expr @>) [
+    ident st (SuS == sS) [
         extU                                               // → (∀v|: v∈(S∪S) = v∈S)
         unionU |> at [select_body; left_branch]            // v∈(S∪S) → v∈S ∨ v∈S
         idemp_or vinS |> at [select_body; left_branch]      // v∈S ∨ v∈S → v∈S
@@ -163,15 +163,15 @@ let nsT : SetTerm<int> = neg sT
 let SuT      : SetTerm<int> = sS |+| sT
 let negSuT   : SetTerm<int> = neg SuT              // ~(S ∪ T)
 let nSinT    : SetTerm<int> = nS |*| nsT           // ~S ∩ ~T
-let memv (t:SetTerm<int>) = Prop <@ %((v |?| t).Expr): bool @>
+let memv (t:SetTerm<int>) = v |?| t
 let compUnion = id_ax st ((memv negSuT) == (!! (memv SuT)))       // v∈~(S∪T) = ¬(v∈(S∪T))
 let unionR    = id_ax st ((memv SuT)    == (vinS + vinT))         // v∈(S∪T)  = v∈S ∨ v∈T
 let interR    = id_ax st ((memv nSinT)  == ((memv nS) * (memv nsT)))  // v∈(~S∩~T) = v∈~S ∧ v∈~T
 let compS     = id_ax st ((memv nS)     == (!! vinS))             // v∈~S = ¬(v∈S)
 let compT     = id_ax st ((memv nsT)    == (!! vinT))             // v∈~T = ¬(v∈T)
-let extDM = id_ax st (Prop <@ (%negSuT.Expr = %nSinT.Expr) = forall_expr %v.Expr %T.Expr ((%((v |?| negSuT).Expr):bool) = %((v |?| nSinT).Expr)) @>)
+let extDM = id_ax st ((negSuT == nSinT) == qall v T ((v |?| negSuT) == (v |?| nSinT)))
 ok "11.42a  ~(S∪T) = ~S ∩ ~T  proven" (proven (fun () ->
-    ident st (Prop <@ %negSuT.Expr = %nSinT.Expr @>) [
+    ident st (negSuT == nSinT) [
         extDM                                                      // (∀v|: v∈~(S∪T) = v∈(~S∩~T))
         compUnion |> at [select_body; left_branch]                 // v∈~(S∪T) → ¬(v∈(S∪T))
         unionR    |> at [select_body; left_branch; apply_unary]    // v∈(S∪T) → v∈S ∨ v∈T
@@ -182,6 +182,76 @@ ok "11.42a  ~(S∪T) = ~S ∩ ~T  proven" (proven (fun () ->
         def_true ((!! vinS) * (!! vinT)) |> Commute |> at [select_body]   // (X = X) → true
         ident_forall_true' v                                       // (∀v|: true) → true
     ]))
+
+printfn "\n===== (K) Metatheorem 11.25(a): a tactic that mechanizes the set-algebra laws ====="
+// Gries' Metatheorem (11.25a) says a set identity  Es = Fs  is valid iff its propositional
+// translation  Ep = Fp  (Definition 11.24: ∅↦false, U↦true, ~↦¬, ∪↦∨, ∩↦∧, set variable S ↦ its
+// membership proposition v∈S) is valid. Rather than adding it as a new trusted primitive, we
+// MECHANIZE the membership-route proof used by hand for 11.28 / De Morgan (sections I/J): apply
+// Extensionality; recursively unfold every membership through the operator axioms (which literally
+// implement 11.24); discharge the resulting propositional body  Ep = Fp  with the COMPLETE ANF
+// prover `autoproof_anf`; and close with `(∀v|:true) = true`. The result is a genuine, kernel-checked
+// Theorem built only from existing recognized axioms — no new trusted rule. Because `autoproof_anf`
+// is complete for (and only for) propositional tautologies, the tactic proves exactly the valid set
+// identities over {∪, ∩, ~, variables} and REJECTS invalid ones.
+
+open FSharp.Quotations.Patterns
+
+// Classify a set expression's head operator (∪ / ∩ / ~), else it is an atom (a set variable).
+let (|SUnion|SInter|SCompl|SAtom|) (s: SetTerm<int>) =
+    match expand s.Expr with
+    | Call(None, mi, [a; b]) when mi.Name = "op_BarPlusBar"     -> SUnion(SetTerm<int>(Expr.Cast a), SetTerm<int>(Expr.Cast b))
+    | Call(None, mi, [a; b]) when mi.Name = "op_BarMultiplyBar" -> SInter(SetTerm<int>(Expr.Cast a), SetTerm<int>(Expr.Cast b))
+    | Call(None, mi, [a])    when mi.Name = "op_UnaryNegation"  -> SCompl(SetTerm<int>(Expr.Cast a))
+    | _ -> SAtom
+
+// Definition 11.24, keeping each set variable's membership atom v∈S in place of a boolean variable.
+let rec translate (s: SetTerm<int>) : Prop =
+    match s with
+    | SUnion(a, b) -> (translate a) + (translate b)   // ∪ ↦ ∨
+    | SInter(a, b) -> (translate a) * (translate b)   // ∩ ↦ ∧
+    | SCompl a     -> !! (translate a)                // ~ ↦ ¬
+    | SAtom        -> memv s
+
+// A rewrite rule  (v ∈ s) = translate s, built by recursion mirroring the operator axioms
+// (11.18/11.20/11.21). Each level unfolds its own membership, then recurses into any compound operand.
+let rec unfold (s: SetTerm<int>) : Rule =
+    let sub (x: SetTerm<int>) addr = match x with SAtom -> [] | _ -> [ unfold x |> at addr ]   // skip atoms
+    match s with
+    | SAtom       -> id_ax st ((memv s) == (memv s))                                            // reflexivity
+    | SCompl a    -> ident st ((memv s) == (translate s))
+                        ((id_ax st ((memv s) == (!! (memv a))) |> at_left) :: sub a [left_branch; apply_unary])
+    | SUnion(a, b)-> ident st ((memv s) == (translate s))
+                        ((id_ax st ((memv s) == ((memv a) + (memv b))) |> at_left) :: sub a [left_branch; left_branch] @ sub b [left_branch; right_branch])
+    | SInter(a, b)-> ident st ((memv s) == (translate s))
+                        ((id_ax st ((memv s) == ((memv a) * (memv b))) |> at_left) :: sub a [left_branch; left_branch] @ sub b [left_branch; right_branch])
+
+// The tactic: prove a set identity  Es = Fs  via Metatheorem 11.25(a).
+let metaset (lhs: SetTerm<int>) (rhs: SetTerm<int>) : Theorem =
+    let goal = lhs == rhs
+    let ext  = id_ax st (goal == qall v T ((v |?| lhs) == (v |?| rhs)))
+    let stepL = match lhs with SAtom -> [] | _ -> [ unfold lhs |> at [select_body; left_branch] ]
+    let stepR = match rhs with SAtom -> [] | _ -> [ unfold rhs |> at [select_body; right_branch] ]
+    let bodyRule = autoproof_anf ((translate lhs) == (translate rhs)) |> Theorem |> Ident   // Ep = Fp (complete)
+    theorem st goal ([ ext ] @ stepL @ stepR @ [ Taut' bodyRule |> at [select_body]; ident_forall_true' v ])
+
+let sU = setvar<int> "U"
+let metaproven l r = try (metaset l r).Proof.Complete with _ -> false
+
+// The named Gries laws 11.26–11.42 — each proved with a single `metaset` call.
+ok "11.26 Symmetry of ∪        S∪T = T∪S"              (metaproven (sS |+| sT) (sT |+| sS))
+ok "11.27 Associativity of ∪   (S∪T)∪U = S∪(T∪U)"      (metaproven ((sS |+| sT) |+| sU) (sS |+| (sT |+| sU)))
+ok "11.28 Idempotency of ∪     S∪S = S"                (metaproven (sS |+| sS) sS)
+ok "11.36 Symmetry of ∩        S∩T = T∩S"              (metaproven (sS |*| sT) (sT |*| sS))
+ok "11.40 Distributivity ∩/∪   S∩(T∪U) = (S∩T)∪(S∩U)"  (metaproven (sS |*| (sT |+| sU)) ((sS |*| sT) |+| (sS |*| sU)))
+ok "11.41 Distributivity ∪/∩   S∪(T∩U) = (S∪T)∩(S∪U)"  (metaproven (sS |+| (sT |*| sU)) ((sS |+| sT) |*| (sS |+| sU)))
+ok "11.42a De Morgan          ~(S∪T) = ~S∩~T"          (metaproven (neg (sS |+| sT)) ((neg sS) |*| (neg sT)))
+ok "11.42b De Morgan          ~(S∩T) = ~S∪~T"          (metaproven (neg (sS |*| sT)) ((neg sS) |+| (neg sT)))
+ok "Absorption                S∩(S∪T) = S"             (metaproven (sS |*| (sS |+| sT)) sS)
+ok "Double complement 11.19   ~~S = S"                 (metaproven (neg (neg sS)) sS)
+// Soundness: the tactic must REJECT invalid identities (the complete ANF prover refuses non-tautologies).
+ok "INVALID S∪T = S∩T  rejected"                       (not (metaproven (sS |+| sT) (sS |*| sT)))
+ok "INVALID ~(S∪T) = ~S∪~T  rejected"                  (not (metaproven (neg (sS |+| sT)) ((neg sS) |+| (neg sT))))
 
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1

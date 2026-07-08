@@ -392,20 +392,20 @@ type SetTerm<'t when 't: equality>(expr:Expr<Set<'t>>) =
 
     static member (|*|) (l:ISet<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.intersection<'t>, Expr.Value l.Set, r.Expr) |> expand_as<Set<'t>> |> SetTerm
 
-    static member (|?|) (l:Term<'t>, r:SetTerm<'t>) : Scalar<bool> = binary_call(None, SetOps.elementOf<'t>, l.Expr, r.Expr) |> expand_as<bool> |> Scalar<bool>
+    static member (|?|) (l:Term<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.elementOf<'t>, l.Expr, r.Expr) |> expand_as<bool> |> Prop
 
-    static member (|?|) (l:'t, r:SetTerm<'t>) : Scalar<bool> = binary_call(None, SetOps.elementOf<'t>, Expr.Value l, r.Expr) |> expand_as<bool> |> Scalar<bool>
+    static member (|?|) (l:'t, r:SetTerm<'t>) = binary_call(None, SetOps.elementOf<'t>, Expr.Value l, r.Expr) |> expand_as<bool> |> Prop
     
     // Subset S ⊆ T is a proposition (bool), not a set — the op_BarLessBar method returns bool.
-    static member (|<|) (l:SetTerm<'t>, r:Set<'t>) : Scalar<bool> = binary_call(None, SetOps.subsetOf<'t>, l.Expr, Expr.Value r) |> expand_as<bool> |> Scalar<bool>
+    static member (|<|) (l:SetTerm<'t>, r:Set<'t>) = binary_call(None, SetOps.subsetOf<'t>, l.Expr, Expr.Value r) |> expand_as<bool> |> Prop
 
-    static member (|<|) (l:Set<'t>, r:SetTerm<'t>) : Scalar<bool> = binary_call(None, SetOps.subsetOf<'t>, Expr.Value(l), r.Expr) |> expand_as<bool> |> Scalar<bool>
+    static member (|<|) (l:Set<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.subsetOf<'t>, Expr.Value(l), r.Expr) |> expand_as<bool> |> Prop
 
-    static member (|<|) (l:SetTerm<'t>, r:SetTerm<'t>) : Scalar<bool> = binary_call(None, SetOps.subsetOf<'t>, l.Expr, r.Expr) |> expand_as<bool> |> Scalar<bool>
+    static member (|<|) (l:SetTerm<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.subsetOf<'t>, l.Expr, r.Expr) |> expand_as<bool> |> Prop
 
-    static member (|<|) (l:SetTerm<'t>, r:ISet<'t>) : Scalar<bool> = binary_call(None, SetOps.subsetOf<'t>, l.Expr, Expr.Value r.Set) |> expand_as<bool> |> Scalar<bool>
+    static member (|<|) (l:SetTerm<'t>, r:ISet<'t>) = binary_call(None, SetOps.subsetOf<'t>, l.Expr, Expr.Value r.Set) |> expand_as<bool> |> Prop
 
-    static member (|<|) (l:ISet<'t>, r:SetTerm<'t>) : Scalar<bool> = binary_call(None, SetOps.subsetOf<'t>, Expr.Value l.Set, r.Expr) |> expand_as<bool> |> Scalar<bool>
+    static member (|<|) (l:ISet<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.subsetOf<'t>, Expr.Value l.Set, r.Expr) |> expand_as<bool> |> Prop
 
     static member (|^|) (l:SetTerm<'t>, r:'t) : SetTerm<'t> = binary_call(None, SetOps.elementDifference<'t>, l.Expr, Expr.Value r) |> expand_as<Set<'t>> |> SetTerm
 
