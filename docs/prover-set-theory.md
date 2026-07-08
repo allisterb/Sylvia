@@ -145,10 +145,14 @@ Check (C) confirms the corrected polarity is recognized and the inverted forms a
   (11.42a)** `~(S∪T) = ~S∩~T`. Resolved the two coherence issues (§4a): union/intersection are keyed
   on the `|+|`/`|*|` operators in *both* the algebra and the membership axioms, so one `S |+| T`
   expression matches both routes, and `S ⊆ T` is now a proposition. See `examples/proofs/SetTheory.fsx`
-  checks H–J. Still open:
-  Difference/Power set/Size (11.22/11.23/11.12 — the last needs a Σ quantifier); the rest of
-  11.26–11.42; and the **Metatheorem (11.25)** tactic (translate a set identity `Es = Fs` to `Ep = Fp`,
-  discharge with the propositional automation, translate back — `⊆` corresponds to `⇒` per 11.25b).
+  checks H–J.
+- **Metatheorem (11.25a) tactic.** ✅ Done (equality fragment). A `metaset` tactic mechanizes the
+  membership-route proof for *any* set identity over `{∪, ∩, ~, variables}`, proving each named
+  law 11.26–11.42 with one call. See §4c and `examples/proofs/SetTheory.fsx` section K. Still open:
+  Difference/Power set/Size (11.22/11.23/11.12 — the last needs a Σ quantifier); the ∅/U identity,
+  zero, excluded-middle, contradiction laws (need `v∈∅ = false` / `v∈U = true` membership atoms —
+  ∅/U are runtime values, not symbolic constants, so their recognizers are the missing piece); and
+  Metatheorem parts **(b)** `Es ⊆ Fs ↔ Ep ⇒ Fp` and **(c)** `Es = U ↔ Ep` valid.
 
 ## 4a. Two coherence issues — resolved
 
@@ -171,6 +175,34 @@ Check (C) confirms the corrected polarity is recognized and the inverted forms a
 extensionality; the complement/union/intersection axioms reduce each membership; propositional
 De Morgan (`distrib_not_or`, `¬(p∨q) = ¬p ∧ ¬q`) equates the sides; then reflexivity and
 `(∀v|:true) = true`. It exercises all three Boolean operators together in one proof.
+
+## 4c. Metatheorem 11.25(a) — the `metaset` tactic
+
+Metatheorem (11.25a): a set identity `Es = Fs` is valid **iff** its propositional translation
+`Ep = Fp` is valid, where Definition (11.24) maps `∅↦false, U↦true, ~↦¬, ∪↦∨, ∩↦∧`, and each set
+variable `S` becomes its membership proposition `v∈S`. Rather than add this as a new *trusted*
+primitive (which would import an out-of-kernel translation + validity oracle into the trusted base),
+we **mechanize** the hand proof used for 11.28 / De Morgan, so every result is an ordinary
+kernel-checked `Theorem` built only from the already-recognized axioms. The tactic
+(`examples/proofs/SetTheory.fsx` section K) has three parts:
+
+1. **`translate : SetTerm → Prop`** — Definition 11.24, structurally, keeping `v∈S` atoms for
+   variables (`∪↦+`, `∩↦*`, `~↦!!`).
+2. **`unfold : SetTerm → Rule`** — a rewrite `(v∈s) = translate s`, built by recursion that mirrors
+   the operator axioms: at each node apply the Union/Intersection/Complement membership axiom
+   (`id_ax`), then recurse into any *compound* operand (a bare variable is already an atom, so its
+   step is skipped — avoids a no-op rewrite).
+3. **`metaset lhs rhs : Theorem`** — apply **Extensionality** to get `(∀v|: v∈Es = v∈Fs)`; rewrite
+   each side with its `unfold` lemma to reach the body `Ep = Fp`; prove `Ep = Fp` with the
+   **complete** ANF prover `autoproof_anf` and fold it in with `Taut'` (replaces the body with
+   `true`); close with `ident_forall_true'`.
+
+Because `autoproof_anf` is complete for — and *only* for — propositional tautologies, `metaset`
+proves exactly the valid identities over `{∪, ∩, ~, variables}` and **rejects** invalid ones
+(`autoproof_anf` throws): section K checks both `S∪T = S∩T` and `~(S∪T) = ~S∪~T` are rejected.
+Named laws proved by a single `metaset` call: **11.26/11.36** symmetry, **11.27** associativity,
+**11.28** idempotency, **11.40/11.41** distributivity, **11.42a/b** De Morgan, absorption,
+**11.19** double complement. This is the object-level payoff of §11.3 — the algebra laws "for free".
 
 ## 3a. One-Point (Gries 8.14) kernel fix
 
