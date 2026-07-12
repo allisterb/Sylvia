@@ -73,6 +73,12 @@ type QuantifierKernelTests() =
     let Nn = symbolic_pred<int> "N"
     let p = boolvar "p"   // an x-independent proposition
 
+    // Suppress the step logging `autoproof_anf` emits for its (non-lemma) proofs.
+    let silence (f: unit -> 'a) : 'a =
+        let o = System.Console.Out
+        System.Console.SetOut System.IO.TextWriter.Null
+        try f () finally System.Console.SetOut o
+
     let fa (xt: Term<int>) (r: Expr<bool>) (b: Expr<bool>) : Expr = <@@ forall_expr (%xt.Expr) (%r) (%b) @@>
     let ex (xt: Term<int>) (r: Expr<bool>) (b: Expr<bool>) : Expr = <@@ exists_expr (%xt.Expr) (%r) (%b) @@>
     let fa2 (a: Term<int>) (b: Term<int>) (r: Expr<bool>) (bod: Expr<bool>) : Expr = <@@ forall_expr (%a.Expr, %b.Expr) (%r) (%bod) @@>
@@ -160,3 +166,51 @@ type QuantifierKernelTests() =
         let e3 = Scalar<int>(3)
         Assert.True(Theory.S.AxEquiv (expand ((forall'(x, Pp) ==> Pp[e3]).Expr)), "(∀x|:P) ⇒ P[3] should be an instantiation axiom")
         Assert.True(Theory.S.AxEquiv (expand ((forall'(x, Pp) ==> Pp[x]).Expr)), "(∀x|:P) ⇒ P[x] should be an instantiation axiom")
+
+    // ---- Metatheorem Witness (Gries 9.30), the ∃-elimination combinator -----------------------
+    // Q is the x-independent proposition p; qCst is the constant predicate ≡ p, so P[x] mentions x
+    // but the conclusion does not.
+    member _.qCst = Pred<int>(func = <@ fun (_: int) -> %p.Expr @>)
+
+    [<Fact>]
+    member this.``witness proves (∃x|: P x ∧ (P x ⇒ q)) ⇒ q`` () =
+        // The witness obligation  (true ∧ (P x̂ ∧ (P x̂ ⇒ p))) ⇒ p  is a propositional tautology,
+        // discharged by autoproof_anf; witness lifts it to the existential.
+        let Pbody = Pp * (Pp ==> this.qCst)
+        let thm = witness x truepred Pbody p (fun xh ->
+                    silence (fun () -> Theorem(autoproof_anf ((truepred.[xh] * Pbody.[xh]) ==> p))))
+        Assert.True(thm.Proof.Complete, "the witness proof should be complete")
+        Assert.True(sequal (expand thm.Stmt) (expand ((exists (x, truepred, Pbody)) ==> p).Expr),
+                    sprintf "unexpected statement: %s" (src (expand thm.Stmt)))
+
+    [<Fact>]
+    member this.``witness rejects a subproof of the wrong obligation`` () =
+        let Pbody = Pp * (Pp ==> this.qCst)
+        Assert.Throws<exn>(fun () ->
+            witness x truepred Pbody p (fun _ -> silence (fun () -> Theorem(autoproof_anf (p ==> p)))) |> ignore) |> ignore
+
+    [<Fact>]
+    member this.``witness rejects an incomplete subproof`` () =
+        let Pbody = Pp * (Pp ==> this.qCst)
+        Assert.Throws<exn>(fun () ->
+            witness x truepred Pbody p (fun xh ->
+                let obligation = (truepred.[xh] * Pbody.[xh]) ==> p
+                Theorem(Proof(expand obligation.Expr, pred_calculus, [], true))) |> ignore) |> ignore   // no steps
+
+    [<Fact>]
+    member _.``witness rejects when the bound variable occurs free in Q`` () =
+        // Q = P x mentions x, violating the eigenvariable condition on the conclusion.
+        let Qx = Prop <@ %(Pp[x].Expr): bool @>
+        Assert.Throws<exn>(fun () ->
+            witness x truepred Pp Qx (fun xh ->
+                silence (fun () -> Theorem(autoproof_anf ((truepred.[xh] * Pp[xh]) ==> Qx)))) |> ignore) |> ignore
+
+    [<Fact>]
+    member _.``fresh_witness avoids a name already occurring in the context`` () =
+        // Craft an expression that already uses the name x would first try ("x#0"); fresh_witness must
+        // skip it and never return a variable that occurs free in the avoid set.
+        let clash = Pp[ScalarVar<int>("x#0")]
+        let xhat = fresh_witness x [ expand clash.Expr ]
+        Assert.NotEqual<string>("x#0", xhat.Name)
+        Assert.False(occurs_free (get_vars (expand xhat.Expr)) (expand clash.Expr),
+                     sprintf "fresh witness %s occurs in the avoid set" xhat.Name)

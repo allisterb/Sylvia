@@ -101,6 +101,9 @@ module ATP =
             match e with
             | True -> "$true"
             | False -> "$false"
+            // A bare boolean variable is a PROPOSITIONAL ATOM (a 0-ary predicate) → lower-case symbol,
+            // NOT a universally-closed term variable.
+            | Var v when v.Type = typeof<bool> -> lo v.Name
             | Not a -> sprintf "~%s" (form bound a)
             | And(a, b) -> sprintf "(%s & %s)" (form bound a) (form bound b)
             | Or(a, b) -> sprintf "(%s | %s)" (form bound a) (form bound b)
@@ -219,6 +222,9 @@ module ATP =
                         (try p.Kill() with _ -> ())
                         { Status = Timeout; UsedFacts = []; Tptp = tptp; Raw = sb.ToString() }
                     else
+                        // The timed WaitForExit can return before the async stdout handlers have
+                        // drained; a final blocking WaitForExit flushes them.
+                        p.WaitForExit()
                         let raw = sb.ToString()
                         { Status = parseStatus raw
                           UsedFacts = parseUsedFacts gname raw

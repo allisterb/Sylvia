@@ -378,15 +378,57 @@ module PredCalculus =
             implies_true (-(forall'(x, -R))) |> Taut |> apply                           // ¬(∀x|:¬R) ⇒ T → true
         ]
 
+    (* Metatheorem Witness (Gries 9.30) — ∃-elimination via a fresh witness (eigenvariable) *)
+
+    /// A fresh variable of `x`'s type whose name occurs free in NONE of the `avoid` expressions. Used
+    /// to introduce the eigenvariable x̂ in `witness`; freshness is the entire soundness burden there,
+    /// so this must be capture-airtight (it bumps a counter until `Patterns.occurs_free` is false).
+    let fresh_witness (x: TermVar<'t>) (avoid: Expr list) : ScalarVar<'t> =
+        let clashes (v: ScalarVar<'t>) = avoid |> List.exists (Patterns.occurs_free (get_vars (expand v.Expr)))
+        let rec pick i =
+            let cand = ScalarVar<'t>(sprintf "%s#%d" x.Name i)
+            if clashes cand then pick (i + 1) else cand
+        pick 0
+
+    /// Metatheorem Witness (Gries 9.30), the ∃-elimination (right-to-left) direction: from a completed
+    /// proof of the *witness obligation*  (R[x̂] ∧ P[x̂]) ⇒ Q  for a FRESH x̂ (not occurring free in R,
+    /// P or Q), conclude  (∃x | R : P) ⇒ Q.  `body x̂` receives the fresh witness and must return a
+    /// completed `Theorem` of exactly that obligation — i.e. "assume a witness x̂ satisfying R ∧ P,
+    /// prove Q". Inside `body` the full tactic vocabulary is available (`at`/`Taut`/`Deduce'`/the
+    /// automation), since the obligation is an ordinary proposition.
+    ///
+    /// This is the one predicate-calculus primitive that is not an object-level identity — it is a
+    /// statement about derivability. Its soundness rests solely on the eigenvariable side-conditions
+    /// (x̂ fresh in R, P, Q; and x not free in Q), which are checked here; the manufactured proof
+    /// rewrites the goal to the obligation with a single trusted step and then replays `body`'s own
+    /// steps, so nothing else enters the trusted base.
+    let witness (x: TermVar<'t>) (R: Pred<'t>) (P: Pred<'t>) (Q: Prop) (body: TermVar<'t> -> Theorem) : Theorem =
+        let goal = (exists (x, R, P)) ==> Q
+        if Patterns.occurs_free (get_vars (expand x.Expr)) (expand Q.Expr) then
+            failwithf "witness: the bound variable %s occurs free in Q; the metatheorem requires x not free in Q." x.Name
+        let xhat = fresh_witness x [ expand R.[x].Expr; expand P.[x].Expr; expand Q.Expr ]
+        let sub = body xhat
+        let obligation = (R.[xhat] * P.[xhat]) ==> Q
+        if not sub.Proof.Complete then failwith "witness: the witness subproof is not complete."
+        if not (sequal (expand sub.Stmt) (expand obligation.Expr)) then
+            failwithf "witness: the subproof proves\n  %s\nbut the witness obligation is\n  %s"
+                (pred_calculus.PrintFormula (expand sub.Stmt)) (pred_calculus.PrintFormula (expand obligation.Expr))
+        if [ expand R.[x].Expr; expand P.[x].Expr; expand Q.Expr ] |> List.exists (Patterns.occurs_free (get_vars (expand xhat.Expr))) then
+            failwithf "witness: the witness variable %s occurs free in R, P or Q (eigenvariable condition violated)." xhat.Name
+        let g = expand goal.Expr
+        let tgt = expand obligation.Expr
+        let step = Derive(sprintf "Witness %s for %s in (∃%s|R:P)" xhat.Name x.Name x.Name, sub.Proof,
+                          fun _ e -> if sequal e g then tgt else e)
+        Theorem(g, Proof(g, pred_calculus, (Apply step) :: sub.Proof.Steps, true))
+
     (* Module information members *)
 
     type private IModuleTypeLocator = interface end
 
     let Type = match typeof<IModuleTypeLocator>.DeclaringType with | NonNull m -> m | _ -> failwith "Failed to locate module type."
 
-    (* Deferred. `trade_exists_or` (9.23), `ident_exists_implies` (ex.9.27) and `distrib_forall_and_cond`
-       (9.7) are now done above, following Gries' own derivations (Prop-body distributivity + the
-       range-nonempty assumption discharged by Deduce). Still deferred:
-         - forall_conseq_trade_body (metatheorem Witness, 9.30) — needs a fresh-witness / eigenvariable
-           introduction rule (∃-elimination) in the kernel; it is a statement about derivability, not an
-           object-level identity, so it cannot be a `theorem`/`ident` value with the current machinery. *)
+    (* `trade_exists_or` (9.23), `ident_exists_implies` (ex.9.27) and `distrib_forall_and_cond` (9.7) are
+       done above, following Gries' own derivations. Metatheorem Witness (9.30) is now done via the
+       `witness` combinator above — a fresh-witness / eigenvariable ∃-elimination primitive; because it
+       is a statement about derivability (not an object-level identity) it is realised as a `Theorem`-
+       manufacturing combinator with a single trusted rewrite step, not a `theorem`/`ident` value. *)
