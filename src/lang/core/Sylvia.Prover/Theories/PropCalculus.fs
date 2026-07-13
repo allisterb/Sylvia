@@ -6,6 +6,9 @@ namespace Sylvia
 /// Propositional calculus using the axioms and rules of S.
 module PropCalculus =
 
+    open FSharp.Quotations
+    open Formula
+
     let prop_calculus = Theory.S
 
     (* Expression functions for admissible rules *)
@@ -201,12 +204,42 @@ module PropCalculus =
 
     (* Automation *)
 
+    // Both `autoproof` (best-first search) and `autoproof_anf` (ANF / Boolean-ring normal form) grow
+    // super-polynomially in the number of DISTINCT propositional atoms and become impractical past a
+    // handful — empirically the ANF prover is ≈22 s at 4 atoms of nested-implication structure and does
+    // not terminate at 6. To fail fast instead of blowing up, we count the distinct maximal
+    // non-propositional subterms ("atoms") and refuse a goal beyond `autoproof_max_atoms`.
+
+    /// The distinct maximal non-propositional subterms ("atoms") of a boolean expression.
+    let rec private atom_list (e: Expr) : Expr list =
+        match e with
+        | True | False -> []
+        | Not a -> atom_list a
+        | And(a, b) | Or(a, b) | Implies(a, b) -> atom_list a @ atom_list b
+        | Equals(a, b) when a.Type = typeof<bool> -> atom_list a @ atom_list b
+        | _ -> [ e ]
+
+    /// The number of distinct propositional atoms in `e`.
+    let prop_atom_count (e: Expr) : int =
+        atom_list (expand e) |> List.fold (fun acc a -> if List.exists (sequal a) acc then acc else a :: acc) [] |> List.length
+
+    /// Maximum number of distinct propositional atoms `autoproof` / `autoproof_anf` will attempt before
+    /// failing fast (rather than blowing up). Raise it — at your own risk — for a known-small goal.
+    let mutable autoproof_max_atoms = 5
+
+    let private guard_atoms (name: string) (goal: Expr) =
+        let n = prop_atom_count goal
+        if n > autoproof_max_atoms then
+            failwithf "%s: the goal has %d distinct propositional atoms, over the limit of %d — the propositional provers are exponential in atom count and would blow up. Reduce the goal, or raise PropCalculus.autoproof_max_atoms to override." name n autoproof_max_atoms
+
     /// Bounded best-first proof search for a propositional goal. Simplifies with `simp`
     /// between structural moves (golden rule, def of ⇒, mutual implication, distribute/
     /// collect, double negation), deduping states and capped by a search budget. Returns a
     /// replayable, checkable step list (feed to `proof`/`theorem`/`ident`); throws if no
     /// proof is found within budget. Incomplete by design — handles the routine, not everything.
-    let autoproof (e: Prop) : Proof  =        
+    /// Refuses goals with more than `autoproof_max_atoms` distinct atoms (see above).
+    let autoproof (e: Prop) : Proof  =
+        do guard_atoms "autoproof" (expand e.Expr)
         let moves =
             [ applyfirst golden_rule
               applyfirst def_implies
@@ -214,7 +247,7 @@ module PropCalculus =
               applyfirst distrib
               applyfirst collect
               applyfirst double_neg ]
-        autoproof e prop_calculus simp moves 800 
+        autoproof e prop_calculus simp moves 800
         
     let autoident (e:Prop) = Proof.autoident autoproof e
 
@@ -233,6 +266,7 @@ module PropCalculus =
     /// propositional theorem. (Candidate fallback for a complete hybrid `autoproof` — see notes.)
     let autoproof_anf (e: Prop) : Proof =
         let goal = expand e.Expr
+        do guard_atoms "autoproof_anf" goal
         let isComplete x = prop_calculus.AxEquiv x || Proof.Logic.AxEquiv x
         let moves =
             [ applyfirst elim_to_xor
