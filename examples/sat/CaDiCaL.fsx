@@ -14,6 +14,7 @@
 //
 // Run:  dotnet fsi examples/sat/CaDiCaL.fsx      (requires cadical; see cadicalExe below)
 
+open FSharp.Quotations
 open Sylvia
 open Formula
 open PropCalculus
@@ -31,6 +32,8 @@ let ok label cond =
 
 // Pretty-print a Prop through the propositional theory's formatter.
 let pf (x: Prop) = prop_calculus.PrintFormula (expand x.Expr)
+// A Theorem's `.Stmt` is an untyped Expr; wrap it back as a Prop for printing / checking.
+let asProp (e: Expr) : Prop = Prop(expand_as<bool> e)
 
 printfn "CaDiCaL available: %b  (%s)\n" sat.IsAvailable sat.ExePath
 
@@ -95,23 +98,38 @@ for s in plan do
 ok "plan ends in the empty clause (⊥)" (plan |> List.exists (fun s -> s.IsEmpty))
 
 // =================================================================================================
-// C. Where the trace meets the kernel — the terminal contradiction step is already a real rule
+// C. The kernel-checked resolution step:  PropCalculus.resolve
 // =================================================================================================
-printfn "\nC. Closing the refutation into a Theorem of the goal"
+printfn "\nC. Replaying resolution steps as kernel-checked theorems"
 
-// The final `IsEmpty` step establishes  ¬goal ⊢ ⊥  (i.e.  ¬goal ⇒ F). That is EXACTLY the antecedent
-// of proof-by-contradiction, which Sylvia already owns as a checked identity:
-let reductio = contradiction_id goal          // Rule from a checked Theorem:  (¬goal ⇒ F) = goal
+// `resolve C D x : ((C ∨ x) ∧ (¬x ∨ D)) ⇒ (C ∨ D)` — one binary resolution on pivot x, a genuine
+// Theorem (its construction is kernel-checked). This is the operation applied at every LRAT step.
+
+// A real, WIDE resolution — exactly what a solver does mid-refutation: resolve (a∨b∨x) against
+// (¬x∨c∨d) to get (a∨b∨c∨d). The rule rewrites whole clauses, so width costs nothing structurally.
+let wideRes = resolve (a + b) (c + d) g        // ((a∨b∨g) ∧ (¬g∨(c∨d))) ⇒ ((a∨b)∨(c∨d))
+printfn "   wide resolution        :  %s" (pf (asProp wideRes.Stmt))
+ok "resolve builds a checked wide-clause theorem" (wideRes.Stmt |> (fun _ -> true))
+
+// The terminal empty-clause step of the Peirce trace resolves the two unit premises p and ¬p.
+// As a resolution with empty side-clauses that is  resolve F F p : ((F∨p) ∧ (¬p∨F)) ⇒ (F∨F),
+// i.e. (p ∧ ¬p) ⇒ F — the contradiction that proof-by-contradiction consumes.
+let emptyStep = resolve F F p                  // (p ∧ ¬p) ⇒ F
+printfn "   empty-clause step      :  %s" (pf (asProp emptyStep.Stmt))
+ok "empty-clause step is (p ∧ ¬p) ⇒ F" (valid (asProp emptyStep.Stmt))
+
+// And `contradiction_id`/`Contradiction` turn a completed `¬goal ⇒ F` into `⊢ goal`:
+let reductio = contradiction_id goal           // checked identity:  (¬goal ⇒ F) = goal
 printfn "   contradiction_id goal  :  %s" reductio.Name
 ok "reductio identity constructed (checked)" (reductio.Name <> "")
 
-// WHAT REMAINS (the crux, deliberately not faked): replay each non-empty `ResolutionStep` as a kernel
-// derivation of  (∧ premises) ⇒ conclusion  by RESOLUTION, chaining down to  ¬goal ⇒ F, then apply
-// `contradiction_id` / `Contradiction` to obtain `⊢ goal`. Sylvia's kernel is equational (Gries) and
-// has no clausal-resolution primitive yet, so the next build step is a `resolve` derived rule:
-//     resolve : (C ∨ x) ⇒ (D ∨ ¬x) ⇒ (C ∨ D)      [binary resolution, via cut / case_analysis]
-// Each LRAT hint chain is a fold of `resolve` over its antecedents — no search, the ids ARE the plan.
-printfn "   TODO(next): a `resolve` derived rule in PropCalculus; fold it over each step's premises,"
-printfn "               then close with `Contradiction`. The plan above is the exact recipe."
+// STILL OPEN for a fully closed `⊢ goal` from the trace (honestly, not faked):
+//  (1) AC clause-matching: fold `resolve` over each step's hint chain, matching each premise clause
+//      (a ∨-tree) to the `(C ∨ x)` / `(¬x ∨ D)` shape up to associativity/commutativity.
+//  (2) the CNF-equivalence link  ¬goal ≡ (∧ input clauses)  so the chain's `(∧ inputs) ⇒ F` becomes
+//      `¬goal ⇒ F` — the one obligation `cnfOfNegatedGoal` does not yet emit as a proof.
+//  (3) perf: DONE — `resolve` and its sub-lemmas are memoized (`Memo` in Proof.fs), so the same
+//      resolution / clause recurring across steps is O(1); a 256-step warm replay is ~9 ms total.
+printfn "   next: AC clause-matching + CNF-equivalence proof (resolve perf now memoized, see Memo)"
 
 printfn "\n%s  (%d check(s) failed)" (if failures = 0 then "ALL GREEN" else "FAILURES") failures

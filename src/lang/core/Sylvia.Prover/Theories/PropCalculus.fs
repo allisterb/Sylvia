@@ -1140,6 +1140,47 @@ module PropCalculus =
         strengthen_and r ( q * p ) |> Taut |> apply
     ]
 
+    /// ((p ∨ x) ∧ (¬x ∨ q)) ⇒ (p ∨ q)  — binary resolution on the pivot x.
+    ///
+    /// The workhorse for replaying a SAT solver's resolution/LRAT refutation as kernel steps (see
+    /// `Sylvia.Solver.CaDiCaL`): each resolution in the trace is one instance of this rule. Proved as a
+    /// re-orientation of transitivity — reading the two clauses as implications `(¬p ⇒ x)` and `(x ⇒ q)`
+    /// gives `(¬p ⇒ q)`, i.e. `p ∨ q`, by `trans_implies`. Every step rewrites a whole clause (`p`, `q`,
+    /// `x` stay opaque), so instantiating at wide/compound clauses replays cheaply — no ANF blow-up.
+    // Memoized aliases of resolve's dependencies. In a SAT-refutation replay the same clauses recur as
+    // premises across many resolution steps, so caching these (pure) sub-derivations turns repeats into
+    // O(1) lookups — the difference between practical and hopeless for long refutations. The public
+    // lemmas keep their method form (for reflection / attributes); these internal aliases add the cache.
+    let private m_double_negation      = Memo.p1 double_negation
+    let private m_ident_implies_not_or = Memo.p2 ident_implies_not_or
+    let private m_trans_implies        = Memo.p3 trans_implies
+
+    let private resolve_impl (p:Prop) (q:Prop) (x:Prop) = theorem prop_calculus (((p + x) * (-x + q)) ==> (p + q)) [
+        m_double_negation p |> Commute |> at [left_branch; left_branch; left_branch]   // p ↦ ¬¬p  in (p ∨ x)
+        m_ident_implies_not_or (-p) x |> Commute |> at [left_branch; left_branch]      // (¬¬p ∨ x) ↦ (¬p ⇒ x)
+        m_ident_implies_not_or x q |> Commute |> at [left_branch; right_branch]        // (¬x ∨ q) ↦ (x ⇒ q)
+        m_double_negation p |> Commute |> at [right_branch; left_branch]               // p ↦ ¬¬p  in (p ∨ q)
+        m_ident_implies_not_or (-p) q |> Commute |> at [right_branch]                  // (¬¬p ∨ q) ↦ (¬p ⇒ q)
+        m_trans_implies (-p) x q |> Taut |> apply                                      // transitivity closes it
+    ]
+    let private resolve_cache = Memo.p3 resolve_impl
+
+    [<Theorem "((p ∨ x) ∧ (¬x ∨ q)) ⇒ (p ∨ q)">]
+    let resolve (p:Prop) (q:Prop) (x:Prop) : Theorem = resolve_cache p q x
+
+    /// ((p ⇒ q) ∧ (p ⇒ r)) ⇒ (p ⇒ (q ∧ r))  — combine two implications with the same antecedent
+    /// (the ⇒-half of `⇒` distributing over `∧`). Used to thread `resolve` steps into a single
+    /// `(∧ input-clauses) ⇒ …` when reconstructing a SAT refutation. Proved like `resolve`, via the
+    /// material form `p ⇒ q = ¬p ∨ q`, so it too replays cheaply at wide/compound clause arguments.
+    [<Theorem "((p ⇒ q) ∧ (p ⇒ r)) ⇒ (p ⇒ (q ∧ r))">]
+    let combine_implies (p:Prop) (q:Prop) (r:Prop) = theorem prop_calculus (((p ==> q) * (p ==> r)) ==> (p ==> (q * r))) [
+        ident_implies_not_or p q |> at [left_branch; left_branch]     // (p⇒q) ↦ ¬p ∨ q
+        ident_implies_not_or p r |> at [left_branch; right_branch]    // (p⇒r) ↦ ¬p ∨ r
+        distrib_or_and (-p) q r |> Commute |> at_left                 // (¬p∨q)∧(¬p∨r) ↦ ¬p ∨ (q∧r)
+        ident_implies_not_or p (q * r) |> Commute |> at_left          // ¬p ∨ (q∧r) ↦ (p ⇒ (q∧r))
+        reflex_implies (p ==> (q * r)) |> Taut |> apply               // reflexivity closes it
+    ]
+
     /// (p = q) ∧ (q ⇒ r) ⇒ (p ⇒ r)  (Gries 3.82b)
     [<Theorem "(p = q) ∧ (q ⇒ r) ⇒ (p ⇒ r)">]
     let trans_implies_eq (p:Prop) (q:Prop) (r:Prop) = theorem prop_calculus ((p == q) * (q ==> r) ==> (p ==> r)) [

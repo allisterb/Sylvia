@@ -890,10 +890,41 @@ module ProofModules =
         getModuleMethods moduleType typeof<Theorem> |> Array.map(fun m -> 
         {
             Name= m.Name
-            Description = match m.GetCustomAttribute(typeof<TheoremAttribute>, true) with | NonNull a -> (a :?> TheoremAttribute).Description | Null -> "" 
+            Description = match m.GetCustomAttribute(typeof<TheoremAttribute>, true) with | NonNull a -> (a :?> TheoremAttribute).Description | Null -> ""
             Parameters = m.GetParameters()
             Method = m
-        }) 
+        })
 
-    
+/// Memoize a parametric derived rule / theorem by a structural key of its `Prop` arguments.
+///
+/// A parametric lemma such as `trans_implies p q r` is a *function* that RE-DERIVES its whole proof
+/// (and its sub-lemmas' proofs, recursively) on every call — the dominant cost when a single proof
+/// invokes the same lemma instance many times (e.g. replaying a SAT/LRAT refutation, where the same
+/// clauses recur as premises across many resolution steps). These builders are PURE functions of
+/// their arguments, so caching their results is sound. The key is the full expanded-`Expr` AST dump
+/// (`%A`), which is injective, so distinct arguments never collide — no wrong theorem is ever returned.
+///
+/// Wrap a lemma once (`let fast = Memo.p3 slow`) and share the alias; the cache is process-wide and
+/// thread-safe. It does NOT make a first-time derivation cheaper — only repeat instances become free.
+module Memo =
+    // The full expanded-Expr AST dump: injective. `sep` is a control char `%A` never emits, so it is
+    // an unambiguous field separator for multi-argument keys.
+    let private k (p: Prop) = sprintf "%A" (expand p.Expr)
+    let private sep = ""
+
+    /// Memoize a one-`Prop`-argument builder.
+    let p1 (f: Prop -> 'r) : Prop -> 'r =
+        let d = System.Collections.Concurrent.ConcurrentDictionary<string, 'r>()
+        fun a -> d.GetOrAdd(k a, System.Func<_, _>(fun _ -> f a))
+
+    /// Memoize a two-`Prop`-argument builder.
+    let p2 (f: Prop -> Prop -> 'r) : Prop -> Prop -> 'r =
+        let d = System.Collections.Concurrent.ConcurrentDictionary<string, 'r>()
+        fun a b -> d.GetOrAdd(k a + sep + k b, System.Func<_, _>(fun _ -> f a b))
+
+    /// Memoize a three-`Prop`-argument builder.
+    let p3 (f: Prop -> Prop -> Prop -> 'r) : Prop -> Prop -> Prop -> 'r =
+        let d = System.Collections.Concurrent.ConcurrentDictionary<string, 'r>()
+        fun a b c -> d.GetOrAdd(k a + sep + k b + sep + k c, System.Func<_, _>(fun _ -> f a b c))
+
         
