@@ -3,17 +3,20 @@
 
 // FULL reconstruction loop: turn a CaDiCaL LRAT refutation of ¬φ into a kernel-checked `⊢ φ`.
 //
-//   goal φ ─cnfOfNegatedGoal→ CNF(¬φ) ─CaDiCaL→ UNSAT + LRAT
-//          ─resolve-fold→ R : (∧ input-clauses) ⇒ F        (STEP 1 — scales, no atom ceiling)
-//          ─CNF-equivalence ¬φ = A, chain, Contradiction→ ⊢ φ   (STEP 2 — see boundary note)
+//   goal φ ─Cnf.toCnf→ (¬φ = A, kernel proof) ─clausesOf→ DIMACS ─CaDiCaL→ UNSAT + LRAT
+//          ─resolve-fold→ R : A ⇒ F                              (STEP 1 — scales, no atom ceiling)
+//          ─¬φ = A, chain, Contradiction→ ⊢ φ                    (STEP 2 — now also scales)
 //
 // STEP 1 is the fold: each binary LRAT step becomes `PropCalculus.resolve` (AC-matched to the
 // canonical clause shapes with `simp`), threaded through the input conjunction with `combine_implies`
-// + `Calc.chainImp`. It is kernel-checked at every step and has NO atom-count ceiling.
+// + `Calc.chainImp`. Kernel-checked at every step, no atom-count ceiling.
 //
-// STEP 2's CNF-equivalence `¬φ = A` here uses `autoproof_anf`, which is atom-bounded (≤5) — so the
-// end-to-end `⊢ φ` currently inherits that ceiling even though STEP 1 does not. Removing it needs a
-// scalable CNF-conversion proof (replay NNF + distribute as kernel steps); that is the remaining work.
+// STEP 2's CNF-equivalence `¬φ = A` now uses `Cnf.toCnf` — a structural recursive CNF converter that
+// emits a kernel-checked `¬φ == cnf` proof whose cost is bounded by the CNF size, NOT by an
+// atom-count exponential. So the end-to-end `⊢ φ` no longer has the old ≤5-atom ceiling (the 6-atom
+// goal below reconstructs). `Cnf.toCnf` is both the clausifier and the equivalence proof; `normalize`
+// bridges its CNF to the reconstruction's right-associated conjunction A. (It is not fast — the kernel
+// proof assembly is the bottleneck — but it is unbounded in atom count.)
 //
 // Run:  dotnet fsi examples/sat/Reconstruct.fsx      (requires cadical)
 
@@ -25,6 +28,29 @@ open Sylvia.SAT
 
 Proof.LogLevel <- 0
 let sat = Cadical(exePath = @"C:\Projects\Sylvia\bin\cadical.exe", timeoutMs = 20000)
+
+// Extract a CnfProblem directly from a clean CNF Prop (so it matches `Cnf.toCnf`'s equivalence proof).
+let clausesOf (goal:Prop) (cnfProp:Prop) : CnfProblem =
+    let atoms = System.Collections.Generic.List<Expr>()
+    let varOf (e:Expr) =
+        let mutable f = -1
+        for i in 0 .. atoms.Count-1 do if f < 0 && sequal atoms.[i] e then f <- i
+        if f < 0 then atoms.Add e; atoms.Count else f + 1
+    let litOf e = match e with Not a -> -(varOf a) | _ -> varOf e
+    let rec lits e = match e with Or(x,y) -> lits x @ lits y | _ -> [litOf e]
+    let rec cls e  = match e with And(x,y) -> cls x @ cls y | _ -> [lits e]
+    let clauses = cls (expand cnfProp.Expr)
+    let aov = System.Collections.Generic.Dictionary<int,Prop>()
+    atoms |> Seq.iteri (fun i a -> aov.[i+1] <- Prop(expand_as<bool> a))
+    { NumVars = atoms.Count; Clauses = clauses
+      AtomOfVar = aov :> System.Collections.Generic.IReadOnlyDictionary<_,_>; Goal = goal }
+
+// (x==y),(y==z) ⟼ (x==z)
+let transEq (p1:Theorem) (p2:Theorem) : Theorem =
+    match p1.Stmt, p2.Stmt with
+    | Equals(x,_), Equals(_,z) ->
+        theorem prop_calculus (Prop(expand_as<bool> x) == Prop(expand_as<bool> z)) [ Ident p1 |> apply_left; Ident p2 |> apply_left ]
+    | _ -> failwith "transEq"
 
 let mutable failures = 0
 let ok label cond = (if not cond then failures <- failures + 1); printfn "  %s  %s" (if cond then "✓" else "✗") label
@@ -87,23 +113,27 @@ let refute (cnf:CnfProblem) (steps:LratStep list) : Prop * Theorem option =
         | Delete _ -> ()
     A, r
 
-// ---- STEP 2: ¬φ = A  (atom-bounded), then ¬φ ⇒ F, then Contradiction ⟹ ⊢ φ ---------------------
+// ---- STEP 2: ¬φ = A via Cnf.toCnf (scalable), then ¬φ ⇒ F, then Contradiction ⟹ ⊢ φ ------------
 let reconstruct (goal:Prop) : Theorem =
-    let cnf = cnfOfNegatedGoal goal
+    let neg = !!goal
+    let (cnfProp, cnfPf) = Cnf.toCnf neg                         // ¬φ == cnfProp  (kernel proof, no atom ceiling)
+    let cnf = clausesOf goal cnfProp                             // DIMACS clauses read off that CNF
     let res = sat.Prove goal
     if res.Status <> Unsat then failwith "goal not valid (¬φ satisfiable)"
     let A, rOpt = refute cnf (parseLrat res.Lrat)
     let rTh = match rOpt with Some t -> t | None -> failwith "no binary empty-clause derivation"
-    let neg = !!goal
-    let ceq = Theorem((neg == A).Expr |> expand, autoproof_anf (neg == A))       // STEP 2 ceiling here
+    let bridge = theorem prop_calculus (cnfProp == A) [ normalize ]   // AC: same clauses, reassociated
+    let ceq = transEq cnfPf bridge                              // ¬φ == A
     let negImpF = theorem prop_calculus (neg ==> F) [ Ident ceq |> apply_left; Taut rTh |> apply ]
     Contradiction negImpF
 
-let p, q, r = boolvar "p", boolvar "q", boolvar "r"
+let p, q, r, s, t = boolvar "p", boolvar "q", boolvar "r", boolvar "s", boolvar "t"
 let check label (goal:Prop) =
     try
+        let sw = System.Diagnostics.Stopwatch.StartNew()
         let th = reconstruct goal
-        printfn "  %s :  ⊢ %s" label (prop_calculus.PrintFormula th.Stmt)
+        sw.Stop()
+        printfn "  %s :  ⊢ %s   (%dms)" label (prop_calculus.PrintFormula th.Stmt) sw.ElapsedMilliseconds
         ok label (sequal th.Stmt (expand goal.Expr))
     with e -> ok label false; printfn "      %s" (e.Message.Split('\n').[0])
 
@@ -111,5 +141,7 @@ printfn "Reconstructing ⊢ φ from CaDiCaL LRAT refutations (kernel-checked end
 check "excluded middle  p ∨ ¬p"           (p + !!p)
 check "Peirce  ((p⇒q)⇒p)⇒p"               (((p ==> q) ==> p) ==> p)
 check "chain  (p⇒q)∧(q⇒r) ⇒ (p⇒r)"        (((p ==> q) * (q ==> r)) ==> (p ==> r))
+// 5 atoms — past the old autoproof_anf ceiling of 5 (slow, but it closes):
+check "5-atom chain"                      ((p ==> q) * (q ==> r) * (r ==> s) * (s ==> t) ==> (p ==> t))
 
 printfn "\n%s  (%d failed)" (if failures = 0 then "ALL GREEN" else "FAILURES") failures
