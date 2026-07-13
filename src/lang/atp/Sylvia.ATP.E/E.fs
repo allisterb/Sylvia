@@ -194,41 +194,60 @@ module ATP =
         /// The exact TPTP problem that `Prove` would send for these axioms and goal.
         member _.Problem(axioms, goalName, goal) = tptpProblem axioms goalName goal
 
-        /// Ask E whether `goal` follows from the named `axioms`. Returns the SZS status, the minimal
-        /// fact set used in the proof, the TPTP sent, and E's raw output. Advisory only — a `Theorem`
-        /// verdict is NOT a Sylvia proof and does not enter the trusted base.
-        member _.Prove(axioms: (string * Prop) list, goal: Prop, ?goalName: string) : EResult =
-            let gname = defaultArg goalName "goal"
-            let tptp = tptpProblem axioms gname goal
-            if not (IO.File.Exists exe) then
-                { Status = NotAvailable; UsedFacts = []; Tptp = tptp; Raw = "" }
+        // Run eprover with `args` on `tptp`. `Choice1Of2 raw` on a clean exit, `Choice2Of2 status`
+        // for a terminal wrapper outcome (NotAvailable / Timeout). The timeout is wrapper-enforced.
+        member private _.RunRaw(args: string, tptp: string) : Choice<string, EStatus> =
+            if not (IO.File.Exists exe) then Choice2Of2 NotAvailable
             else
                 let tmp = IO.Path.Combine(IO.Path.GetTempPath(), sprintf "sylvia_e_%d.p" (abs (tptp.GetHashCode())))
                 IO.File.WriteAllText(tmp, tptp)
                 try
                     let psi =
                         ProcessStartInfo(
-                            exe,
-                            sprintf "--auto --proof-object \"%s\"" tmp,
-                            RedirectStandardOutput = true,
-                            RedirectStandardError = true,
-                            UseShellExecute = false,
-                            CreateNoWindow = true)
+                            exe, sprintf "%s \"%s\"" args tmp,
+                            RedirectStandardOutput = true, RedirectStandardError = true,
+                            UseShellExecute = false, CreateNoWindow = true)
                     use p = Process.Start psi
                     let sb = StringBuilder()
                     p.OutputDataReceived.Add(fun a -> if a.Data <> null then sb.AppendLine a.Data |> ignore)
                     p.BeginOutputReadLine()
                     if not (p.WaitForExit timeout) then
-                        (try p.Kill() with _ -> ())
-                        { Status = Timeout; UsedFacts = []; Tptp = tptp; Raw = sb.ToString() }
+                        (try p.Kill() with _ -> ()); Choice2Of2 Timeout
                     else
                         // The timed WaitForExit can return before the async stdout handlers have
                         // drained; a final blocking WaitForExit flushes them.
                         p.WaitForExit()
-                        let raw = sb.ToString()
-                        { Status = parseStatus raw
-                          UsedFacts = parseUsedFacts gname raw
-                          Tptp = tptp
-                          Raw = raw }
+                        Choice1Of2 (sb.ToString())
                 finally
                     try IO.File.Delete tmp with _ -> ()
+
+        /// Ask E whether `goal` follows from the named `axioms`. Returns the SZS status, the minimal
+        /// fact set used in the proof, the TPTP sent, and E's raw output. Advisory only — a `Theorem`
+        /// verdict is NOT a Sylvia proof and does not enter the trusted base.
+        member this.Prove(axioms: (string * Prop) list, goal: Prop, ?goalName: string) : EResult =
+            let gname = defaultArg goalName "goal"
+            let tptp = tptpProblem axioms gname goal
+            match this.RunRaw("--auto --proof-object", tptp) with
+            | Choice2Of2 st -> { Status = st; UsedFacts = []; Tptp = tptp; Raw = "" }
+            | Choice1Of2 raw ->
+                { Status = parseStatus raw; UsedFacts = parseUsedFacts gname raw; Tptp = tptp; Raw = raw }
+
+        /// Ask E for a WITNESS: emit `goal` as a `question` (so E reports answer bindings for its outer
+        /// existentials) and run with `--answers`. Returns the status and the answer term(s) as TPTP
+        /// text (e.g. a constant `a`, or a function term). Used to drive native ∃-introduction: the
+        /// witness term tells Sylvia which instance to introduce.
+        member this.AnswerFor(axioms: (string * Prop) list, goal: Prop, ?goalName: string) : EStatus * string list =
+            let gname = defaultArg goalName "goal"
+            let ls =
+                (axioms |> List.map (fun (n, p) -> fofLine "axiom" n p))
+                @ [ sprintf "fof(%s, question, ( %s ))." gname (tptpOfProp goal) ]
+            let tptp = String.Join("\n", ls) + "\n"
+            match this.RunRaw("-s --answers --auto", tptp) with
+            | Choice2Of2 st -> st, []
+            | Choice1Of2 raw ->
+                let answers =
+                    Regex.Matches(raw, @"SZS answers Tuple \[\[([^\]|]+)")
+                    |> Seq.cast<Match>
+                    |> Seq.map (fun m -> m.Groups.[1].Value.Trim())
+                    |> Seq.distinct |> List.ofSeq
+                parseStatus raw, answers

@@ -177,26 +177,53 @@ The mechanism:
 
 1. `e.Prove(facts, goal)`; map `res.UsedFacts` names back to the supplied Sylvia lemmas — the
    **relevance filter**.
-2. Form `(∧ used-facts) ⇒ goal` and prove it with Sylvia's **complete** propositional prover
-   `autoproof_anf`. This succeeds exactly when the residual is propositional (the
+2. **Propositional reconstruction** (`tryProp`): form `(∧ used-facts) ⇒ goal` and prove it with Sylvia's
+   **complete** propositional prover `autoproof_anf`. Succeeds when the residual is propositional (the
    *propositional-modulo-lemmas* fragment), giving a genuine, kernel-checked `Theorem`.
-3. If the residual is quantified, `autoproof_anf` throws → `ProvableButManual`, and the narrowed fact set
-   is the starting point for a hand / LLM proof.
+3. **∃-elimination reconstruction** (`tryWitness`): when (2) fails and the goal has the shape
+   `(∃x | R : P) ⇒ Q`, introduce a fresh witness via the **Witness metatheorem** (Gries 9.30,
+   `PredCalculus.witness`) — reducing the goal to the quantifier-free obligation `(R[x̂] ∧ P[x̂]) ⇒ Q′`
+   (with `Q′` folding in the used facts), which `autoproof_anf` then discharges. `witness` lifts that
+   back to `(∃x|R:P) ⇒ Q` as a kernel-checked `Theorem` — a fresh-eigenvariable proof that's Sylvia's own.
+4. **∃-introduction reconstruction** (`tryExistsIntro`): for a bare existential goal `∃x |: Q`, ask E for
+   the **witness term** via `EProver.AnswerFor` (the goal is emitted as a TPTP `question` and run with
+   `--answers`; E returns e.g. `a`). Introduce it with `exists_intro` (Gries 9.28, the theorem
+   `Q[E] ⇒ ∃x|:Q`) and let `autoproof_anf` chain `used ⊢ Q[E]` through that theorem to the goal — the
+   `exists_intro` instance is added to the antecedent as a (proven) hypothesis, giving the kernel-checked
+   certificate `(∧ used ∧ [Q[E] ⇒ ∃x|:Q]) ⇒ (∃x|:Q)`. This is the genuinely **E-guided** case: E's proof
+   picks the instance `E`; without it Sylvia wouldn't know which term to introduce.
+5. Otherwise → `ProvableButManual`, and the narrowed fact set is the starting point for a hand / LLM proof.
 
-Demonstrated (3/3): (1) goal `s` buried among seven propositional lemmas → E filters to `{f1, f2, f3}`
-and Sylvia certifies `((p⇒q) ∧ (q⇒s) ∧ p) ⇒ s`; (2) an `∀/∃` chain → E filters + confirms, boundary
-reported; (3) a non-theorem → `CounterSatisfiable`, not reconstructed.
+`tryExistsIntro` fires only when the used facts are **ground** — if any is universal it defers, because
+that certificate would carry large quantified atoms (see the frontier note).
 
-The boundary in (2) is the current frontier: full automated reconstruction of genuinely first-order
-goals awaits Sylvia gaining FOL-level proof automation (a Metis-style internal certifier). Until then, E
-delivers the two halves that don't need it — a provability verdict and a relevance filter.
+Demonstrated (6/6): (1) goal `s` among seven propositional lemmas → E filters to `{f1,f2,f3}`, Sylvia
+certifies `((p⇒q) ∧ (q⇒s) ∧ p) ⇒ s`; (2) `∃x. r x` from **universal** facts → boundary; (3)
+`(∃x|: p x ∧ (p x⇒q)) ⇒ q` → **∃-elimination via `witness`**; (4) `∃x. q x` from ground facts
+`p(a), p(a)⇒q(a)` → **∃-introduction at E's witness `a`**; (5) `∃x. r x` from `p(a)` + universal rules →
+∀-instantiation boundary; (6) a non-theorem → `CounterSatisfiable`, not reconstructed.
+
+The remaining frontier is **∀-instantiation** (2, 5): the reduction is mechanically clear — instantiate
+each universal used-fact at the witness with `inst` (Gries 9.13, `(∀y|:F) ⇒ F[E]`), add it and
+`exists_intro` to the certificate, and it becomes propositional. The bottleneck is purely the
+*propositional* reconstruction prover, **not E** (E answers in ~40 ms throughout). Both `autoproof_anf`
+(complete, ANF/Boolean-ring) and the heuristic `autoproof` are **exponential in the atom count** and hang
+at ~6 atoms with this nested-implication (Horn) structure — the ∀-instantiation certificate has 6
+(`p(a), ∀x.p⇒q, ∀x.q⇒r, q(a), r(a), ∃x.r x`). Confirmed empirically: `autoproof_anf` is ≈22 s at 4
+atoms and non-terminating at 6. **Atom-abstraction does *not* help** — replacing the (large, quantified)
+atoms with fresh boolean variables leaves the atom *count* unchanged, and the 6-boolvar skeleton hangs
+`autoproof_anf` and `autoproof` just the same. The true fix is a **scalable propositional decision
+procedure** (DPLL/CDCL or ordered resolution) that avoids full ANF expansion — a substantial, separate
+piece of Sylvia infrastructure. Deeper cases (nested / mixed quantifiers) then want a fuller Metis-style
+internal search. E keeps delivering the parts that don't need it — a provability verdict, a relevance
+filter, the witness term — and gates every reconstruction; the wall is Sylvia's own propositional prover.
 
 ## 8. Files
 
 - `src/lang/atp/Sylvia.ATP.E/E.fs` — the `ATP` module: translator, `EProver`, status/fact parsing.
 - `src/lang/atp/Sylvia.ATP.E/Sylvia.ATP.E.fsproj` — thin project (references `Sylvia.Expressions` + Runtime).
 - `examples/atp/E.fsx` — translation + verdicts against live E (5/5).
-- `examples/atp/Sledgehammer.fsx` — relevance filter + reconstruction loop (3/3).
+- `examples/atp/Sledgehammer.fsx` — relevance filter + reconstruction loop: propositional, ∃-elimination (`witness`), ∃-introduction (`exists_intro` + E's `--answers` witness); ∀-instantiation is the documented boundary (6/6).
 - `bin/eprover-E-3.3.5/eprover.exe` — the bundled Windows (MSYS2) build; `reference/books/eprover.pdf` — the manual.
 
 ## 9. Status and next steps
@@ -204,8 +231,11 @@ delivers the two halves that don't need it — a provability verdict and a relev
 - **Translation** — general FOL surface done (quantifiers, connectives, term/bool equality, constants,
   functions, n-ary predicates, propositional atoms). Edge left: unnamed numeric literals.
 - **Runner** — Windows-correct (no fork, wrapper timeout, drained output, path handling).
-- **Loop** — relevance filtering + native certification for the propositional-modulo-lemmas fragment;
-  honest boundary otherwise.
-- **Open** — (a) a set-algebra encoding E can actually saturate (§6); (b) full FOL reconstruction, gated
-  on Sylvia FOL automation (§7); (c) promoting the Sledgehammer orchestration from the example into a
-  module (e.g. `Sylvia.ATP.Sledgehammer`) once the reconstruction side matures.
+- **Loop** — relevance filtering + native certification for the propositional-modulo-lemmas fragment,
+  **∃-elimination `(∃x|R:P) ⇒ Q`** (via `witness`), and **∃-introduction `∃x|:Q`** (via `exists_intro`
+  at E's `--answers` witness term); honest boundary otherwise.
+- **Open** — (a) a **scalable propositional decision procedure** (DPLL/CDCL or ordered resolution) to
+  unblock **∀-instantiation**: both `autoproof_anf` and `autoproof` are exponential in atom *count* and
+  hang at ~6 atoms; atom-abstraction was tried and does not help (the blowup is count, not size). The
+  bottleneck is Sylvia's prop prover, not E (§7). (b) a set-algebra encoding E can actually saturate
+  (§6); (c) promoting the Sledgehammer orchestration into a module (`Sylvia.ATP.Sledgehammer`).
