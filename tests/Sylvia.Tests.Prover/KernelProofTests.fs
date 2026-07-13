@@ -379,6 +379,21 @@ type KernelProofTests() =
     // ===== valid/equiv: ANF decision TOOL (checks a proof exists; not a proof rule) =====
 
     [<Fact>]
+    member _.``Cnf.toCnf emits a checked equivalence to clean CNF, past the ANF atom ceiling`` () =
+        // Each goal: the proof is literally `¬φ == cnf`, the result IS clean CNF, and it is equivalent
+        // to the input — for goals with 6-8 atoms, where `autoproof_anf` is guarded / would blow up.
+        let s2, t2, u2 = boolvar "s", boolvar "t", boolvar "u"
+        let goals : Prop list =
+            [ !!(((p ==> q) ==> p) ==> p)                                             // ¬Peirce, 2 atoms
+              !!((p ==> q) * (q ==> r) ==> (p ==> r))                                 // ¬chain, 3 atoms
+              !!((p ==> q) * (q ==> r) * (r ==> s2) * (s2 ==> t2) * (t2 ==> u2) ==> (p ==> u2)) ]  // 6 atoms
+        for g in goals do
+            let (cnf, pf) = Cnf.toCnf g
+            Assert.Equal<Expr>(expand (g == cnf).Expr, pf.Stmt)   // the theorem is exactly `g == cnf`
+            Assert.True(Cnf.isCnf cnf, sprintf "not clean CNF: %s" (src (expand cnf.Expr)))
+            Assert.True(PropCalculus.valid (g == cnf), "CNF not equivalent to input")
+
+    [<Fact>]
     member _.``valid recognizes propositional theorems and rejects non-theorems`` () =
         // A checker, not a closer: it answers "does a proof exist?" — complete for propositional,
         // including the (p⇒q)∧(q⇒p) = (p≡q) that auto's bounded search missed.
