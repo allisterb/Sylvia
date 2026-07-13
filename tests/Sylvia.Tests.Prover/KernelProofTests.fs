@@ -432,6 +432,48 @@ type KernelProofTests() =
     member _.``weaken_and_or proves: p and q implies p or q`` () =
         PropCalculus.weaken_and_or p q |> ignore
 
+    // ===== resolve: binary resolution (the SAT-reconstruction workhorse) ======
+
+    [<Fact>]
+    member _.``resolve proves binary resolution on atoms`` () =
+        // ((p ∨ r) ∧ (¬r ∨ q)) ⇒ (p ∨ q) — construction throws if the derivation is not complete.
+        PropCalculus.resolve p q r |> ignore
+
+    [<Fact>]
+    member _.``resolve is robust to compound clauses (no ANF blow-up path)`` () =
+        // p, q, and the pivot each a compound Prop: the proof rewrites whole clauses, so it replays
+        // structurally regardless of clause width — the property the CaDiCaL replay relies on.
+        PropCalculus.resolve (p + q) (r + s) (p * q) |> ignore
+
+    [<Fact>]
+    member _.``resolve's statement is a genuine tautology (sound vs truth-table oracle)`` () =
+        // Cross-check the derived theorem against the independent truth-table oracle.
+        let t = PropCalculus.resolve p q r
+        Assert.True(equivalent (expand t.Stmt) (expand T.Expr))
+        // and the special case used to close a refutation: (p ∧ ¬p) ⇒ F  (empty clause from units)
+        let empty = PropCalculus.resolve F F p
+        Assert.True(equivalent (expand empty.Stmt) (expand T.Expr))
+
+    [<Fact>]
+    member _.``memoized resolve serves repeats from cache (same instance)`` () =
+        // A repeat call must return the CACHED theorem, not re-derive it — the perf property.
+        Assert.Same(PropCalculus.resolve p q r, PropCalculus.resolve p q r)
+
+    [<Fact>]
+    member _.``combine_implies proves and is robust to compound clauses`` () =
+        PropCalculus.combine_implies p q r |> ignore
+        let t = PropCalculus.combine_implies (p + q) (r + s) (p * q)   // compound args
+        Assert.True(equivalent (expand t.Stmt) (expand T.Expr))
+
+    [<Fact>]
+    member _.``memo keys correctly: distinct arguments never collide`` () =
+        // Different args must yield their own (structurally distinct) theorems — no wrong cache hit.
+        let a = PropCalculus.resolve p q r
+        let b = PropCalculus.resolve q p r
+        Assert.NotEqual<string>(src a.Stmt, src b.Stmt)
+        Assert.True(equivalent (expand a.Stmt) (expand T.Expr))
+        Assert.True(equivalent (expand b.Stmt) (expand T.Expr))
+
     // ===== Proof-technique tactics (Gries Ch. 4) ==============================
     // Each tactic must produce a *complete* Theorem (construction throws otherwise).
 
