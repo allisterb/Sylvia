@@ -250,16 +250,24 @@ end-to-end through 8 atoms: 2→5 s, 5→39 s, 8→142 s).
 - **Step 2 (CNF-equivalence)** — `¬φ = A` is produced by `Cnf.toCnf`, a recursive CNF proof that is
   size-bounded, not atom-exponential. The old `autoproof_anf` ≤5-atom ceiling is gone.
 
-The remaining limitation is **speed**: the bottleneck is the kernel proof assembly (many
-`resolve`/`conjElim`/`chainImp` derivations), which grows super-linearly with clause count. It is
-polynomial, not the old atom-exponential — but 142 s at 8 atoms shows the constant needs work
-(memoization of the reconstruction plumbing, and the schema-instantiation fix below, are the levers).
+The remaining limitation is **speed**, and it is **architectural**. The bottleneck is
+`Calc.chainImp` at ~1.9 s per call — it pushes the large input-clause conjunction `A` through several
+kernel steps (`Taut`/`reduce`/completeness-check), each **O(|expression|)** — and it is called O(n)
+times. So the cost is the equational kernel's per-step cost on a large object, not leaf re-derivation.
+
+Memoization was tried (2026-07-13) and **did not help a single reconstruction**: within one proof the
+lemma args (clauses) are mostly distinct → cache-miss-heavy, and the `Memo` `%A` key is itself
+O(|expr|). It was reverted. Memoization still helps *cross-invocation* reuse (the DSL-level decision),
+but the single-proof-assembly cost needs a cheaper proof step / cheaper term identity — a kernel-layer
+concern that motivates a fresh-start redesign.
 
 ## 7. Remaining work (honest boundaries)
 
-1. **Speed of the reconstruction assembly** — see above. `resolve` and its deps are already memoized;
-   the reconstruction plumbing (`conjElim`, `resolveStep`, `chainImp`) is not, and re-derives lemmas at
-   fresh clauses. The systemic fix is the schema-instantiation gap (item 4).
+1. **Speed of the reconstruction assembly (architectural).** The bottleneck is the O(|expr|)-per-step
+   kernel cost on the large conjunction `A` (via `chainImp`), not leaf re-derivation — memoization does
+   not fix it (tried, reverted). An O(m) `conjElimAll` (share the peel-chain) is in place but is a wash
+   at these sizes. The real levers are kernel-layer: interned/hash-consed terms (cheap identity + keys)
+   and cheaper proof steps / a proof object with `instantiate`. See the architectural-limits memory.
 2. **Merge-clause AC-dedup.** `acEq` uses `simp`, which handles reorder + F-drop + *adjacent* dedup but
    not *non-adjacent* duplicate literals (`a∨(a∨b) ≠ a∨b` under `simp`/`normalize`). This arises when
    two resolving clauses share a non-pivot literal (denser CNFs). Needs a real clause AC-normalizer.

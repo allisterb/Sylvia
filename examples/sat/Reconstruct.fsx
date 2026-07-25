@@ -63,14 +63,21 @@ let mp (factP:Theorem) (impl:Theorem) (pP:Prop) (qQ:Prop) : Theorem =      // �
                                Taut factP |> Commute |> apply_left; Taut impl |> apply ]
 let elimR (x:Prop) (y:Prop) : Theorem =                                    // (x∧y) ⇒ y
     theorem prop_calculus (x * y ==> y) [ commute_and x y; strengthen_and y x |> Taut |> apply ]
-let rec conjElim (cs:Prop list) (k:int) : Theorem =                        // (∧cs) ⇒ cs[k]
-    match cs with
-    | [c] -> reflex_implies c
-    | head::tail ->
-        let rest = tail |> List.reduceBack (*)
-        if k = 0 then strengthen_and head rest
-        elif List.length tail = 1 then elimR head rest
-        else Calc.chainImp (elimR head rest) (conjElim tail (k-1))
+// `A ⇒ Cᵢ` for every input clause, in ONE O(n) pass sharing the peel-chain `A ⇒ rest_j`
+// (the naive per-clause `conjElim` was O(n²) in the expensive `Calc.chainImp`). `A = C0 ∧ rest_1`.
+let conjElimAll (inputs:Prop list) : Theorem[] =
+    let arr = Array.ofList inputs
+    let n = arr.Length
+    let rest j = arr.[j..] |> Array.reduceBack (fun a b -> a * b)           // C_j ∧ … ∧ C_{n-1}
+    if n = 1 then [| reflex_implies arr.[0] |]
+    else
+        let aToRest = Array.zeroCreate n                                    // aToRest.[j] : A ⇒ rest_j
+        aToRest.[1] <- elimR arr.[0] (rest 1)
+        for j in 2 .. n-1 do aToRest.[j] <- Calc.chainImp aToRest.[j-1] (elimR arr.[j-1] (rest j))
+        Array.init n (fun i ->
+            if i = 0 then strengthen_and arr.[0] (rest 1)                   // A ⇒ C0
+            elif i = n-1 then aToRest.[n-1]                                 // A ⇒ rest_{n-1} = A ⇒ C_{n-1}
+            else Calc.chainImp aToRest.[i] (strengthen_and arr.[i] (rest (i+1))))
 
 // ---- one binary resolution → cp(apos) ∧ cp(aneg) ⇒ cp(resolvent) --------------------------------
 let acEq (l:Prop) (r:Prop) : Rule = ident prop_calculus (l == r) [ simp ]   // AC clause equality (no merge)
@@ -95,7 +102,8 @@ let refute (cnf:CnfProblem) (steps:LratStep list) : Prop * Theorem option =
     let A = inputs |> List.reduceBack (*)
     let lits = System.Collections.Generic.Dictionary<int,int list>()
     let imp = System.Collections.Generic.Dictionary<int,Theorem>()
-    cnf.Clauses |> List.iteri (fun i c -> lits.[i+1] <- c; imp.[i+1] <- conjElim inputs i)
+    let elims = conjElimAll inputs
+    cnf.Clauses |> List.iteri (fun i c -> lits.[i+1] <- c; imp.[i+1] <- elims.[i])
     let mutable r = None
     for step in steps do
         match step with
