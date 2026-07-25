@@ -212,7 +212,9 @@ type ParserTests() =
         let derived = ProofModules.getModuleDerivedRules TestRules.Type
         let ra = ProofParsers.parseRuleApp<bool> admissible derived [||] [||] "distribute_and_or a b c |> apply_left"
         match ra with
-        | Ok(ApplyLeft(r)) when r.Name.Contains("a ∧ b ∨ a ∧ c") -> ()
+        // print_formula renders nested connectives structurally with explicit parens
+        // (it no longer round-trips through the decompiler's F#-precedence rendering).
+        | Ok(ApplyLeft(r)) when r.Name.Contains("(a ∧ b) ∨ (a ∧ c)") -> ()
         | _ -> failwithf "Unexpected RuleApplication structure: %A" ra
 
     [<Fact>]

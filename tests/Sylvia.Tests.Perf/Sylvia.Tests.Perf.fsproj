@@ -7,11 +7,13 @@
 
   <ItemGroup>
     <Compile Include="Payloads.fs" />
+    <Compile Include="Reconstruction.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\lang\core\Sylvia.Prover\Sylvia.Prover.fsproj" />
+    <ProjectReference Include="..\..\src\lang\solvers\Sylvia.Solver.CaDiCaL\Sylvia.Solver.CaDiCaL.fsproj" />
   </ItemGroup>
 
 </Project>

@@ -27,9 +27,7 @@ let time name iters (f: unit -> 'a) =
     let a = GC.GetAllocatedBytesForCurrentThread() - a0
     printfn "%-36s %12.3f us/op %12d B/op   (%d iters)" name (sw.Elapsed.TotalMilliseconds * 1000. / float iters) (a / int64 iters) iters
 
-[<EntryPoint>]
-let main _ =
-    printfn "=== Sylvia.Expressions perf harness ==="
+let runMicro () =
     timeOnce "corpus init (module cctor)" (fun () -> Payloads.largeA)
     timeOnce "trans_implies (first call)" Payloads.trans_implies_run
     timeOnce "trans_implies (second call)" Payloads.trans_implies_run
@@ -43,4 +41,23 @@ let main _ =
     time "sequal large neq late" 200 Payloads.sequal_large_neq_late
     time "get_vars large" 200 Payloads.get_vars_large
     time "replace_expr large" 50 Payloads.replace_expr_large
+
+/// SAT-reconstruction payloads (hermetic, no solver): run with `-- reconstruct` to get a
+/// process profile dominated by reconstruction cost alone (Cnf.toCnf, conjElimAll /
+/// Calc.chainImp, resolve folding, normalize). LogLevel 0 keeps console I/O out of the profile.
+let runReconstruction () =
+    Proof.LogLevel <- 0
+    timeOnce "reconstruct chain 5 (cold)" (fun () -> Reconstruction.reconstruct_chain 5)
+    timeOnce "reconstruct chain 8" (fun () -> Reconstruction.reconstruct_chain 8)
+    timeOnce "reconstruct chain 12" (fun () -> Reconstruction.reconstruct_chain 12)
+    timeOnce "conjElimAll 12 clauses" (fun () -> Reconstruction.conj_elim_all 12)
+    Proof.LogLevel <- 1
+
+[<EntryPoint>]
+let main argv =
+    printfn "=== Sylvia.Expressions perf harness ==="
+    match argv with
+    | [| "reconstruct" |] -> runReconstruction ()
+    | [| "micro" |] -> runMicro ()
+    | _ -> runMicro (); runReconstruction ()
     0

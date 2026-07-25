@@ -336,6 +336,56 @@ its constant factor is ~20x smaller, which moves the practical ceiling well past
 the fresh-start decision previously sat. (The 8- and 12-atom checks are now permanent
 cases in Reconstruct.fsx.)
 
+**Profiling the remaining cost**: `tests/Sylvia.Tests.Perf/Reconstruction.fs` is a
+hermetic copy of the pipeline (no CaDiCaL — the chain refutation is synthesized
+in-process, since the chain CNFs are unit-propagatable) so a profiler sees only
+Sylvia-side reconstruction work. Run the perf exe with the `reconstruct` argument to
+profile reconstruction alone (`micro` runs only the Phase 0 micro-payloads; no argument
+runs both). Current shape (Release, LogLevel 0): chain-12 ≈ 9.9 s / **15.7 GB
+allocated**, and `conjElimAll` over just 12 clauses — the isolated O(n)-`Calc.chainImp`
+peel — is ≈ 5.4 s / 8.7 GB, confirming chainImp as the dominant remaining cost and the
+first thing to look at in the profile.
+
+## Phase 5 results (2026-07-25, profiler-driven: print_formula without the decompiler)
+
+Profiling the reconstruction payload showed **76.6% of CPU in Unquote's `decompile`**,
+reached via `Calc.chainImp` → `LogicalRules.Subst` → `Display.print_src`: rule NAMES
+(`"Substitute %s ≡ %s …"`) are formatted eagerly on every rule construction — at every
+log level — and `print_formula` routed every quantifier-free (i.e. every propositional)
+formula through the decompiler.
+
+Fix (user-directed, in `Display.print_formula`): drop the quantifier-free `print_src`
+shortcut so the existing structural connective cases render propositional formulas
+(bottoming out at the Var/Const/T/F cases with NO decompilation), render atom leaves
+with the now-cheap `sprinte`, and keep `print_src` only as the last-resort fallback for
+terms with no structural case (set-algebra operators etc. — `sprinte` has no patterns
+for those). Note `sprinte` could not simply replace `print_src` wholesale: it has no
+boolean-connective patterns and falls into the MathNet converter, which throws.
+
+**Deliberate display-format change** (the one behavior change in this whole effort):
+nested connectives now render with explicit structural parens instead of the
+decompiler's F#-precedence-implicit form — `F = F = T` → `(F = F) = T`,
+`a ∧ b ∨ a ∧ c` → `(a ∧ b) ∨ (a ∧ c)`, `¬ F` → `¬F`. One parser test updated for the
+new form. Both example scripts pass (ALL PASS) with only this class of diff.
+
+| Payload | Phase 4 | Phase 5 | vs baseline |
+|---|---:|---:|---:|
+| reconstruct chain 8 | 4.5-4.8 s / 7.3 GB | **2.0-2.4 s / 3.0 GB** | 142 s → **~65x** |
+| reconstruct chain 12 | 9.9 s / 15.7 GB | **2.2-2.8 s / 6.1 GB** | — |
+| conjElimAll 12 clauses | 5.4 s / 8.7 GB | 1.2-1.5 s / 3.3 GB | — |
+| trans_implies (cold) | 217 ms / 55 MB | 183 ms / 27 MB | 681 ms → 3.7x |
+| trans_implies (warm, default log) | 55-59 ms / 53 MB | **23.7 ms / 25 MB** | 575 ms → **24x** |
+| trans_implies (warm, LogLevel=0) | 35 ms / 35 MB | **20.2 ms / 22 MB** | **28x** |
+
+Validation: prover suite 97/97 (with `SYLVIA_SEQUAL_CHECK=1`), Expressions 25/26
+(pre-existing), PropCalculus.fsx + SetTheory.fsx ALL PASS.
+
+Remaining in the reconstruction profile after this: the rule-name `sprintf`s still run
+eagerly per rule construction (now cheap but nonzero — making `Rule` names lazy is the
+next step if profiling still shows them), and the rest is genuine kernel work
+(`Taut`/`reduce`/axiom probing over the big conjunction) — the memoization /
+architectural territory.
+
 ## Sequencing and risk
 
 | Phase | Impact | Risk | Notes |

@@ -44,9 +44,11 @@ module Display =
         | :? (Var list) as vars -> vars.Tail |> List.fold (fun s v -> sprintf "%s,%s" s v.Name) vars.Head.Name |> Some
         | _ -> None
 
-    /// Decompile a quantifier-free (sub)expression with the propositional symbol map.
-    /// This is the long-standing rendering for pure propositional formulas; it is kept
-    /// intact so propositional output is unchanged.
+    /// Decompile a (sub)expression with the propositional symbol map. LAST-RESORT
+    /// fallback only: Unquote decompilation is extremely expensive (it dominated
+    /// whole-proof profiles when every propositional formula went through it \u2014 see
+    /// docs/expressions-perf.md). It remains the rendering for terms with no
+    /// structural case below, e.g. custom operators like the set-algebra `|+|`/`|?|`.
     let private print_src expr =
         let mutable e = src expr
         for kv in symbolMap
@@ -61,7 +63,7 @@ module Display =
         | False -> "F"
         | Const(NonNull(SymbolDisplay symbol)) -> symbol
         | Var(VarDisplay v) -> v
-        | Atom a -> src a
+        | Atom a -> sprinte a
         | Index(l, r) -> sprintf "here"
 
         (* Quantifier terms *)
@@ -72,13 +74,8 @@ module Display =
         | SumTerm(_, SymbolDisplay symbol, VarDisplay bound, range, body)
         | ProductTerm(_, SymbolDisplay symbol, VarDisplay bound, range, body) -> sprintf "%s %s %s" symbol (bound) (print_formula body)
 
-        // Quantifier-free (sub)expressions keep the original decompiler-based rendering
-        // (this preserves all propositional output). Only formulas that CONTAIN a quantifier
-        // fall through to the structural connective cases below, so a quantifier nested inside
-        // =, \u2228, \u2227, \u21d2, \u00ac, ... is pretty-printed instead of leaking as `forall_expr ...`.
-        | expr when (get_quantifiers expr) |> List.isEmpty -> print_src expr
-
-        (* Boolean connectives around a quantifier: recurse structurally *)
+        (* Boolean connectives: recurse structurally \u2014 propositional formulas bottom out
+           at the Var/Const/True/False cases above with NO decompilation. *)
         | Not e -> sprintf "\u00ac%s" (print_atom e)
         | Equals(l, r) -> sprintf "%s = %s" (print_atom l) (print_atom r)
         | NotEquals(l, r) -> sprintf "%s \u2260 %s" (print_atom l) (print_atom r)
