@@ -386,6 +386,37 @@ next step if profiling still shows them), and the rest is genuine kernel work
 (`Taut`/`reduce`/axiom probing over the big conjunction) — the memoization /
 architectural territory.
 
+## Phase 6 results (2026-07-25, profiler-driven: lazy pattern/axiom descriptions)
+
+The allocation profile showed `equational_logic_axioms` allocating
+`AxiomDescription`/`PatternDescription` pairs on every successful axiom probe, with
+`Descriptions.pattern_desc` **decompiling its example quotation eagerly** each time —
+and `axiom_desc`/`set_axiom_desc_theory` force-rebuilding the pair. Only `.Name` is read
+on the hot path (the `StartsWith "Definition"` check); the description text is almost
+never read.
+
+Fix (Descriptions.fs, no call-site changes): `PatternDescription` now carries
+`Lazy<string>` — `pattern_desc` defers the decompile until `.Description` is actually
+read, and `axiom_desc`/`set_axiom_desc_theory` pass the pattern description through
+without forcing. Nothing outside the module destructures the DU cases, so the members'
+API is unchanged. A printer swap (`print_formula` for `src`) was NOT possible here —
+Descriptions compiles before Display and print_formula itself depends on the Patterns
+module — but laziness sidesteps the ordering problem entirely.
+
+| Payload | Phase 5 | Phase 6 |
+|---|---:|---:|
+| reconstruct chain 8 | 2.0-2.4 s / 3.0 GB | **1.5 s / 2.9 GB** |
+| reconstruct chain 12 | 2.2-2.8 s / 6.1 GB | **2.0 s / 5.8 GB** |
+| conjElimAll 12 clauses | 1.2-1.5 s / 3.3 GB | 1.05 s / 3.2 GB |
+
+The 8-atom reconstruction is now ~**95x** faster than the original 142 s. Validation:
+prover suite 97/97 with `SYLVIA_SEQUAL_CHECK=1`, both example scripts ALL PASS with
+**byte-identical** logs (only never-read text became lazy). Still open (small): the
+example-quotation literals inside match arms deserialize per successful match
+(`Byte[402]` rows — hoist to module-level lets or make `pattern_desc` take the example
+lazily if they still show), and 4 `sprintf … (src op)` pattern NAMES in Patterns.fs
+decompile small operator templates per success.
+
 ## Sequencing and risk
 
 | Phase | Impact | Risk | Notes |
