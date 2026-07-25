@@ -915,30 +915,48 @@ module ProofModules =
 /// (and its sub-lemmas' proofs, recursively) on every call — the dominant cost when a single proof
 /// invokes the same lemma instance many times (e.g. replaying a SAT/LRAT refutation, where the same
 /// clauses recur as premises across many resolution steps). These builders are PURE functions of
-/// their arguments, so caching their results is sound. The key is the full expanded-`Expr` AST dump
-/// (`%A`), which is injective, so distinct arguments never collide — no wrong theorem is ever returned.
+/// their arguments, so caching their results is sound. The key is a fast structural key (`skey`) of
+/// the expanded arguments, and every hit sequal-verifies the stored arguments, so a key collision is
+/// merely a cache miss — no wrong theorem is ever returned.
 ///
 /// Wrap a lemma once (`let fast = Memo.p3 slow`) and share the alias; the cache is process-wide and
 /// thread-safe. It does NOT make a first-time derivation cheaper — only repeat instances become free.
 module Memo =
-    // The full expanded-Expr AST dump: injective. `sep` is a control char `%A` never emits, so it is
-    // an unambiguous field separator for multi-argument keys.
-    let private k (p: Prop) = sprintf "%A" (expand p.Expr)
-    let private sep = ""
+    // Fast structural key over the EXPANDED expression (so equivalent construction
+    // routes key identically), plus sequal VERIFICATION of the stored arguments on
+    // every hit: the key is a cheap discriminator, and verification makes a key
+    // collision merely a cache miss — never a wrong theorem. Replaces the previous
+    // `%A` reflection-dump key, which was O(|expr|) with a very large constant and
+    // made memoized lookups themselves expensive (see docs/expressions-perf.md).
+    let private k (p: Prop) = skey (expand p.Expr)
+    let private sep = "|"
+    let private aeq (a: Prop) (b: Prop) = sequal a.Expr.Raw b.Expr.Raw
 
     /// Memoize a one-`Prop`-argument builder.
     let p1 (f: Prop -> 'r) : Prop -> 'r =
-        let d = System.Collections.Concurrent.ConcurrentDictionary<string, 'r>()
-        fun a -> d.GetOrAdd(k a, System.Func<_, _>(fun _ -> f a))
+        let d = System.Collections.Concurrent.ConcurrentDictionary<string, Prop * 'r>()
+        fun a ->
+            let key = k a
+            match d.TryGetValue key with
+            | true, (a', r) when aeq a a' -> r
+            | _ -> let r = f a in d.[key] <- (a, r); r
 
     /// Memoize a two-`Prop`-argument builder.
     let p2 (f: Prop -> Prop -> 'r) : Prop -> Prop -> 'r =
-        let d = System.Collections.Concurrent.ConcurrentDictionary<string, 'r>()
-        fun a b -> d.GetOrAdd(k a + sep + k b, System.Func<_, _>(fun _ -> f a b))
+        let d = System.Collections.Concurrent.ConcurrentDictionary<string, (Prop * Prop) * 'r>()
+        fun a b ->
+            let key = k a + sep + k b
+            match d.TryGetValue key with
+            | true, ((a', b'), r) when aeq a a' && aeq b b' -> r
+            | _ -> let r = f a b in d.[key] <- ((a, b), r); r
 
     /// Memoize a three-`Prop`-argument builder.
     let p3 (f: Prop -> Prop -> Prop -> 'r) : Prop -> Prop -> Prop -> 'r =
-        let d = System.Collections.Concurrent.ConcurrentDictionary<string, 'r>()
-        fun a b c -> d.GetOrAdd(k a + sep + k b + sep + k c, System.Func<_, _>(fun _ -> f a b c))
+        let d = System.Collections.Concurrent.ConcurrentDictionary<string, (Prop * Prop * Prop) * 'r>()
+        fun a b c ->
+            let key = k a + sep + k b + sep + k c
+            match d.TryGetValue key with
+            | true, ((a', b', c'), r) when aeq a a' && aeq b b' && aeq c c' -> r
+            | _ -> let r = f a b c in d.[key] <- ((a, b, c), r); r
 
         

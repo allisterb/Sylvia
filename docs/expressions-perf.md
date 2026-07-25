@@ -524,6 +524,40 @@ All of it from the Phases 0-8 work in this document — no architectural change,
 change to the trusted base's semantics, and (apart from the deliberate Phase 5 display
 parenthesization) byte-identical proof output throughout.
 
+## Phase 9 results (2026-07-25, rule-replay memoization retry)
+
+Retried the memoization that failed on 2026-07-13, now that its two failure causes are
+addressed:
+
+- **`Memo`'s key** was `sprintf "%A" (expand p.Expr)` — an O(|expr|) reflection dump
+  with a huge constant that made even cache HITS expensive. Replaced with
+  `FsExpr.skey` (a compact length-prefixed structural serialization, at least as
+  discriminating as sequal's name-based identity), and every hit now
+  **sequal-verifies the stored arguments** — a key collision is merely a cache miss,
+  never a wrong theorem, so the key needs no injectivity proof.
+- **Newly memoized** (impl + `Memo.pN` cache + attributed public wrapper, the existing
+  `resolve` pattern): `commute_and`, `distrib_or_and`, `ident_conseq_true`,
+  `reflex_implies`, `strengthen_and`, `combine_implies` (which now also uses the
+  memoized `m_ident_implies_not_or` internally), plus `elimR` in the reconstruction
+  payload/script. Downstream callers pick the cached versions up automatically.
+
+| Payload | Phase 8 | Phase 9 |
+|---|---:|---:|
+| trans_implies (warm, default) | 12.2 ms | **10.7 ms** |
+| trans_implies (warm, LogLevel=0) | 8.8 ms | **7.1 ms** (575 ms baseline → **81x**) |
+| reconstruct chain 5 (cold) | 1.26 s | **1.10 s** |
+| reconstruct chain 8 | 1.32 s | 1.31 s |
+| reconstruct chain 12 | 1.34 s | 1.40 s (noise) |
+
+**Honest read:** the July conclusion still holds directionally — within ONE
+reconstruction the lemma instances are mostly distinct, so single-run gains are 0-15%.
+The real wins are (a) warm/repeated workloads (~20% further on trans_implies), and
+(b) the infrastructure itself: with the fast verified key, `Memo` hits are now actually
+cheap, so memoization can be applied liberally wherever profiling shows repeated
+instances (it previously taxed every call). Validation: 97/97 with
+`SYLVIA_SEQUAL_CHECK=1`; examples ALL PASS; SetTheory log byte-identical, PropCalculus
+log diff = removed duplicate lemma derivations only (memoized lemmas derive once).
+
 ## Sequencing and risk
 
 | Phase | Impact | Risk | Notes |

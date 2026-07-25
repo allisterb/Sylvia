@@ -526,6 +526,42 @@ module FsExpr =
             if s <> s' then failwithf "sequal check failed: structural=%b but string=%b for %s vs %s" s s' (l.ToString()) (r.ToString())
         s
 
+    /// Compact structural key for an expression, at least as discriminating as sequal's
+    /// name-based identity (free-form fields are length-prefixed). Intended for memo
+    /// keys — orders of magnitude cheaper than a `%A` reflection dump. Consumers should
+    /// still sequal-verify on cache hits: the key is a discriminator, not a proof of
+    /// identity (the rare fallback case stringifies).
+    let skey (expr:Expr) : string =
+        let sb = System.Text.StringBuilder(128)
+        let str (s:string) = sb.Append(s.Length).Append(':').Append(s) |> ignore
+        let rec go (e:Expr) =
+            match e with
+            | ValueWithName(v, _, n) -> sb.Append('N') |> ignore; str n; str (string v)
+            | WithValue(_, _, e2) -> sb.Append('W') |> ignore; go e2
+            | Value(v, t) -> sb.Append('v') |> ignore; str (string v); str t.Name
+            | Var v -> sb.Append('$') |> ignore; str v.Name
+            | Lambda(v, b) -> sb.Append('\\') |> ignore; str v.Name; go b
+            | Call(o, mi, args) ->
+                sb.Append('C') |> ignore; str mi.Name
+                (match o with Some x -> (sb.Append('o') |> ignore; go x) | None -> ())
+                sb.Append('(') |> ignore; args |> List.iter go; sb.Append(')') |> ignore
+            | IfThenElse(a, b, c) -> sb.Append('I') |> ignore; go a; go b; go c
+            | Application(f, x) -> sb.Append('A') |> ignore; go f; go x
+            | PropertyGet(o, pi, args) ->
+                sb.Append('P') |> ignore; str pi.Name
+                (match o with Some x -> (sb.Append('o') |> ignore; go x) | None -> ())
+                sb.Append('(') |> ignore; args |> List.iter go; sb.Append(')') |> ignore
+            | FieldGet(o, fi) -> sb.Append('F') |> ignore; str fi.Name; (match o with Some x -> go x | None -> ())
+            | NewTuple args -> sb.Append("T(") |> ignore; args |> List.iter go; sb.Append(')') |> ignore
+            | NewUnionCase(uci, args) -> sb.Append('U') |> ignore; str uci.Name; sb.Append('(') |> ignore; args |> List.iter go; sb.Append(')') |> ignore
+            | NewArray(t, args) -> sb.Append('R') |> ignore; str t.Name; sb.Append('(') |> ignore; args |> List.iter go; sb.Append(')') |> ignore
+            | Let(v, e1, b) -> sb.Append('l') |> ignore; str v.Name; go e1; go b
+            | TupleGet(e1, i) -> sb.Append('G').Append(i) |> ignore; go e1
+            | Coerce(e1, t) -> sb.Append('c') |> ignore; str t.Name; go e1
+            | _ -> sb.Append('?') |> ignore; str (e.ToString())
+        go expr
+        sb.ToString()
+
     let sequal2 (l1:Expr) (l2:Expr) (r1:Expr) (r2:Expr) = sequal l1 r1 && sequal l2 r2
 
     let sequal3 (l1:Expr) (l2:Expr) (l3:Expr) (r1:Expr) (r2:Expr) (r3:Expr)= sequal l1 r1 && sequal l2 r2 && sequal l3 r3

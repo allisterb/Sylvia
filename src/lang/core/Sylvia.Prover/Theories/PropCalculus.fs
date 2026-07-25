@@ -549,14 +549,18 @@ module PropCalculus =
         idemp_or p |> at_left
     ]
 
-     /// p ∧ q = q ∧ p  (Gries 3.36)
-    [<DerivedRule "p ∧ q = q ∧ p">]
-    let commute_and (p:Prop) (q:Prop) = ident prop_calculus ((p * q) == (q * p))  [
+     // Memoized (see Memo): re-derived constantly with recurring arguments in
+    // reconstruction workloads.
+    let private commute_and_impl (p:Prop) (q:Prop) = ident prop_calculus ((p * q) == (q * p))  [
         golden_rule' p q |> at_left
         golden_rule' q p |> at_right
         commute_or q p |> at_right
         commute_eq q p |> at_right
     ]
+    let private commute_and_cache = Memo.p2 commute_and_impl
+    /// p ∧ q = q ∧ p  (Gries 3.36)
+    [<DerivedRule "p ∧ q = q ∧ p">]
+    let commute_and (p:Prop) (q:Prop) = commute_and_cache p q
         
     /// p ∧ q ∧ r == (p == q == r == (p ∨ q) = (q ∨ r) = (r ∨ p) = (p ∨ q ∨ r))  (Gries 3.55)
     [<DerivedRule "p ∧ q ∧ r == (p == q == r == (p ∨ q) == (q ∨ r) == (r ∨ p) == (p ∨ q ∨ r))">]
@@ -674,14 +678,16 @@ module PropCalculus =
     ]
     
     /// p ∨ (q ∧ r) = ((p ∨ q) ∧ (p ∨ r))  (Gries 3.45)
-    [<DerivedRule "p ∨ (q ∧ r) = ((p ∨ q) ∧ (p ∨ r))">]
-    let distrib_or_and (p:Prop) (q:Prop) (r:Prop) = ident prop_calculus (p + (q * r) == ((p + q) * (p + r))) [
+    let private distrib_or_and_impl (p:Prop) (q:Prop) (r:Prop) = ident prop_calculus (p + (q * r) == ((p + q) * (p + r))) [
         golden_rule |> at [left_branch; right_branch]
         distrib |> at_left
         distrib |> at [left_branch; left_branch]
         distrib_or_or p q r |> at_left
         golden_rule' ( p + q ) ( p + r ) |> Commute |> at_left
     ]
+    let private distrib_or_and_cache = Memo.p3 distrib_or_and_impl
+    [<DerivedRule "p ∨ (q ∧ r) = ((p ∨ q) ∧ (p ∨ r))">]
+    let distrib_or_and (p:Prop) (q:Prop) (r:Prop) = distrib_or_and_cache p q r
 
     /// ((p ∨ q) ∧ (p ∨ r)) = p ∨ (q ∧ r)  (Gries 3.45)
     [<DerivedRule "((p ∨ q) ∧ (p ∨ r)) = p ∨ (q ∧ r)">]
@@ -947,14 +953,16 @@ module PropCalculus =
         ident_and (!!p + !!q) |> at_right
     ]
 
-    /// (T ⇒ p) = p  (Gries 3.73)
-    [<DerivedRule "(T ⇒ p) = p">]
-    let ident_conseq_true p = ident prop_calculus ((T ==> p) == p) [
+    let private ident_conseq_true_impl p = ident prop_calculus ((T ==> p) == p) [
         def_implies |> at_left
         zero_or p |> CommuteL |> at_left
         right_assoc
         commute
     ]
+    let private ident_conseq_true_cache = Memo.p1 ident_conseq_true_impl
+    /// (T ⇒ p) = p  (Gries 3.73)
+    [<DerivedRule "(T ⇒ p) = p">]
+    let ident_conseq_true p = ident_conseq_true_cache p
 
     /// p ⇒ F = ¬p  (Gries 3.74)
     [<DerivedRule "p ⇒ F = ¬p">]
@@ -1053,11 +1061,13 @@ module PropCalculus =
         ident_eq ((p + q) == (p + q))
     ]
 
-    /// p ⇒ p  (Gries 3.71)
-    [<Theorem "p ⇒ p">]
-    let reflex_implies p = theorem prop_calculus ( p ==> p ) [
+    let private reflex_implies_impl p = theorem prop_calculus ( p ==> p ) [
         def_implies
     ]
+    let private reflex_implies_cache = Memo.p1 reflex_implies_impl
+    /// p ⇒ p  (Gries 3.71)
+    [<Theorem "p ⇒ p">]
+    let reflex_implies p = reflex_implies_cache p
         
     /// p ⇒ true  (Gries 3.72)
     [<Theorem "p ⇒ true">]
@@ -1073,14 +1083,16 @@ module PropCalculus =
         ident_or p |> CommuteL |> Taut' |> apply
     ]
 
-    /// (p ∧ q) ⇒ p  (Gries 3.76b)
-    [<Theorem "(p ∧ q) ⇒ p">]
-    let strengthen_and p q = theorem prop_calculus ((p * q) ==> p) [
+    let private strengthen_and_impl p q = theorem prop_calculus ((p * q) ==> p) [
         ident_eq ( ((p * q ) ==> p) )
         def_implies
         commute |> at_left
         absorb_or p q |> Taut' |> apply
     ]
+    let private strengthen_and_cache = Memo.p2 strengthen_and_impl
+    /// (p ∧ q) ⇒ p  (Gries 3.76b)
+    [<Theorem "(p ∧ q) ⇒ p">]
+    let strengthen_and p q = strengthen_and_cache p q
     
     /// p ⇒ p ∨ q   (Gries 3.76a)
     [<Theorem "p ⇒ p ∨ q">]
@@ -1175,14 +1187,16 @@ module PropCalculus =
     /// (the ⇒-half of `⇒` distributing over `∧`). Used to thread `resolve` steps into a single
     /// `(∧ input-clauses) ⇒ …` when reconstructing a SAT refutation. Proved like `resolve`, via the
     /// material form `p ⇒ q = ¬p ∨ q`, so it too replays cheaply at wide/compound clause arguments.
-    [<Theorem "((p ⇒ q) ∧ (p ⇒ r)) ⇒ (p ⇒ (q ∧ r))">]
-    let combine_implies (p:Prop) (q:Prop) (r:Prop) = theorem prop_calculus (((p ==> q) * (p ==> r)) ==> (p ==> (q * r))) [
-        ident_implies_not_or p q |> at [left_branch; left_branch]     // (p⇒q) ↦ ¬p ∨ q
-        ident_implies_not_or p r |> at [left_branch; right_branch]    // (p⇒r) ↦ ¬p ∨ r
+    let private combine_implies_impl (p:Prop) (q:Prop) (r:Prop) = theorem prop_calculus (((p ==> q) * (p ==> r)) ==> (p ==> (q * r))) [
+        m_ident_implies_not_or p q |> at [left_branch; left_branch]   // (p⇒q) ↦ ¬p ∨ q
+        m_ident_implies_not_or p r |> at [left_branch; right_branch]  // (p⇒r) ↦ ¬p ∨ r
         distrib_or_and (-p) q r |> Commute |> at_left                 // (¬p∨q)∧(¬p∨r) ↦ ¬p ∨ (q∧r)
-        ident_implies_not_or p (q * r) |> Commute |> at_left          // ¬p ∨ (q∧r) ↦ (p ⇒ (q∧r))
+        m_ident_implies_not_or p (q * r) |> Commute |> at_left        // ¬p ∨ (q∧r) ↦ (p ⇒ (q∧r))
         reflex_implies (p ==> (q * r)) |> Taut |> apply               // reflexivity closes it
     ]
+    let private combine_implies_cache = Memo.p3 combine_implies_impl
+    [<Theorem "((p ⇒ q) ∧ (p ⇒ r)) ⇒ (p ⇒ (q ∧ r))">]
+    let combine_implies (p:Prop) (q:Prop) (r:Prop) = combine_implies_cache p q r
 
     /// (p = q) ∧ (q ⇒ r) ⇒ (p ⇒ r)  (Gries 3.82b)
     [<Theorem "(p = q) ∧ (q ⇒ r) ⇒ (p ⇒ r)">]

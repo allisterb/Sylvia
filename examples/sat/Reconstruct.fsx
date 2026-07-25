@@ -61,8 +61,9 @@ let conj (t1:Theorem) (t2:Theorem) (x:Prop) (y:Prop) : Theorem =           // �
 let mp (factP:Theorem) (impl:Theorem) (pP:Prop) (qQ:Prop) : Theorem =      // ⊢P, ⊢(P⇒Q) ⟼ ⊢Q
     theorem prop_calculus qQ [ ident_conseq_true qQ |> Commute |> apply
                                Taut factP |> Commute |> apply_left; Taut impl |> apply ]
-let elimR (x:Prop) (y:Prop) : Theorem =                                    // (x∧y) ⇒ y
+let elimR_impl (x:Prop) (y:Prop) : Theorem =                               // (x∧y) ⇒ y
     theorem prop_calculus (x * y ==> y) [ commute_and x y; strengthen_and y x |> Taut |> apply ]
+let elimR = Memo.p2 elimR_impl
 // `A ⇒ Cᵢ` for every input clause, in ONE O(n) pass sharing the peel-chain `A ⇒ rest_j`
 // (the naive per-clause `conjElim` was O(n²) in the expensive `Calc.chainImp`). `A = C0 ∧ rest_1`.
 let conjElimAll (inputs:Prop list) : Theorem[] =

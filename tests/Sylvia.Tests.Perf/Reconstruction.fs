@@ -48,8 +48,9 @@ module Reconstruction =
     let private mp (factP:Theorem) (impl:Theorem) (pP:Prop) (qQ:Prop) : Theorem =  // ⊢P, ⊢(P⇒Q) ⟼ ⊢Q
         theorem prop_calculus qQ [ ident_conseq_true qQ |> Commute |> apply
                                    Taut factP |> Commute |> apply_left; Taut impl |> apply ]
-    let private elimR (x:Prop) (y:Prop) : Theorem =                                // (x∧y) ⇒ y
+    let private elimR_impl (x:Prop) (y:Prop) : Theorem =                           // (x∧y) ⇒ y
         theorem prop_calculus (x * y ==> y) [ commute_and x y; strengthen_and y x |> Taut |> apply ]
+    let private elimR = Memo.p2 elimR_impl
 
     /// `A ⇒ Cᵢ` for every input clause, in ONE O(n) pass sharing the peel-chain `A ⇒ rest_j`.
     /// This is the Calc.chainImp hot spot — O(n) chainImp calls over the big conjunction A.
