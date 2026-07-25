@@ -23,3 +23,7 @@ See the example scripts in @docs\examples\math and @docs\examples\proofs for exa
 ```bash
 dotnet fsi .\docs\examples\proofs\PropCalculus.fsx # Run the Propositional Calculus example script
 ```
+
+## Guardails
+**Do not** commit any changes automatically, always prompt the user to commit manually.
+**Do not** install any NuGet packages automatically, always prompt the user to install packages manually.
