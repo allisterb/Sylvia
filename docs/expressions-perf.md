@@ -506,6 +506,24 @@ ANF normalizers sort by `x.ToString()` (StructuredFormat keys) — changing the 
 changes the canonical operand ORDER, i.e. observable proof output, so it was left alone;
 `strengthen_and`-style rule replay is the memoization/architectural frontier.
 
+## Closing benchmark (2026-07-25): the original pause-point workload, end to end
+
+The workload that paused the SAT-reconstruction project on 2026-07-13 was the **8-atom
+chain at 142 s** (the largest case measured then; 12 atoms was never attempted). Final
+run of the real pipeline — `examples/sat/Reconstruct.fsx`, actual CaDiCaL solving + LRAT
+parsing + kernel-checked reconstruction, ALL GREEN:
+
+| Goal | 2026-07-13 | Now | Speedup |
+|---|---:|---:|---:|
+| 3-atom chain | ~5 s | 0.58 s | ~9x |
+| 5-atom chain | ~39 s | 0.76 s | ~51x |
+| **8-atom chain (the pause point)** | **142 s** | **1.12 s** | **~127x** |
+| 12-atom chain | not attempted | 2.07 s | — |
+
+All of it from the Phases 0-8 work in this document — no architectural change, no
+change to the trusted base's semantics, and (apart from the deliberate Phase 5 display
+parenthesization) byte-identical proof output throughout.
+
 ## Sequencing and risk
 
 | Phase | Impact | Risk | Notes |
