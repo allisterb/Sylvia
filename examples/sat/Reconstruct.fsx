@@ -31,9 +31,13 @@ let sat = Cadical(exePath = @"C:\Projects\Sylvia\bin\cadical.exe", timeoutMs = 2
 
 // Extract a CnfProblem directly from a clean CNF Prop (so it matches `Cnf.toCnf`'s equivalence proof).
 // Repeated literals within a clause are dropped: `Cnf.toCnf`'s distribution readily produces them
-// (Peirce's law gives a `p ∨ p`), and carrying them into the input conjunction `A` mis-targets the
-// `idemp_or` rewrite inside `absorb_or`, which `strengthen_and` — and hence `conjElimAll` — is built
-// on. `A` is then no longer AC-identical to the CNF, so `bridgeEq` below closes the gap with `simp`.
+// (Peirce's law gives a `p ∨ p`). This is an OPTIMIZATION, not a correctness requirement — smaller
+// clauses mean a smaller input conjunction `A`, and every kernel step in the replay costs O(|A|)
+// (measured: `∨` over `∧` 12.1 s → 7.7 s, xor commutativity 26.8 s → 16.6 s, 12-atom chain
+// 2.6 s → 1.9 s). It WAS load-bearing until `absorb_or` and its siblings were given exact rewrite
+// addresses; a `p ∨ p` inside `A` used to mis-target the `idemp_or` step those derivations search
+// for, which `strengthen_and` — and hence `conjElimAll` — is built on. `dedupCnf` pays for it by
+// proving `cnfProp == A` in two exact moves instead of one.
 let clausesOf (goal:Prop) (cnfProp:Prop) : CnfProblem =
     let atoms = System.Collections.Generic.List<Expr>()
     let varOf (e:Expr) =

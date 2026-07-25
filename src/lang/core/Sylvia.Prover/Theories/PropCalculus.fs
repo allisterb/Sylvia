@@ -538,15 +538,22 @@ module PropCalculus =
     [<DerivedRule "p ∧ q = ((p = q) = (p ∨ q))">]
     let golden_rule' (p:Prop) (q:Prop) = id_ax prop_calculus ((p * q) == (p == q == (p + q)))
 
+    // NB (applies to this and the derivations below): every SUBSTITUTION step is addressed to the
+    // exact node it rewrites. A substitution rule (`idemp_or p`, an `Ident` of a theorem) rewrites
+    // the leftmost-outermost match inside whatever subterm it is pointed at, so a searching address
+    // such as `at_left` picks the wrong occurrence as soon as an ARGUMENT contains a competing one
+    // — `absorb_or p ((p ∨ p) ∧ q)` used to fail here, and `q` is arbitrary in every caller
+    // (`strengthen_and` → `conjElimAll` instantiates it at a whole clause set). Admissible rules
+    // (`golden_rule`, `distrib`, `commute`, …) fire only at the addressed node and are already exact.
     /// (p ∨ (p ∧ q)) = p  (Gries 3.43b)
     [<DerivedRule "(p ∨ (p ∧ q)) = p">]
     let absorb_or (p:Prop) (q:Prop) = ident prop_calculus (p + (p * q) == p)  [
-        golden_rule |> at [left_branch; right_branch]
-        distrib |> at_left
-        left_assoc_or p p q |> at_left
-        idemp_or p |> at_left
-        distrib_or_eq p p q |> at_left
-        idemp_or p |> at_left
+        golden_rule |> at [left_branch; right_branch]                    // (p ∨ ((p = q) = (p ∨ q))) = p
+        distrib |> at_left                                               // ((p ∨ (p = q)) = (p ∨ (p ∨ q))) = p
+        left_assoc_or p p q |> at [left_branch; right_branch]             // … = ((p ∨ p) ∨ q)) = p
+        idemp_or p |> at [left_branch; right_branch; left_branch]         // … = (p ∨ q)) = p
+        distrib_or_eq p p q |> at [left_branch; left_branch]              // (((p ∨ p) = (p ∨ q)) = (p ∨ q)) = p
+        idemp_or p |> at [left_branch; left_branch; left_branch]          // ((p = (p ∨ q)) = (p ∨ q)) = p
     ]
 
      // Memoized (see Memo): re-derived constantly with recurring arguments in
@@ -648,9 +655,9 @@ module PropCalculus =
     /// (p ∧ (p ∨ q)) = p  (Gries 3.43a)
     [<DerivedRule "(p ∧ (p ∨ q)) = p">]
     let absorb_and p q = ident prop_calculus ( (p * (p + q)) == p ) [
-        golden_rule |> at_left
-        left_assoc_or p  p  q |> at_left
-        idemp_or p |> at_left
+        golden_rule |> at_left                                           // ((p = (p ∨ q)) = (p ∨ (p ∨ q))) = p
+        left_assoc_or p  p  q |> at [left_branch; right_branch]           // … = ((p ∨ p) ∨ q)) = p
+        idemp_or p |> at [left_branch; right_branch; left_branch]         // … = (p ∨ q)) = p
     ]
     
     /// p ∧ (-p ∨ q) = (p ∧ q)  (Gries 3.44a)
@@ -750,16 +757,15 @@ module PropCalculus =
     /// p == q == ((p ∧ q) ∨ (-p ∧ -q))  (Gries 3.52)
     [<DerivedRule "p = q = ((p ∧ q) ∨ (-p ∧ -q))">]
     let ident_eq_and_or_not (p:Prop) (q:Prop) = ident prop_calculus (p == q == ((p * q) + (-p * -q))) [
-        ident_or_or_not ( p * q ) ( -p * -q ) |> at_right
-        distrib_not_and ( -p ) ( -q ) |> at_right
-        double_negation p |> at_right
-        double_negation q |> at_right
-        distrib |> at [right_branch; left_branch]
-        absorb_or p q |> CommuteL |> at_right
-        commute_and p q |> at_right
-        absorb_or q p |> CommuteL |> at_right
-        commute_and q p |> at_right
-        left_assoc
+        ident_or_or_not ( p * q ) ( -p * -q ) |> at_right                 // (p = q) = (((p ∧ q) ∨ ¬(¬p ∧ ¬q)) = (p ∧ q))
+        distrib_not_and ( -p ) ( -q ) |> at [right_branch; left_branch; right_branch]          // … ∨ (¬¬p ∨ ¬¬q) …
+        double_negation p |> at [right_branch; left_branch; right_branch; left_branch]         // … ∨ (p ∨ ¬¬q) …
+        double_negation q |> at [right_branch; left_branch; right_branch; right_branch]        // … ∨ (p ∨ q) …
+        distrib |> at [right_branch; left_branch]                         // (p = q) = ((((p ∧ q) ∨ p) ∨ ((p ∧ q) ∨ q)) = (p ∧ q))
+        absorb_or p q |> CommuteL |> at [right_branch; left_branch; left_branch]               // (p ∨ ((p ∧ q) ∨ q)) …
+        commute_and p q |> at [right_branch; left_branch; right_branch; left_branch]           // (p ∨ ((q ∧ p) ∨ q)) …
+        absorb_or q p |> CommuteL |> at [right_branch; left_branch; right_branch]              // (p = q) = ((p ∨ q) = (p ∧ q))
+        left_assoc                                                        // ((p = q) = (p ∨ q)) = (p ∧ q)
         commute
     ]
 
@@ -772,6 +778,11 @@ module PropCalculus =
     ]
 
     /// (p = q) ∧ (r = p) = (p = q) ∧ (r = q)  (Gries 3.51)
+    ///
+    /// PRECONDITION: `p` and `q` must be VARIABLES. This is Leibniz substitution of one variable
+    /// for another — the underlying `subst_and` rule matches `(Var e = Var f) ∧ E` and replaces
+    /// `e` by `f` throughout `E`, so it does not fire at compound arguments. Unlike the schemas
+    /// around it, this one is not valid to instantiate at arbitrary `Prop`s.
     [<DerivedRule "(p = q) ∧ (r = p) = (p = q) ∧ (r = q)">]
     let replace_eq (p:Prop) (q:Prop) (r:Prop) = ident prop_calculus (((p == q) * (r == p)) == ((p == q) * (r == q))) [
         subst_and |> at_left
@@ -814,17 +825,17 @@ module PropCalculus =
     /// p ∧ (q == p) = (p ∧ q)  (Gries 3.50)
     [<DerivedRule "p ∧ (q = p) = (p ∧ q)">]
     let ident_and_eq p q  = ident prop_calculus (p * (q == p) == (p * q)) [
-        golden_rule |> at_left
-        distrib |> at [left_branch; right_branch]
-        left_assoc |> at [left_branch; left_branch]
+        golden_rule |> at_left                                            // ((p = (q = p)) = (p ∨ (q = p))) = (p ∧ q)
+        distrib |> at [left_branch; right_branch]                         // … = ((p ∨ q) = (p ∨ p))) = (p ∧ q)
+        left_assoc |> at [left_branch; left_branch]                       // (((p = q) = p) = …
         left_assoc |> at_left
-        right_assoc |> at_left
-        idemp_or p |> at_left
-        commute |> at [left_branch; left_branch]
-        left_assoc |> at [left_branch; left_branch]
-        def_true p |> Commute |> at [left_branch; left_branch]
-        ident_eq q |> CommuteL |> at_left
-        commute |> at_left
+        right_assoc |> at_left                                            // (((p = q) = p) = ((p ∨ q) = (p ∨ p))) = (p ∧ q)
+        idemp_or p |> at [left_branch; right_branch; right_branch]        // … = ((p ∨ q) = p)) = (p ∧ q)
+        commute |> at [left_branch; left_branch]                          // ((p = (p = q)) = …
+        left_assoc |> at [left_branch; left_branch]                       // (((p = p) = q) = ((p ∨ q) = p)) = (p ∧ q)
+        def_true p |> Commute |> at [left_branch; left_branch; left_branch]   // ((T = q) = ((p ∨ q) = p)) = (p ∧ q)
+        ident_eq q |> CommuteL |> at [left_branch; left_branch]            // (q = ((p ∨ q) = p)) = (p ∧ q)
+        commute |> at_left                                                // (((p ∨ q) = p) = q) = (p ∧ q)
         golden_rule' p q |> Commute |> CommuteL |> LeftAssocBranchLeft |> at_left
     ]
 
@@ -861,26 +872,27 @@ module PropCalculus =
     /// p ∧ (p ⇒ q) = (p ∧ q)  (Gries 3.66)
     [<DerivedRule "p ∧ (p ⇒ q) = (p ∧ q)">]
     let ident_and_implies (p:Prop) (q:Prop) = ident prop_calculus ( p * (p ==> q) == (p * q) ) [
-        ident_implies_eq_and_eq p q |> at_left
-        distrib_and_eq p ( p * q ) p |> at_left
-        left_assoc |> at [left_branch; left_branch; left_branch]
-        // two p ∧ p occurrences; first-match Subst rewrites one per step (see docs/prover-automation.md)
-        idemp_and p |> at_left
-        idemp_and p |> at_left
+        ident_implies_eq_and_eq p q |> at [left_branch; right_branch]     // (p ∧ ((p ∧ q) = p)) = (p ∧ q)
+        distrib_and_eq p ( p * q ) p |> at_left                           // (((p ∧ (p ∧ q)) = (p ∧ p)) = p) = (p ∧ q)
+        left_assoc |> at [left_branch; left_branch; left_branch]          // ((((p ∧ p) ∧ q) = (p ∧ p)) = p) = (p ∧ q)
+        // Two p ∧ p occurrences: address each one, rather than relying on first-match order — a
+        // `q` containing a p ∧ p would otherwise steal both rewrites.
+        idemp_and p |> at [left_branch; left_branch; left_branch; left_branch]   // (((p ∧ q) = (p ∧ p)) = p) = (p ∧ q)
+        idemp_and p |> at [left_branch; left_branch; right_branch]               // (((p ∧ q) = p) = p) = (p ∧ q)
     ]
 
     /// p ∨ (q ⇒ p) = (q ⇒ p)  (Gries 3.69)
     [<DerivedRule "p ∨ (q ⇒ p) = (q ⇒ p)">]
     let ident_or_conseq (p:Prop) (q:Prop) = ident prop_calculus ( p + (q ==> p) == (q ==> p) ) [
-        def_implies |> at [left_branch; right_branch]
-        distrib |> at_left
-        commute_or q p |> at_left
-        left_assoc_or p p q |> at_left
-        // two p ∨ p occurrences; first-match Subst rewrites one per step
-        idemp_or p |> at_left
-        idemp_or p |> at_left
-        commute
-        commute_or p q |> at_right
+        def_implies |> at [left_branch; right_branch]                     // (p ∨ ((q ∨ p) = p)) = (q ⇒ p)
+        distrib |> at_left                                               // ((p ∨ (q ∨ p)) = (p ∨ p)) = (q ⇒ p)
+        commute_or q p |> at [left_branch; left_branch; right_branch]     // ((p ∨ (p ∨ q)) = (p ∨ p)) = (q ⇒ p)
+        left_assoc_or p p q |> at [left_branch; left_branch]              // (((p ∨ p) ∨ q) = (p ∨ p)) = (q ⇒ p)
+        // Two p ∨ p occurrences: address each rather than relying on first-match order.
+        idemp_or p |> at [left_branch; left_branch; left_branch]          // ((p ∨ q) = (p ∨ p)) = (q ⇒ p)
+        idemp_or p |> at [left_branch; right_branch]                      // ((p ∨ q) = p) = (q ⇒ p)
+        commute                                                          // (q ⇒ p) = ((p ∨ q) = p)
+        commute_or p q |> at [right_branch; left_branch]                  // (q ⇒ p) = ((q ∨ p) = p)
     ]
 
     /// p ∧ (q ⇒ p) = p  (Gries 3.67)
@@ -928,8 +940,8 @@ module PropCalculus =
         ident_implies_eq_and_eq p r |> at [right_branch; right_branch]
         commute |> at [right_branch; right_branch]
         left_assoc |> at_right
-        right_assoc |> at [right_branch; left_branch]
-        def_true p |> Commute |> at_right
+        right_assoc |> at [right_branch; left_branch]                     // … = (((p ∧ q) = (p = p)) = (p ∧ r))
+        def_true p |> Commute |> at [right_branch; left_branch; right_branch]   // … = (((p ∧ q) = T) = (p ∧ r))
         ident_eq ( p * q ) |> at [right_branch; left_branch]
     ]
 
@@ -986,13 +998,13 @@ module PropCalculus =
     /// p ∧ q ⇒ r = (p ⇒ (q ⇒ r))  (Gries 3.65)
     [<DerivedRule "p ∧ q ⇒ r = (p ⇒ (q ⇒ r))">]
     let shunt' p q r = ident prop_calculus (p * q ==> r == (p ==> (q ==> r))) [
-        ident_implies_eq_and_eq ( p * q ) r |> at_left
-        ident_implies_eq_and_eq q r |> at_right
-        ident_implies_eq_and_eq p ( q * r == q ) |> at_right
-        distrib_and_eq p ( q * r ) q |> at_right
-        left_assoc_and p q r |> at_right
-        right_assoc |> at_right
-        def_true p |> Commute |> at_right
+        ident_implies_eq_and_eq ( p * q ) r |> at_left                    // (((p ∧ q) ∧ r) = (p ∧ q)) = (p ⇒ (q ⇒ r))
+        ident_implies_eq_and_eq q r |> at [right_branch; right_branch]     // … = (p ⇒ ((q ∧ r) = q))
+        ident_implies_eq_and_eq p ( q * r == q ) |> at_right               // … = ((p ∧ ((q ∧ r) = q)) = p)
+        distrib_and_eq p ( q * r ) q |> at [right_branch; left_branch]     // … = ((((p ∧ (q ∧ r)) = (p ∧ q)) = p) = p)
+        left_assoc_and p q r |> at [right_branch; left_branch; left_branch; left_branch]   // … (((p ∧ q) ∧ r) …
+        right_assoc |> at_right                                           // … = ((((p ∧ q) ∧ r) = (p ∧ q)) = (p = p))
+        def_true p |> Commute |> at [right_branch; right_branch]           // … = ((((p ∧ q) ∧ r) = (p ∧ q)) = T)
         left_assoc
         commute
     ]

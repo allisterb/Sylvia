@@ -293,11 +293,14 @@ goals close:
   derives and what the step declares, and it also covers the case where CaDiCaL lists the resolvent's
   literals in a different order than the replay computes them (observed).
 - **`dedupCnf`** — `Cnf.toCnf`'s distribution readily emits clauses with repeated literals (Peirce's
-  law yields a `p ∨ p`). Carrying those into the input conjunction `A` mis-targets the `idemp_or`
-  rewrite inside `absorb_or`, which `strengthen_and` — and hence `conjElimAll` — is built on, and the
-  reconstruction fails on a lemma that has nothing to do with the refutation. Each clause is rewritten
-  to its deduped form by **congruence at an exact position** (no searching, so nothing can
-  mis-target); `¬φ == A` is then the dedup proof followed by pure-AC reassociation.
+  law yields a `p ∨ p`). Each clause is rewritten to its deduped form by **congruence at an exact
+  position**; `¬φ == A` is then the dedup proof followed by pure-AC reassociation. This was
+  originally a workaround: a `p ∨ p` inside `A` mis-targeted the `idemp_or` step inside `absorb_or`,
+  which `strengthen_and` — and hence `conjElimAll` — is built on, so the reconstruction failed on a
+  lemma unrelated to the refutation. With §7.5's addressing fix that dependency is gone (verified:
+  all 13 goals close with dedup disabled), and it is kept purely as an **optimization** — every
+  kernel step costs O(|A|), so smaller clauses are cheaper: `∨` over `∧` 12.1 s → 7.7 s, xor
+  commutativity 26.8 s → 16.6 s, 12-atom chain 2.6 s → 1.9 s.
 - **One CNF, not two.** `reconstruct` used to clausify twice — `Cnf.toCnf` for the equivalence proof
   and `cnfOfNegatedGoal` (inside `Cadical.Prove`) for the solver — and interpret the LRAT clause ids
   against the first while the solver numbered them by the second. The two agree on implication chains
@@ -379,10 +382,28 @@ concern that motivates a fresh-start redesign.
    produces **441 clauses / 2940 literals**, enough to overflow the replay's stack, while xor
    commutativity (36 clauses) reconstructs fine. Tseitin/Plaisted-Greenbaum is the fix; the cost is
    teaching the replay to discharge the definitional clauses for the auxiliary variables.
-5. **`absorb_or`'s positional rewrites are shape-sensitive.** Its `idemp_or` step searches for a
-   `p ∨ p`, so it can pick the wrong occurrence when the other operand contains one. §4.9's input
-   dedup keeps such clauses out of `A`, but the fragility is in the theorem, not the caller, and the
-   same pattern recurs across the Gries derivations. A precise-position variant would fix the class.
+5. ~~**`absorb_or`'s positional rewrites are shape-sensitive.**~~ **DONE (2026-07-25)** — and it was
+   a class, not one theorem. A reflection-driven sweep instantiating every all-`Prop`-parameter
+   schema in `PropCalculus` at arguments *containing* the terms its own steps search for (`p ∨ p`,
+   `p ∧ p`, `¬¬p`, `p = p`, …) found schemas failing that collapse to **seven root derivations**:
+   `absorb_or`, `absorb_and`, `ident_and_implies`, `ident_or_conseq`, `ident_and_eq`,
+   `ident_eq_and_or_not`, `shunt'` and `distrib_implies_eq_implies`. The rest inherit — including
+   **`trans_implies`**, which fails at `q = p ∧ p` and which `Calc.chainImp` instantiates at
+   whatever the caller is composing, so this was live risk in the reconstruction itself and not
+   only in `conjElimAll`. The sweep is now [`examples/proofs/AdversarialSweep.fsx`](../examples/proofs/AdversarialSweep.fsx)
+   (3370 instantiations, ~9 min, ALL CLEAR); re-run it after adding or editing any derivation. Its
+   fast subset is pinned as a unit test.
+
+   The cause is uniform: a *substitution* rule (`Derive`) rewrites the leftmost-outermost match
+   inside the subterm it is addressed to, so a loose address (`at_left`) picks the wrong occurrence
+   as soon as an argument contains a competing one. Admissible rules (`Admit`) fire only at the
+   addressed node and were never affected. All five derivations now address every substitution step
+   with an exact `at [ ... ]` path, annotated with the intermediate state. Two of them previously
+   carried comments *documenting* the reliance on first-match order — that reliance is now gone.
+
+   `replace_eq` still fails at compound arguments and is the one case that is not a bug: it is
+   Leibniz substitution of one variable for another (`subst_and` matches `(Var = Var) ∧ E`), so the
+   variable precondition is real. It is now documented on the schema and pinned by a test.
 6. **Schema-instantiation gap** (`prover-schema-instantiation-gap` memory). Because derived rules are
    F# functions that *replay*, a fresh-argument instantiation costs a full derivation, not a
    substitution. Memoization fixes repeats; the systemic fix is LCF-style *prove-once-at-metavars +

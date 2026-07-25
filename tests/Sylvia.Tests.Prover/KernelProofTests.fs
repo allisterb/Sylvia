@@ -195,6 +195,57 @@ type KernelProofTests() =
         // Every input should exercise its rule; a no-op means the test input is miscovered.
         Assert.True(noFire.Count = 0, sprintf "inputs that did not exercise the rule:\n%s" (String.Join("\n", noFire)))
 
+    // ===== Schemas hold at ADVERSARIAL instantiations ==========================
+    // A derived rule is a schema: it must prove for ANY Props. Its steps, though, rewrite by
+    // SUBSTITUTION, which replaces the leftmost-outermost match inside whatever subterm the step
+    // is addressed to — so a step addressed loosely (`at_left`) silently picks the wrong occurrence
+    // as soon as an argument contains a term the step was searching for. The derivation then fails
+    // on a lemma that looks unrelated to the caller. Each case below is a real failure that a
+    // reflection-driven sweep over every all-Prop-parameter schema in PropCalculus turned up; the
+    // fix is exact `at [ ... ]` addressing in the derivations.
+
+    [<Fact>]
+    member _.``derived schemas prove at arguments that contain their own rewrite patterns`` () =
+        let opp = p + p                      // trips a step searching for  p ∨ p
+        let anp = p * p                      // trips a step searching for  p ∧ p
+        let dnp = !!(!!p)                    // trips a step searching for  ¬¬p
+        let ref' = p == p                    // trips a step searching for  p = p  (rewritten to T)
+        let cases : (string * (unit -> unit)) list =
+            [ // the seven root derivations
+              "absorb_or p ((p∨p) ∧ q)",     fun () -> PropCalculus.absorb_or p (opp * q) |> ignore
+              "absorb_and p (p∨p)",          fun () -> PropCalculus.absorb_and p opp |> ignore
+              "ident_and_implies p (p∧p)",   fun () -> PropCalculus.ident_and_implies p anp |> ignore
+              "ident_or_conseq p (p∨p)",     fun () -> PropCalculus.ident_or_conseq p opp |> ignore
+              "ident_and_eq p (p∨p)",        fun () -> PropCalculus.ident_and_eq p opp |> ignore
+              "ident_eq_and_or_not p ¬¬p",   fun () -> PropCalculus.ident_eq_and_or_not p dnp |> ignore
+              "shunt' p (p=p) r",            fun () -> PropCalculus.shunt' p ref' r |> ignore
+              "shunt' p q (p=p)",            fun () -> PropCalculus.shunt' p q ref' |> ignore
+              "distrib_implies_eq_implies p (p=p) r",
+                                             fun () -> PropCalculus.distrib_implies_eq_implies p ref' r |> ignore
+              // and the theorems that inherit from them — trans_implies is the one that matters
+              // most, since Calc.chainImp instantiates it at whatever the caller is composing
+              "trans_implies p (p∧p) r",     fun () -> PropCalculus.trans_implies p anp r |> ignore
+              "trans_implies_eq p (p∧p) r",  fun () -> PropCalculus.trans_implies_eq p anp r |> ignore
+              "trans_implies_eq_conseq …",   fun () -> PropCalculus.trans_implies_eq_conseq p anp r |> ignore
+              "modus_ponens p (p∧p)",        fun () -> PropCalculus.modus_ponens p anp |> ignore
+              "antisymm_implies p ¬¬p",      fun () -> PropCalculus.antisymm_implies p dnp |> ignore
+              "mutual_implication' p ¬¬p",   fun () -> PropCalculus.mutual_implication' p dnp |> ignore
+              "distrib_and_or p q (p∨p)",    fun () -> PropCalculus.distrib_and_or p q opp |> ignore
+              "ident_and_conseq p (p∨p)",    fun () -> PropCalculus.ident_and_conseq p opp |> ignore
+              "ident_or_implies_and_eq p ¬¬p", fun () -> PropCalculus.ident_or_implies_and_eq p dnp |> ignore ]
+        let failed = ResizeArray<string>()
+        for (name, f) in cases do
+            try f () with e -> failed.Add(sprintf "%s -- %s" name (e.Message.Split('\n').[0]))
+        Assert.True(failed.Count = 0, sprintf "schemas that fail at an adversarial instantiation:\n%s" (String.Join("\n", failed)))
+
+    [<Fact>]
+    member _.``replace_eq's variable precondition is real (documented, not a mis-targeting bug)`` () =
+        // Leibniz substitution of one VARIABLE for another: `subst_and` matches (Var = Var) ∧ E,
+        // so unlike its neighbours this schema genuinely does not hold at compound arguments.
+        // Pinned so the distinction stays explicit rather than looking like an unfixed defect.
+        PropCalculus.replace_eq p q r |> ignore
+        Assert.ThrowsAny<exn>(fun () -> PropCalculus.replace_eq (p + p) q r |> ignore) |> ignore
+
     [<Fact>]
     member _.``subst_or_and (Shannon) fires and preserves equivalence`` () =
         // Build E = p ∨ q and the Shannon expansion (p ∧ E[p:=T]) ∨ (¬p ∧ E[p:=F]).
