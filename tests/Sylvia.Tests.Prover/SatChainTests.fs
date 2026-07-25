@@ -127,3 +127,84 @@ type SatChainTests() =
         Assert.True(isError (rupChain clauseOf [] [1]), "a non-unit hint should be rejected")
         // a tautological conclusion has no falsifying assignment to propagate from
         Assert.True(isError (rupChain clauseOf [1; -1] [1; 2]), "tautological clause should be rejected")
+
+
+/// Tests for the `Sylvia.Prover.SAT` library (`SatProof`) — the replay layer that turns a solver's
+/// LRAT refutation into a kernel-checked `Theorem`.
+///
+/// The clause plumbing is pure and always runs. The end-to-end `prove` tests need the `cadical`
+/// executable and SKIP THEMSELVES when it is absent (reported, not silently passed), so the suite
+/// never depends on an external binary being installed.
+type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
+    inherit Sylvia.Tests.Prover.TestsRuntime()
+
+    do Proof.LogLevel <- 0
+
+    let p, q, r = boolvar "p", boolvar "q", boolvar "r"
+
+    /// The bundled solver, if this checkout has one: walk up from the test assembly for bin/cadical.exe,
+    /// else fall back to whatever `Cadical()` resolves (SYLVIA_CADICAL / PATH).
+    let solver : Cadical option =
+        let rec up (d: IO.DirectoryInfo) =
+            if isNull (box d) then None
+            elif IO.File.Exists(IO.Path.Combine(d.FullName, "bin", "cadical.exe")) then
+                Some(IO.Path.Combine(d.FullName, "bin", "cadical.exe"))
+            else up d.Parent
+        match up (IO.DirectoryInfo AppContext.BaseDirectory) with
+        | Some exe -> Some(Cadical(exePath = exe, timeoutMs = 20000))
+        | None -> let c = Cadical() in if c.IsAvailable then Some c else None
+
+    [<Fact>]
+    member _.``clausesOf reads the clause list off a CNF Prop, deduping literals`` () =
+        // The clauses handed to the solver must be exactly the ones Cnf.toCnf proved ¬φ equal to,
+        // with a 1-1 atom mapping — the LRAT ids and variable indices are meaningless otherwise.
+        let cnfProp = (p + q) * (!!p + q + q) * !!r
+        let cnf = SatProof.clausesOf (p ==> q) cnfProp
+        Assert.Equal(3, cnf.NumVars)
+        Assert.Equal(3, List.length cnf.Clauses)
+        // literal dedup: the second clause's repeated q collapses
+        Assert.Equal<int list>([ -1; 2 ], cnf.Clauses.[1])
+        // every DIMACS variable maps back to a distinct Sylvia atom
+        Assert.Equal(3, cnf.AtomOfVar.Count)
+
+    [<Fact>]
+    member _.``dedupCnf proves the dedup it performs, and no-ops when there is nothing to drop`` () =
+        // The proof must be exactly `input == deduped`, so it composes by transitivity into ¬φ == A.
+        let (d, pf) = SatProof.dedupCnf ((p + p + q) * !!r)
+        match pf with
+        | None -> Assert.Fail "dedupCnf should have fired on a clause with a repeated literal"
+        | Some t ->
+            Assert.Equal<FSharp.Quotations.Expr>(expand (((p + p + q) * !!r) == d).Expr, t.Stmt)
+            Assert.True(PropCalculus.valid (((p + p + q) * !!r) == d), "dedup changed the meaning")
+        let (_, none) = SatProof.dedupCnf ((p + q) * !!r)
+        Assert.True(none.IsNone, "dedupCnf must not fire when no clause has a repeated literal")
+
+    [<Fact>]
+    member _.``prove returns a kernel-checked theorem OF THE GOAL`` () =
+        match solver with
+        // Say so rather than passing quietly — a silent skip is indistinguishable from success.
+        | None -> out.WriteLine "SKIPPED (no cadical): examples/sat/Reconstruct.fsx is the end-to-end gate"
+        | Some sat ->
+            for goal in [ p + !!p                                       // excluded middle
+                          ((p ==> q) ==> p) ==> p                       // Peirce
+                          ((p + q) * (!!p + q)) ==> q                   // a merge resolvent
+                          ((p ==> q) * (q ==> r)) ==> (p ==> r) ] do    // a chain
+                let th = SatProof.proveWith sat goal
+                // Not merely "a theorem" — the statement must BE the goal.
+                Assert.True(sequal th.Stmt (expand goal.Expr),
+                            sprintf "proved %s, expected %s" (src th.Stmt) (src (expand goal.Expr)))
+
+    [<Fact>]
+    member _.``a non-theorem is rejected, and distinguishably from an unavailable solver`` () =
+        match solver with
+        | None -> out.WriteLine "SKIPPED (no cadical): examples/sat/Reconstruct.fsx is the end-to-end gate"
+        | Some sat ->
+            match SatProof.tryProveWith sat (p ==> q) with
+            | Ok _ -> Assert.Fail "p ⇒ q is not a theorem and must not be proved"
+            | Error e ->
+                Assert.Contains("NOT a theorem", e)
+                Assert.DoesNotContain("not found", e)
+            // An unreachable solver must say so rather than claim the goal is false.
+            match SatProof.tryProveWith (Cadical(exePath = "no-such-cadical.exe")) (p + !!p) with
+            | Ok _ -> Assert.Fail "a missing solver cannot have proved anything"
+            | Error e -> Assert.Contains("not found", e)

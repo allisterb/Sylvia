@@ -7,7 +7,8 @@
 end-to-end for propositional goals with NO atom-count ceiling (verified through 12 atoms — Peirce,
 implication chains, biconditionals). New trusted theorems `resolve` and `combine_implies`, a recursive CNF converter
 `Cnf.toCnf`, a general `Memo` combinator, and the `Sylvia.Solver.CaDiCaL` project are all in the tree;
-suite is **104/104**.
+suite is **110/110**. The pipeline is a library — **`Sylvia.Prover.SAT` / `SatProof.prove`** (§4.6) —
+not a script.
 Both step 1 (the resolution replay) and step 2 (the CNF-equivalence link) now scale.
 
 As of **2026-07-25** the replay is also *complete over the trace*: every LRAT step is replayed, not
@@ -216,18 +217,42 @@ Results: a repeated resolution goes **400 ms → 0.08 ms** (~4 800×); a 256-res
 **9 ms total** (0.04 ms/step). Caveat: memoization only kills *repeated* derivations; a first-time
 novel-argument call still pays full price — see §7.
 
-### 4.6 The reconstruction loop (in `examples/sat/Reconstruct.fsx`)
+### 4.6 The reconstruction loop — `Sylvia.Prover.SAT` (`SatProof`)
 
-The kernel-level replay (which needs both the solver and the prover) lives in the example, per the E
-precedent. It is a thin plumbing layer over trusted lemmas — **no new kernel primitive**:
+The kernel-level replay needs both the solver and the prover, so it lives in its **own assembly**,
+`src/lang/core/Sylvia.Prover.SAT/`, referencing `Sylvia.Prover` and `Sylvia.Solver.CaDiCaL`. That is
+what lets `Sylvia.Prover` stay solver-free (the `Sylvia.ATP.E` discipline): the solver never enters
+the trusted base, and nothing in the kernel depends on it. It is a thin plumbing layer over trusted
+lemmas — **no new kernel primitive**:
 
-- `resolveStep cnf h1 h2` — one binary LRAT step → `cp(apos) ∧ cp(aneg) ⇒ cp(resolvent)`, where each
-  clause is AC-matched to `resolve`'s `(C∨x)` / `(¬x∨D)` shape by `acEq = ident (l==r) [simp]`.
-- `conjElim`, `elimR` — `(∧ inputs) ⇒ Cᵢ` (conjunction elimination).
+| Value | Role |
+|-------|------|
+| `SatProof.prove : Prop -> Theorem` | Decide and replay; raises on a non-theorem or an unusable solver. Resolves `cadical` from `SYLVIA_CADICAL` / PATH. |
+| `SatProof.proveWith : Cadical -> Prop -> Theorem` | Same, with an explicit solver (path, timeout). `proveWithLog` keeps the kernel trace. |
+| `SatProof.tryProve` / `tryProveWith` | `Result<Theorem,string>`. The message distinguishes **"NOT a theorem"** from "solver not found / timed out" — a caller choosing whether to fall back needs to know which. |
+| `SatProof.Sat` / `SatWith` | The proof as a `Rule`, so a SAT-discharged subgoal can sit inside a hand-written proof: `SatProof.SatWith sat sub \|> apply_left`. |
+| `SatProof.clausesOf` / `dedupCnf` / `refute` / `conjElimAll` | The stages, exposed for testing and for callers that want the refutation rather than the theorem. |
+
+Proof logging is silenced for the duration of a `prove` and restored afterwards (the `Calc` precedent)
+— a reconstruction emits thousands of kernel steps, which is noise at any call site.
+
+An earlier draft considered instead registering the SAT backend into `PropCalculus` through a mutable
+oracle hook, so `autoproof` would upgrade transparently. That was rejected on evidence: **there are no
+in-library callers of `autoproof_anf`** — `metaset` and the E Sledgehammer loop are both `.fsx`
+consumers, above the libraries — so the hook would have bought mutable global state and load-order
+dependence for no caller that exists. Adding one later is easy; removing one is not.
+
+The stages themselves:
+
+- `resolveStep cnf apos aneg pv out` — one binary resolution → `cp(apos) ∧ cp(aneg) ⇒ cp(out)`, where
+  each clause is AC-matched to `resolve`'s `(C∨x)` / `(¬x∨D)` shape by `acEq = ident (l==r) [simp]`.
+- `conjElimAll`, `elimR` — `(∧ inputs) ⇒ Cᵢ` for every input clause, in one O(n) pass sharing the
+  peel-chain (per-clause elimination is O(n²) in the expensive `Calc.chainImp`).
 - `conj`, `mp` — conjoin two theorems / modus ponens, reusing the idiom from `Calc.chainImp`.
-- `refute` — fold the steps into **R : `(∧ inputs) ⇒ F`** (STEP 1).
-- `reconstruct` — STEP 2: `¬φ = A` via `Cnf.toCnf` (clauses read off its CNF; `normalize` bridges to
-  `A`), rewrite R, then `PropCalculus.Contradiction` → **`⊢ φ`**.
+- `clauseImp` — subset weakening (§4.9).
+- `refute` — replay every LRAT step (§4.7) into **R : `(∧ inputs) ⇒ F`** (STEP 1).
+- `proveWith` — STEP 2: `¬φ = A` via `Cnf.toCnf` + `dedupCnf` + `normalize`, rewrite R, then
+  `PropCalculus.Contradiction` → **`⊢ φ`**.
 
 Reconnaissance finding that shaped this: on long implication chains CaDiCaL emits **almost entirely
 binary** resolution steps (2 hints) — so folding is ~one `resolve` per step. That is a property of
@@ -313,7 +338,7 @@ unprovable, reported as "¬φ is satisfiable".
 
 ## 5. Tests and demos
 
-- **Suite 104/104** (`tests/Sylvia.Tests.Prover/`): in `KernelProofTests.fs` — `resolve` (atoms,
+- **Suite 110/110** (`tests/Sylvia.Tests.Prover/`): in `KernelProofTests.fs` — `resolve` (atoms,
   compound-clause robustness, tautology-vs-oracle incl. the empty-clause `resolve F F p`), `Memo`
   (cache-hit same-instance, distinct-arg no-collision), `combine_implies`, `Cnf.toCnf` (checked
   equivalence to clean CNF at up to 6 atoms, both xor polarities), `_chain_simp` in the
@@ -321,6 +346,11 @@ unprovable, reported as "¬φ is satisfiable".
   `rupChain` over verbatim CaDiCaL LRAT traces (1-, 2- and 3-hint steps, merge resolvents), with every
   link checked to be a genuine binary resolution and every chain checked to subsume the declared
   clause, plus the rejection cases. These are pure integer logic: no solver executable is involved.
+  Also in `SatChainTests.fs` — `SatProof`'s clause plumbing (`clausesOf`, `dedupCnf`) as pure tests,
+  and end-to-end `prove` checks asserting the result is a theorem **of the goal** and that a
+  non-theorem is rejected distinguishably from a missing solver. `bin/cadical.exe` is not tracked by
+  git, so those last tests skip when it is absent — but they say so in the test output rather than
+  passing quietly.
 - [`examples/sat/CaDiCaL.fsx`](../examples/sat/CaDiCaL.fsx) — decides validity of 6 goals (incl. an
   **8-atom tautology**, past the old ceiling), dumps DIMACS + LRAT + the reconstruction plan, and shows
   a real wide resolution `((a∨b∨g)∧(¬g∨(c∨d))) ⇒ (a∨b∨(c∨d))` as a checked theorem.
@@ -418,8 +448,10 @@ concern that motivates a fresh-start redesign.
 | `src/lang/core/Sylvia.Prover/Theories/Cnf.fs` | `Cnf.toCnf` — recursive CNF conversion with kernel proof |
 | `src/lang/core/Sylvia.Prover/EquationalLogic.fs` | `_chain_simp` — whole-chain ∨/∧ normalization inside `_simp` |
 | `src/lang/core/Sylvia.Prover/Proof.fs` | `Memo` combinator |
+| `src/lang/core/Sylvia.Prover.SAT/SatProof.fs` | **The reconstruction library** — `prove`/`proveWith`/`tryProve`/`Sat`, and the stages |
 | `examples/sat/CaDiCaL.fsx` | Validity decision + `resolve` demo |
-| `examples/sat/Reconstruct.fsx` | Full LRAT → `⊢ φ` reconstruction |
+| `examples/sat/Reconstruct.fsx` | Demo + end-to-end gate for `SatProof` |
+| `examples/proofs/AdversarialSweep.fsx` | Schema-instantiation sweep (§7.5) |
 | `tests/Sylvia.Tests.Prover/KernelProofTests.fs` | `resolve` / `Memo` / `combine_implies` / `Cnf` / simp-confluence tests |
 | `tests/Sylvia.Tests.Prover/SatChainTests.fs` | `rupChain` over real LRAT traces |
 | `bin/cadical.exe` | CaDiCaL 3.0.0 (MSYS2 build) |

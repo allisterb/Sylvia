@@ -28,9 +28,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\base\Sylvia.Runtime.Fs\Sylvia.Runtime.Fs.fsproj" />
     <ProjectReference Include="..\..\src\lang\core\Sylvia.Prover\Sylvia.Prover.fsproj" />
-    <!-- SatChainTests exercises SAT.rupChain, which is pure LRAT/integer logic: no solver
-         executable is involved, so this adds no runtime dependency on cadical. -->
+    <!-- SatChainTests exercises SAT.rupChain and SatProof's pure clause plumbing. The end-to-end
+         `prove` tests need the cadical executable and SKIP THEMSELVES when it is absent, so
+         neither reference makes the suite depend on an external binary. -->
     <ProjectReference Include="..\..\src\lang\solvers\Sylvia.Solver.CaDiCaL\Sylvia.Solver.CaDiCaL.fsproj" />
+    <ProjectReference Include="..\..\src\lang\core\Sylvia.Prover.SAT\Sylvia.Prover.SAT.fsproj" />
   </ItemGroup>
 
 </Project>
