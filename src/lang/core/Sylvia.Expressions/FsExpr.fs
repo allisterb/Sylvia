@@ -499,28 +499,40 @@ module FsExpr =
         | v1::v2::[] -> Expr.Lambda(v1, Expr.Lambda(v2, body))
         | v -> recombine_func (List.take (v.Length - 1) v) (Expr.Lambda(List.last v, body))
 
+    /// Identity-preserving rebuild: if the mapped children all come back
+    /// reference-equal, the ORIGINAL node is returned instead of an allocated copy.
+    /// This cuts most of the allocation in the rewrite functions built on traverse and
+    /// keeps unchanged subtrees reference-equal across rewrite steps, which is exactly
+    /// what sequal's ReferenceEquals fast path feeds on (see docs/expressions-perf.md).
     let traverse expr f =
         match expr with
-        | ShapeVar v -> Expr.Var v
-        | ShapeLambda (v, body) -> Expr.Lambda (v, f body)
-        | ShapeCombination (o, exprs) -> RebuildShapeCombination (o,List.map f exprs)
+        | ShapeVar _ -> expr
+        | ShapeLambda (v, body) ->
+            let b = f body
+            if obj.ReferenceEquals(b, body) then expr else Expr.Lambda (v, b)
+        | ShapeCombination (o, exprs) ->
+            let nexprs = List.map f exprs
+            if List.forall2 (fun (a:Expr) b -> obj.ReferenceEquals(a, b)) exprs nexprs then expr
+            else RebuildShapeCombination (o, nexprs)
 
     /// Based on: http://www.fssnip.net/1i/title/Traverse-quotation by Tomas Petrick
     /// Traverse an entire quotation and use the provided function
     /// to transform some parts of the quotation. If the function 'f'
     /// returns 'Some' for some sub-quotation then we replace that
     /// part of the quotation. The function then recursively processes
-    /// the quotation tree.
-    let rec traverse' f q = 
+    /// the quotation tree. Identity-preserving: returns the original (sub)tree when
+    /// nothing changed.
+    let rec traverse' f q =
       let q = defaultArg (f q) q
       match q with
-      | ExprShape.ShapeCombination(a, args) -> 
+      | ExprShape.ShapeCombination(a, args) ->
           let nargs = args |> List.map (traverse' f)
-          ExprShape.RebuildShapeCombination(a, nargs)
-      | ExprShape.ShapeLambda(v, body)  -> 
-          Expr.Lambda(v, traverse' f body)
-      | ExprShape.ShapeVar(v) ->
-          Expr.Var(v)
+          if List.forall2 (fun (x:Expr) y -> obj.ReferenceEquals(x, y)) args nargs then q
+          else ExprShape.RebuildShapeCombination(a, nargs)
+      | ExprShape.ShapeLambda(v, body)  ->
+          let b = traverse' f body
+          if obj.ReferenceEquals(b, body) then q else Expr.Lambda(v, b)
+      | ExprShape.ShapeVar _ -> q
 
 
     let subst_var_value (var:Var) (value: Expr) (expr:Expr)  =
@@ -575,7 +587,9 @@ module FsExpr =
             else
                 match e with
                 | ShapeVar _ -> false, e
-                | ShapeLambda (v, body) -> let d, b = go body in d, Expr.Lambda(v, b)
+                | ShapeLambda (v, body) ->
+                    let d, b = go body
+                    if d then true, Expr.Lambda(v, b) else false, e
                 | ShapeCombination (c, args) ->
                     let rec loop acc =
                         function
@@ -585,7 +599,7 @@ module FsExpr =
                             if d then true, List.rev acc @ (x' :: rest)
                             else loop (x' :: acc) rest
                     let d, args' = loop [] args
-                    d, RebuildShapeCombination(c, args')
+                    if d then true, RebuildShapeCombination(c, args') else false, e
         go expr |> snd
 
     /// A metavariable in a match pattern: a Var whose name starts with "?". Such a var
@@ -636,7 +650,9 @@ module FsExpr =
             | None ->
                 match e with
                 | ShapeVar _ -> false, e
-                | ShapeLambda (v, body) -> let d, b = go body in d, Expr.Lambda(v, b)
+                | ShapeLambda (v, body) ->
+                    let d, b = go body
+                    if d then true, Expr.Lambda(v, b) else false, e
                 | ShapeCombination (c, args) ->
                     let rec loop acc =
                         function
@@ -646,7 +662,7 @@ module FsExpr =
                             if d then true, List.rev acc @ (x' :: rest)
                             else loop (x' :: acc) rest
                     let d, args' = loop [] args
-                    d, RebuildShapeCombination(c, args')
+                    if d then true, RebuildShapeCombination(c, args') else false, e
         go expr |> snd
 
     /// Apply the transform `f` at the FIRST (leftmost-outermost, pre-order) subterm
@@ -660,7 +676,9 @@ module FsExpr =
             else
                 match e with
                 | ShapeVar _ -> false, e
-                | ShapeLambda (v, body) -> let d, b = go body in d, Expr.Lambda(v, b)
+                | ShapeLambda (v, body) ->
+                    let d, b = go body
+                    if d then true, Expr.Lambda(v, b) else false, e
                 | ShapeCombination (c, args) ->
                     let rec loop acc =
                         function
@@ -670,19 +688,28 @@ module FsExpr =
                             if d then true, List.rev acc @ (x' :: rest)
                             else loop (x' :: acc) rest
                     let d, args' = loop [] args
-                    d, RebuildShapeCombination(c, args')
+                    if d then true, RebuildShapeCombination(c, args') else false, e
         go expr |> snd
 
+    /// Distinct (by name, first occurrence) variables of an expression, binders included.
+    /// Single linear pass with a mutable accumulator — the previous version threaded and
+    /// concatenated `prev` lists, which was quadratic in both time and allocation.
+    /// Preserved quirk of the original: the explicit Call case recurses into the
+    /// ARGUMENTS only, so variables occurring solely in an instance-call receiver are
+    /// not collected.
     let get_vars expr =
-        let rec rget_vars prev expr =
+        let acc = List<Var>()
+        let seen = HashSet<string>()
+        let add (v:Var) = if seen.Add v.Name then acc.Add v
+        let rec go expr =
             match expr with
-            | PropertyGet(None, _, []) -> prev @ []
-            | Call(_, _, exprs) -> List.map (rget_vars prev) exprs |> List.collect id
-            | ShapeVar v -> prev @ [v]
-            | ShapeLambda (v, body) -> rget_vars (prev @ [v]) body
-            | ShapeCombination (_, exprs) ->  List.map (rget_vars prev) exprs |> List.collect id
-            
-        rget_vars [] expr |> List.distinctBy (fun v -> v.Name)
+            | PropertyGet(None, _, []) -> ()
+            | Call(_, _, exprs) -> List.iter go exprs
+            | ShapeVar v -> add v
+            | ShapeLambda (v, body) -> add v; go body
+            | ShapeCombination (_, exprs) -> List.iter go exprs
+        go expr
+        List.ofSeq acc
 
     let get_varsl<'t> (exprs: Expr<'t> list) =
         let vars = List<Var>()

@@ -269,6 +269,51 @@ Validation: prover suite 97/97 + Expressions 22/23 (pre-existing MathNet parser 
 with `SYLVIA_SEQUAL_CHECK=1`; PropCalculus.fsx + SetTheory.fsx (ALL PASS) with
 byte-identical logs.
 
+## Phase 4 results (2026-07-25, identity-preserving rebuilds + linear get_vars)
+
+Implementation (all in FsExpr.fs):
+
+- `traverse` / `traverse'` are identity-preserving: if the mapped children come back
+  reference-equal, the ORIGINAL node is returned instead of an allocated copy (the
+  `ShapeVar` case also no longer allocates a fresh `Expr.Var`). Everything built on
+  them — `replace_expr`, `replace_var_expr`, `replace_var_var`, `expand`, `get_consts`,
+  the theories' rewrite functions — inherits this, and unchanged subtrees now stay
+  reference-equal across rewrite steps, feeding sequal's `ReferenceEquals` fast path.
+- `replace_first_expr` / `apply_first_schema` / `apply_first_firing` return the original
+  node on the no-match path instead of rebuilding the entire spine.
+- `get_vars` is a single linear pass with a mutable accumulator + name `HashSet`
+  (the old version threaded `prev @ [v]` lists — quadratic in time and allocation —
+  then `distinctBy` on top). Order (first occurrence, binders included) and the
+  instance-call-receiver quirk are preserved and now locked by tests.
+
+| Payload | Baseline | Phase 3 | Phase 4 | Total |
+|---|---:|---:|---:|---:|
+| get_vars large | 110.6 us / 312.6 KB | 99 us / 312.6 KB | **23.5 us / 60 KB** | 4.7x / 5.2x |
+| replace_expr large | 173114 us / 334 MB | 145 us / 307 KB | **107 us / 223 KB** | ~1600x / ~1500x |
+| trans_implies (warm, LogLevel=0) | — | 34.6 ms / 35 MB | 35.2 ms / 35 MB | (unchanged) |
+
+trans_implies is unmoved by Phase 4: the prover's rewrite steps fire near the root and
+its rules build fresh spliced quotations per application, so identity preservation buys
+little there — the remaining prover cost is rule replay + intended console output
+(memoization territory, see the schema-instantiation notes), not traversal allocation.
+
+Validation: prover suite 97/97, Expressions 25/26 (pre-existing MathNet parser failure),
+identity-preservation + get_vars-quirk regression tests added, PropCalculus.fsx +
+SetTheory.fsx (ALL PASS) with byte-identical logs vs Phase 3 — all under
+`SYLVIA_SEQUAL_CHECK=1`.
+
+## Final cumulative results (baseline → Phase 4)
+
+| Payload | Before | After | Change |
+|---|---:|---:|---:|
+| trans_implies (cold, default log) | 681 ms / 627 MB | 222 ms / 56 MB | 3.1x / 11x |
+| trans_implies (warm, default log) | 575 ms / 605 MB | 59 ms / 55 MB | 9.8x / 11x |
+| trans_implies (warm, LogLevel=0) | — | 35 ms / 35 MB | 16x / 17x |
+| prover test suite | 64 s | 40-54 s | ~1.3-1.6x |
+| sequal (small/medium/large) | 20-14055 us | 0.2-47 us | 16-255x |
+| get_vars large | 110.6 us | 23.5 us | 4.7x |
+| replace_expr large | 173 ms / 334 MB | 0.107 ms / 223 KB | ~1600x |
+
 ## Sequencing and risk
 
 | Phase | Impact | Risk | Notes |

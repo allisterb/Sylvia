@@ -130,6 +130,26 @@ module FsExpr =
         Assert.True(sequal result ((Prop <@ %r.Expr && %q.Expr @>).Expr.Raw))
 
     [<Fact>]
+    let ``replace_expr: returns the original instance when nothing matches``() =
+        let target = (p * q + p * r).Expr.Raw
+        let result = replace_expr ((q * r).Expr.Raw) ((p * p).Expr.Raw) target
+        Assert.True(obj.ReferenceEquals(target, result))
+
+    [<Fact>]
+    let ``replace_first_expr: returns the original instance when nothing matches``() =
+        let target = (p * q + p * r).Expr.Raw
+        let result = replace_first_expr ((q * r).Expr.Raw) ((p * p).Expr.Raw) target
+        Assert.True(obj.ReferenceEquals(target, result))
+
+    [<Fact>]
+    let ``get_vars: preserved quirk - instance-call receivers are skipped``() =
+        let svar = Expr.Var(Var("s", typeof<string>)) |> Expr.Cast<string>
+        let ivar = Expr.Var(Var("i", typeof<int>)) |> Expr.Cast<int>
+        let e = (<@ (%svar).Substring(%ivar) @>).Raw
+        let vs = get_vars e |> List.map (fun v -> v.Name)
+        Assert.Equal<string list>(["i"], vs)
+
+    [<Fact>]
     let ``is_inst_expr: recognizes instantiation``() =
         let x = Var("x", typeof<bool>)
         let xe = Expr.Var x |> Expr.Cast<bool>
