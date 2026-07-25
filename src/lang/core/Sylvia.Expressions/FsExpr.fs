@@ -360,16 +360,96 @@ module FsExpr =
 
     let hasCase<'t> case = FSharpType.GetUnionCases(typeof<'t>) |> Array.tryFind(fun c -> c.Name = case)
     
-    let sequal (l:Expr) (r:Expr) =
+    let vequal (lv1:Var) (lv2:Var) = lv1.Name = lv2.Name && lv1.Type = lv2.Type
+
+    /// Original string-rendering-based syntactic equality, kept as the reference
+    /// implementation for validating the structural version (see sequal_check).
+    /// O(|expr|) rendering + string allocation per call — do not use on hot paths.
+    let sequal_str (l:Expr) (r:Expr) =
         (l.ToString() = r.ToString())
         || l.ToString() = sprintf "(%s)" (r.ToString())
         || r.ToString() = sprintf "(%s)" (l.ToString())
-    
-    let sequal2 (l1:Expr) (l2:Expr) (r1:Expr) (r2:Expr) = sequal l1 r1 && sequal l2 r2
-    
-    let sequal3 (l1:Expr) (l2:Expr) (l3:Expr) (r1:Expr) (r2:Expr) (r3:Expr)= sequal l1 r1 && sequal l2 r2 && sequal l3 r3
 
-    let vequal (lv1:Var) (lv2:Var) = lv1.Name = lv2.Name && lv1.Type = lv2.Type
+    /// When true, sequal dual-runs the structural comparison against sequal_str and
+    /// fails loudly on any disagreement. Enable by setting SYLVIA_SEQUAL_CHECK=1 in the
+    /// environment (or setting this flag directly) when running the test suites.
+    let mutable sequal_check =
+        match Environment.GetEnvironmentVariable "SYLVIA_SEQUAL_CHECK" with
+        | null | "" | "0" -> false
+        | _ -> true
+
+    // Structural syntactic equality, faithful to the rendered-string semantics the
+    // original sequal compared. Two deliberate consequences of that faithfulness:
+    //   - Matches node kinds explicitly rather than via ExprShape tokens: the shape
+    //     token embeds source-location (DebugRange) attributes, so token equality
+    //     wrongly distinguishes identical trees quoted at different source positions.
+    //   - Members and variables compare by NAME only, not full identity: the rendered
+    //     form prints method/property/var names without types, so e.g. two different
+    //     generic instantiations of forall_expr are (and were) the same expression to
+    //     the kernel. Tightening this to full identity breaks existing proofs
+    //     (quantifier theorems instantiate generics differently on the two sides of an
+    //     axiom) and would be a semantic change, not an optimization.
+    let private sequal_structural (l:Expr) (r:Expr) =
+        let rec eq (l:Expr) (r:Expr) =
+            obj.ReferenceEquals(l, r) ||
+            match l, r with
+            // The rendered form of a named value is "(payload, name)": both participate.
+            | ValueWithName(lv, _, ln), ValueWithName(rv, _, rn) -> ln = rn && Unchecked.equals lv rv
+            | ValueWithName _, _ | _, ValueWithName _ -> false
+            | WithValue(_, lt, le), WithValue(_, rt, re) -> lt = rt && eq le re
+            | WithValue _, _ | _, WithValue _ -> false
+            | Value(lv, lt), Value(rv, rt) -> lt = rt && Unchecked.equals lv rv
+            | Value _, _ | _, Value _ -> false
+            | Var lv, Var rv -> lv.Name = rv.Name
+            | Var _, _ | _, Var _ -> false
+            | Lambda(lv, lb), Lambda(rv, rb) -> lv.Name = rv.Name && eq lb rb
+            | Lambda _, _ | _, Lambda _ -> false
+            | Call(lo, lm, la), Call(ro, rm, ra) -> lm.Name = rm.Name && optEq lo ro && listEq la ra
+            | Call _, _ | _, Call _ -> false
+            | IfThenElse(la, lb, lc), IfThenElse(ra, rb, rc) -> eq la ra && eq lb rb && eq lc rc
+            | IfThenElse _, _ | _, IfThenElse _ -> false
+            | Application(lf, lx), Application(rf, rx) -> eq lf rf && eq lx rx
+            | Application _, _ | _, Application _ -> false
+            | PropertyGet(lo, lp, la), PropertyGet(ro, rp, ra) -> lp.Name = rp.Name && optEq lo ro && listEq la ra
+            | PropertyGet _, _ | _, PropertyGet _ -> false
+            | FieldGet(lo, lf), FieldGet(ro, rf) -> lf.Name = rf.Name && optEq lo ro
+            | FieldGet _, _ | _, FieldGet _ -> false
+            | NewTuple la, NewTuple ra -> listEq la ra
+            | NewTuple _, _ | _, NewTuple _ -> false
+            | NewUnionCase(lu, la), NewUnionCase(ru, ra) -> lu.Name = ru.Name && listEq la ra
+            | NewUnionCase _, _ | _, NewUnionCase _ -> false
+            | NewArray(lt, la), NewArray(rt, ra) -> lt = rt && listEq la ra
+            | NewArray _, _ | _, NewArray _ -> false
+            | NewObject(lc, la), NewObject(rc, ra) -> lc = rc && listEq la ra
+            | NewObject _, _ | _, NewObject _ -> false
+            | Let(lv, le, lb), Let(rv, re, rb) -> lv.Name = rv.Name && eq le re && eq lb rb
+            | Let _, _ | _, Let _ -> false
+            | TupleGet(le, li), TupleGet(re, ri) -> li = ri && eq le re
+            | TupleGet _, _ | _, TupleGet _ -> false
+            | Coerce(le, lt), Coerce(re, rt) -> lt = rt && eq le re
+            | Coerce _, _ | _, Coerce _ -> false
+            | _ ->
+                // Node kinds not enumerated above are rare in the Sylvia DSL; fall back
+                // to the rendered comparison to preserve the original semantics exactly.
+                l.ToString() = r.ToString()
+        and optEq (lo:Expr option) (ro:Expr option) =
+            match lo, ro with
+            | None, None -> true
+            | Some a, Some b -> eq a b
+            | _ -> false
+        and listEq (la:Expr list) (ra:Expr list) = la.Length = ra.Length && List.forall2 eq la ra
+        eq l r
+
+    let sequal (l:Expr) (r:Expr) =
+        let s = sequal_structural l r
+        if sequal_check then
+            let s' = sequal_str l r
+            if s <> s' then failwithf "sequal check failed: structural=%b but string=%b for %s vs %s" s s' (l.ToString()) (r.ToString())
+        s
+
+    let sequal2 (l1:Expr) (l2:Expr) (r1:Expr) (r2:Expr) = sequal l1 r1 && sequal l2 r2
+
+    let sequal3 (l1:Expr) (l2:Expr) (l3:Expr) (r1:Expr) (r2:Expr) (r3:Expr)= sequal l1 r1 && sequal l2 r2 && sequal l3 r3
 
     let vequal2 (lv1:Var) (lv2:Var) (rv1:Var) (rv2:Var) = vequal lv1 rv1 && vequal lv2 rv2
     
