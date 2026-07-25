@@ -537,21 +537,24 @@ and Prop (expr:Expr<bool>) =
     // decompiles both sides on every comparison.
     let display = lazy (src expr)
 
-    static member (!!) (l:#Prop) = Prop <@ not %l.Expr @>
+    // Built with the mk_* Expr builders (same tree shapes as the quotation literals,
+    // which re-deserialize their template on every operator application — Prop algebra
+    // is on hot construction paths like SAT clause building).
+    static member (!!) (l:#Prop) = Prop (Expr.Cast<bool>(mk_not l.Expr.Raw))
 
-    static member (~-) (l:#Prop) = Prop <@ not %l.Expr @>
-        
-    static member (*) (l:#Prop, r:#Prop) = Prop <@ %l.Expr && %r.Expr @>
-    
-    static member (+) (l:#Prop, r:#Prop) = Prop <@ %l.Expr || %r.Expr @>
+    static member (~-) (l:#Prop) = Prop (Expr.Cast<bool>(mk_not l.Expr.Raw))
 
-    static member (==) (l:#Prop, r:#Prop) = Prop <@ %l.Expr = %r.Expr @>
-    
-    static member (!=) (l:#Prop, r:#Prop) = Prop <@ %l.Expr <> %r.Expr @>
+    static member (*) (l:#Prop, r:#Prop) = Prop (Expr.Cast<bool>(mk_and l.Expr.Raw r.Expr.Raw))
 
-    static member (==>) (l:#Prop, r:#Prop) = Prop <@ %l.Expr ===> %r.Expr @>
+    static member (+) (l:#Prop, r:#Prop) = Prop (Expr.Cast<bool>(mk_or l.Expr.Raw r.Expr.Raw))
 
-    static member (<==) (l:#Prop, r:#Prop) = Prop <@ %r.Expr <=== %l.Expr @>
+    static member (==) (l:#Prop, r:#Prop) = Prop (Expr.Cast<bool>(mk_eq_bool l.Expr.Raw r.Expr.Raw))
+
+    static member (!=) (l:#Prop, r:#Prop) = Prop (Expr.Cast<bool>(mk_neq_bool l.Expr.Raw r.Expr.Raw))
+
+    static member (==>) (l:#Prop, r:#Prop) = Prop (Expr.Cast<bool>(mk_implies l.Expr.Raw r.Expr.Raw))
+
+    static member (<==) (l:#Prop, r:#Prop) = Prop (Expr.Cast<bool>(mk_conseq r.Expr.Raw l.Expr.Raw))
 
     override x.Display = display.Value
 

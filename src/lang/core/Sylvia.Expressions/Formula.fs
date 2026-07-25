@@ -19,8 +19,7 @@ module Formula =
     let truth_value = formula<bool>
         
     /// A predicate expression
-    let pred_expr<'t> n = 
-        let var = Expr.Var(Var(n, typeof<'t -> bool>)) in <@ %%var:'t->bool @>
+    let pred_expr<'t> n = Expr.Var(Var(n, typeof<'t -> bool>)) |> Expr.Cast<'t->bool>
 
     (* Quantifiers *)
 
@@ -65,6 +64,15 @@ module Formula =
     // Cached template matchers: hoist the template quotation's deserialization and
     // destructuring to module initialization instead of re-running it on every match
     // attempt (see docs/expressions-perf.md).
+    // Builders producing the same tree shapes as <@ a ===> b @> / <@ a <=== b @> —
+    // a spliced literal re-deserializes its template on every evaluation.
+    let private impliesMi = getFuncInfo <@@ (===>) @@>
+    let private conseqMi = getFuncInfo <@@ (<===) @@>
+    /// a ⇒ b with the same tree shape as <@ a ===> b @>.
+    let mk_implies (a:Expr) (b:Expr) : Expr = Expr.Call(impliesMi, [a; b])
+    /// a ⇐ b with the same tree shape as <@ a <=== b @>.
+    let mk_conseq (a:Expr) (b:Expr) : Expr = Expr.Call(conseqMi, [a; b])
+
     let private (|EqCall|_|) : CallPattern = specific_call <@@ (=) @@>
     let private (|NotCall|_|) : CallPattern = specific_call <@@ not @@>
     let private (|NeqCall|_|) : CallPattern = specific_call <@@ (<>) @@>

@@ -157,15 +157,18 @@ module PropCalculus =
 
     /// If A is a theorem then replace A with T.
     [<Tactic("If A is a theorem then replace A with T.")>]
-    let Taut :Theorem->Rule=  
-        let ieq p = 
-            let stmt = <@@ ((%%p) = %T.Expr) = (%%p) @@> in Theorem(stmt, Proof (stmt, prop_calculus, [commute |> at_left; right_assoc], true)) |> Ident  
+    let Taut :Theorem->Rule=
+        let ieq p =
+            // mk_eq_bool instead of a spliced literal: this runs per Taut application
+            // and the literal re-deserializes its template every time.
+            let stmt = mk_eq_bool (mk_eq_bool p T.Expr.Raw) p in Theorem(stmt, Proof (stmt, prop_calculus, [commute |> at_left; right_assoc], true)) |> Ident
         Tactics.Taut ieq
-    
+
     /// If A = B is a theorem then replace (A = B) with T.
     [<Tactic("If A = B is a theorem then replace (A = B) with T.")>]
-    let Taut' t = 
-        let ieq p = Theorem(<@@ ((%%p) = %T.Expr) = (%%p) @@>, Proof (<@@ (%%p = %T.Expr) = %%p @@>, prop_calculus, [commute |> at_left; right_assoc], true)) |> Ident 
+    let Taut' t =
+        let ieq p =
+            let stmt = mk_eq_bool (mk_eq_bool p T.Expr.Raw) p in Theorem(stmt, Proof (stmt, prop_calculus, [commute |> at_left; right_assoc], true)) |> Ident
         Tactics.Taut' ieq t
             
     /// If A = B is a theorem then so is B = A.

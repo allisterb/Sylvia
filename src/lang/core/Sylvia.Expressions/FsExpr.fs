@@ -61,6 +61,31 @@ module FsExpr =
     let private (|AndCall|_|) : CallPattern = specific_call <@@ (&&) @@>
     let private (|OrCall|_|) : CallPattern = specific_call <@@ (||) @@>
 
+    // Programmatic builders for the boolean connectives and (in)equality at bool.
+    // They produce EXACTLY the tree shapes the corresponding quotation literals
+    // produce (&&/|| compile to IfThenElse inside quotations), so sequal and all
+    // pattern matching are unaffected. A spliced literal like
+    // <@@ (%%a:bool) || (%%b:bool) @@> re-deserializes its pickled template on EVERY
+    // evaluation — use these on hot paths instead (see docs/expressions-perf.md).
+    let private extract_mi (template:Expr) =
+        match template with
+        | Lambdas(_, Call(_, mi, _)) -> mi
+        | Call(_, mi, _) -> mi
+        | _ -> failwithf "Could not extract a MethodInfo from template %A." template
+    let private notMi = extract_mi <@@ not @@>
+    let private eqBoolMi = extract_mi <@@ fun (a:bool) (b:bool) -> a = b @@>
+    let private neqBoolMi = extract_mi <@@ fun (a:bool) (b:bool) -> a <> b @@>
+    /// a ∧ b with the same tree shape as <@ a && b @> (IfThenElse(a, b, false)).
+    let mk_and (a:Expr) (b:Expr) : Expr = Expr.IfThenElse(a, b, Expr.Value false)
+    /// a ∨ b with the same tree shape as <@ a || b @> (IfThenElse(a, true, b)).
+    let mk_or (a:Expr) (b:Expr) : Expr = Expr.IfThenElse(a, Expr.Value true, b)
+    /// ¬a with the same tree shape as <@ not a @>.
+    let mk_not (a:Expr) : Expr = Expr.Call(notMi, [a])
+    /// a = b at bool with the same tree shape as <@ (a:bool) = b @>.
+    let mk_eq_bool (a:Expr) (b:Expr) : Expr = Expr.Call(eqBoolMi, [a; b])
+    /// a ≠ b at bool with the same tree shape as <@ (a:bool) <> b @>.
+    let mk_neq_bool (a:Expr) (b:Expr) : Expr = Expr.Call(neqBoolMi, [a; b])
+
     let (|And|_|) =
         function
         | AndCall (None,_,l::r::[]) -> Some (l, r)
@@ -806,13 +831,13 @@ module FsExpr =
 
         rexpand Map.empty expr
 
-    // Expand typed expression and cast to another type.
-    let expand_cast<'a, 'b> (expr:Expr<'b>) =
-        let e = expand expr in <@ %%e:'a @>
+    // Expand typed expression and cast to another type. (Expr.Cast instead of a
+    // <@ %%e:'a @> splice — the splice's template is re-deserialized on every call,
+    // and these are among the most-called helpers in the codebase.)
+    let expand_cast<'a, 'b> (expr:Expr<'b>) = Expr.Cast<'a>(expand expr)
 
     // Expand untyped expression and cast to type.
-    let expand_as<'t> (expr:Expr) =
-        let e = expand expr in <@ %%e:'t @>
+    let expand_as<'t> (expr:Expr) = Expr.Cast<'t>(expand expr)
 
     let expand_left = 
         function

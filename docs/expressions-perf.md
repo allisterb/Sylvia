@@ -409,13 +409,65 @@ module — but laziness sidesteps the ordering problem entirely.
 | reconstruct chain 12 | 2.2-2.8 s / 6.1 GB | **2.0 s / 5.8 GB** |
 | conjElimAll 12 clauses | 1.2-1.5 s / 3.3 GB | 1.05 s / 3.2 GB |
 
-The 8-atom reconstruction is now ~**95x** faster than the original 142 s. Validation:
-prover suite 97/97 with `SYLVIA_SEQUAL_CHECK=1`, both example scripts ALL PASS with
-**byte-identical** logs (only never-read text became lazy). Still open (small): the
-example-quotation literals inside match arms deserialize per successful match
-(`Byte[402]` rows — hoist to module-level lets or make `pattern_desc` take the example
-lazily if they still show), and 4 `sprintf … (src op)` pattern NAMES in Patterns.fs
-decompile small operator templates per success.
+**Phase 6b — fully-lazy descriptions.** The leftovers above were then closed too:
+`PatternDescription` is now lazy in BOTH fields (the name is only read when a completed
+step is actually displayed), with fully-deferred variants `pattern_desc'`/`pattern_name'`
+taking `Lazy` arguments. All 24 literal-example sites in `equational_logic_axioms`, the
+2 in Patterns.fs, and the 5 `sprintf … (src op)` name sites (`Reflex`, `Def`,
+`BinaryOpDef`*) were converted — so neither the example-quotation deserialization
+(`Byte[402]`) nor the name decompiles run on a match that is never displayed. The
+eager-signature `pattern_desc`/`pattern_name` remain for the cold call sites (math
+theories etc.), unchanged.
+
+| Payload | Phase 5 | Phase 6 | Phase 6b |
+|---|---:|---:|---:|
+| reconstruct chain 8 | 2.0-2.4 s | 1.5 s | **1.3 s** |
+| reconstruct chain 12 | 2.2-2.8 s | 2.0 s | **1.98 s** |
+| conjElimAll 12 clauses | 1.2-1.5 s | 1.05 s | 1.05 s |
+
+The 8-atom reconstruction is now ~**109x** faster than the original 142 s. Validation
+(both phases): prover suite 97/97 with `SYLVIA_SEQUAL_CHECK=1`, both example scripts
+ALL PASS with **byte-identical** logs (only never-read text became lazy).
+
+## Phase 7 results (2026-07-25, user-directed: Expr builders instead of spliced literals)
+
+A spliced quotation literal (`<@@ (%%a:bool) || (%%b:bool) @@>`) re-deserializes its
+pickled template on EVERY evaluation — and these literals were the result-construction
+mechanism of the S-rule rewrite functions that `traverse` applies on every rule fire,
+of `expand_as`/`expand_cast` (`<@ %%e:'t @>` — among the most-called helpers anywhere),
+of the `Prop` operator algebra, and of the `Taut`/`Taut'` tactic statements.
+
+Implementation:
+
+- **FsExpr**: `mk_and`/`mk_or`/`mk_not`/`mk_eq_bool`/`mk_neq_bool` builders producing
+  EXACTLY the tree shapes the literals produce — critically, `&&`/`||` compile to
+  `IfThenElse(a, b, false)` / `IfThenElse(a, true, b)` inside quotations, and the
+  builders replicate that, so sequal and all pattern matching are unaffected.
+  `expand_as`/`expand_cast` now use `Expr.Cast` instead of a splice; same for
+  `Symbolic.symbolic_var` and `Formula.pred_expr`.
+- **Formula**: `mk_implies`/`mk_conseq` (the `===>`/`<===` operators live here).
+- **EquationalLogic**: all ~45 rewrite-function literals transcribed to builders
+  (`_right_assoc` … `_split_range_exists`, `_normalize_with` rebuilds, `_simp_laws`,
+  the ANF rules, the QuantifierCollect guards), plus hoisted `forall_expr`/`exists_expr`
+  call templates (annotated at `obj` — the same instantiation the inline literals
+  defaulted to; only the MethodInfo name matters downstream).
+- **Term.fs**: the 8 `Prop` operators (`!!`, `~-`, `*`, `+`, `==`, `!=`, `==>`, `<==`).
+- **PropCalculus**: the per-application `Taut`/`Taut'` statement construction.
+
+| Payload | Phase 6b | Phase 7 | vs baseline |
+|---|---:|---:|---:|
+| trans_implies (warm, default log) | 23.7 ms / 25 MB | **14.3 ms / 16 MB** | 575 ms → **40x** |
+| trans_implies (warm, LogLevel=0) | 20.2 ms / 22 MB | **11.2 ms / 14 MB** | **51x** |
+| trans_implies (cold) | 183 ms / 27 MB | 136 ms / 17 MB | 681 ms → 5x |
+| reconstruct chain 8 | 1.3 s / 2.9 GB | 1.35 s / 2.6 GB | 142 s → **~105x** |
+| reconstruct chain 12 | 1.98 s / 5.8 GB | **1.68 s / 5.3 GB** | — |
+| conjElimAll 12 clauses | 1.05 s / 3.2 GB | 0.94 s / 3.0 GB | — |
+
+Validation: prover suite 97/97 + Expressions 25/26 (pre-existing) with
+`SYLVIA_SEQUAL_CHECK=1`, both example scripts ALL PASS with **byte-identical** logs —
+every transcription provably produces the same trees. Left as-is (cold or generic):
+`Term.(==)` (generic `'t` equality), `Pred`/`ScalarRelation` lambda splices, the
+`pnot` helpers in tests/payloads, and the math-theory literals.
 
 ## Sequencing and risk
 

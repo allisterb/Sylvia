@@ -38,8 +38,8 @@ type IDescription =
 
 [<AutoOpen>]
 module Symbolic =
-    /// Create a symbolic variable   
-    let symbolic_var<'t> n = let v = Expr.Var(Var(n, typeof<'t>)) in <@ %%v:'t @>
+    /// Create a symbolic variable
+    let symbolic_var<'t> n = Expr.Var(Var(n, typeof<'t>)) |> Expr.Cast<'t>
 
     (* Create sequences of variables *)
     let var'<'t> v = symbolic_var<'t> v

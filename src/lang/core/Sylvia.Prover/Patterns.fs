@@ -120,7 +120,7 @@ module Patterns =
     let (|Reflex|_|) (op:Expr<'t->'t->bool>) =
         function
         | Binary op (a1, a2) when sequal a1 a2 -> 
-            pattern_name (sprintf "Reflexivity of %s" (src op)) |> Some
+            pattern_name' (lazy (sprintf "Reflexivity of %s" (src op))) |> Some
         | _ -> None
 
     /// (x + y) + z = x + (y + z)
@@ -210,24 +210,24 @@ module Patterns =
     /// Define the LHS by the RHS
     let (|Def|_|) (eq:Expr<'t->'t->bool>) (l:Expr<'t>) (r:Expr<'t>) =
         function
-        | Binary eq (a1, a2) when sequal2 a1 a2 l r -> pattern_desc (sprintf "Definition of %s" (src l)) <@ (%eq) %l %r @> |> Some
+        | Binary eq (a1, a2) when sequal2 a1 a2 l r -> pattern_desc' (lazy (sprintf "Definition of %s" (src l))) (lazy <@ (%eq) %l %r @>) |> Some
         | _ -> None
 
     /// Define a binary operator by another binary operator and a unary operator applied to the entire expression e.g p <> q = not (p = q).
     let (|BinaryOpDef|_|) (eq:Expr<'t->'t->bool>)  (op1:Expr<'t->'t->'t>) (op2:Expr<'t->'t->'t>) (op3:Expr<'t->'t>)=
         function
-        | Binary eq (Binary op1 (a1, a2), Unary op3 (Binary op2 (a3, a4))) when sequal2 a1 a2 a3 a4 -> pattern_name (sprintf "Definition of %s" (src op1)) |> Some
+        | Binary eq (Binary op1 (a1, a2), Unary op3 (Binary op2 (a3, a4))) when sequal2 a1 a2 a3 a4 -> pattern_name' (lazy (sprintf "Definition of %s" (src op1))) |> Some
         | _ -> None
 
     //. Define a binary operator by another binary operator and a unary operator applied to the left of the expression
     let (|BinaryOpDefL|_|) (eq:Expr<'t->'t->bool>)  (op1:Expr<'t->'t->'t>) (op2:Expr<'t->'t->'t>) (op3:Expr<'t->'t>)=
         function
-        | Binary eq (Binary op1 (a1, a2), (Binary op2 (Unary op3 a3, a4))) when sequal2 a1 a2 a3 a4 -> pattern_name (sprintf "Definition of %s" (src op1)) |> Some
+        | Binary eq (Binary op1 (a1, a2), (Binary op2 (Unary op3 a3, a4))) when sequal2 a1 a2 a3 a4 -> pattern_name' (lazy (sprintf "Definition of %s" (src op1))) |> Some
         | _ -> None
 
     let (|BinaryOpDefR|_|) (eq:Expr<'t->'t->bool>)  (op1:Expr<'t->'t->'t>) (op2:Expr<'t->'t->'t>) (op3:Expr<'t->'t>)=
         function
-        | Binary eq (Binary op1 (a1, a2), (Binary op2 (a3, Unary op3 a4))) when sequal2 a1 a2 a3 a4 -> pattern_name (sprintf "Definition of %s" (src op1)) |> Some
+        | Binary eq (Binary op1 (a1, a2), (Binary op2 (a3, Unary op3 a4))) when sequal2 a1 a2 a3 a4 -> pattern_name' (lazy (sprintf "Definition of %s" (src op1))) |> Some
         | _ -> None
 
     let (|LeftCancel|_|) (op:Expr<'t->'t->'t>)  =
@@ -245,7 +245,7 @@ module Patterns =
     let (|LeftCancelNonZero|_|) (op:Expr<'t->'t->'t>) (zero:Expr<'t>)  =
         function
         | Implies(NotEquals(a, z), Equals (Equals(Binary op (a1, b), Binary op (a2, c)), Equals(b1, c1))) when sequal z zero && sequal a a1 && sequal a1 a2 && sequal b b1 && sequal c c1 
-            -> pattern_desc "Left Cancellation" <@ fun a b c -> (a <> %zero) ===> (((%op) a b = (%op) a c)) = ((b = c)) @> |> Some
+            -> pattern_desc' (lazy "Left Cancellation") (lazy <@ fun a b c -> (a <> %zero) ===> (((%op) a b = (%op) a c)) = ((b = c)) @>) |> Some
         | _ -> None
 
     // (★x | x = E : P) = P[x := E]   (Gries 8.14, One-Point). Two generalizations over a naive reading:
@@ -258,7 +258,7 @@ module Patterns =
         | Equals(Quantifier(_,[x], Equals(Var x', E), P), P')
         | Equals(Quantifier(_,[x], Equals(E, Var x'), P), P')
             when not (occurs_free [x] E) && vequal x x' && sequal P' (replace_var_expr x E P) ->
-            pattern_desc "the One-Point Rule" <@ fun x E P -> (forall_expr x (x = E) P) = P @> |> Some
+            pattern_desc' (lazy "the One-Point Rule") (lazy <@ fun x E P -> (forall_expr x (x = E) P) = P @>) |> Some
         | _ -> None
 
     // Nesting (Gries 8.20): (★x,y | R∧Q : P) = (★x | R : (★y | Q : P)), provided ¬occurs(y,R).
