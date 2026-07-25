@@ -314,6 +314,28 @@ SetTheory.fsx (ALL PASS) with byte-identical logs vs Phase 3 — all under
 | get_vars large | 110.6 us | 23.5 us | 4.7x |
 | replace_expr large | 173 ms / 334 MB | 0.107 ms / 223 KB | ~1600x |
 
+## Real-world check: SAT reconstruction benchmark (2026-07-25)
+
+`examples/sat/Reconstruct.fsx` (the CaDiCaL LRAT → kernel-checked `⊢ φ` pipeline from
+[prover-sat-reconstruction.md](prover-sat-reconstruction.md), the workload whose slowness
+motivated this whole effort), re-run against the optimized code with all Debug
+dependencies rebuilt — ALL GREEN, goals matched structurally:
+
+| Goal | Before (2026-07-13) | After | Speedup |
+|---|---:|---:|---:|
+| 3-atom chain | ~5 s | 1.6-1.9 s | ~3x |
+| 5-atom chain | ~39 s | 2.1-3.0 s | 13-19x |
+| 8-atom chain | 142 s | **4.8-7.2 s** | **~20-30x** |
+| 12-atom chain | (never attempted) | **10.2 s** | — |
+
+The growth is now mildly polynomial (~1.2x per added atom: 5→8 atoms 2.3x, 8→12 atoms
+2.1x) with no wall in sight — extrapolating, ~16 atoms ≈ 20-25 s and ~20 atoms fits a
+minute-scale budget, where the old code needed 142 s for 8. The `Calc.chainImp` /
+O(|expression|)-per-kernel-step architectural cost remains the asymptotic ceiling, but
+its constant factor is ~20x smaller, which moves the practical ceiling well past where
+the fresh-start decision previously sat. (The 8- and 12-atom checks are now permanent
+cases in Reconstruct.fsx.)
+
 ## Sequencing and risk
 
 | Phase | Impact | Risk | Notes |

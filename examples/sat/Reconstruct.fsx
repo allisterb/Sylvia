@@ -136,6 +136,8 @@ let reconstruct (goal:Prop) : Theorem =
     Contradiction negImpF
 
 let p, q, r, s, t = boolvar "p", boolvar "q", boolvar "r", boolvar "s", boolvar "t"
+let u, v, w = boolvar "u", boolvar "v", boolvar "w"
+let x, y, z, a = boolvar "x", boolvar "y", boolvar "z", boolvar "a"
 let check label (goal:Prop) =
     try
         let sw = System.Diagnostics.Stopwatch.StartNew()
@@ -151,5 +153,9 @@ check "Peirce  ((p⇒q)⇒p)⇒p"               (((p ==> q) ==> p) ==> p)
 check "chain  (p⇒q)∧(q⇒r) ⇒ (p⇒r)"        (((p ==> q) * (q ==> r)) ==> (p ==> r))
 // 5 atoms — past the old autoproof_anf ceiling of 5 (slow, but it closes):
 check "5-atom chain"                      ((p ==> q) * (q ==> r) * (r ==> s) * (s ==> t) ==> (p ==> t))
+// 8 atoms — the scaling benchmark from docs/prover-sat-reconstruction.md (142 s pre-optimization):
+check "8-atom chain"                      ((p ==> q) * (q ==> r) * (r ==> s) * (s ==> t) * (t ==> u) * (u ==> v) * (v ==> w) ==> (p ==> w))
+// 12 atoms — well past anything measured pre-optimization:
+check "12-atom chain"                     ((p ==> q) * (q ==> r) * (r ==> s) * (s ==> t) * (t ==> u) * (u ==> v) * (v ==> w) * (w ==> x) * (x ==> y) * (y ==> z) * (z ==> a) ==> (p ==> a))
 
 printfn "\n%s  (%d failed)" (if failures = 0 then "ALL GREEN" else "FAILURES") failures

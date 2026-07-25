@@ -237,13 +237,21 @@ rare.
   **8-atom tautology**, past the old ceiling), dumps DIMACS + LRAT + the reconstruction plan, and shows
   a real wide resolution `((a∨b∨g)∧(¬g∨(c∨d))) ⇒ (a∨b∨(c∨d))` as a checked theorem.
 - [`examples/sat/Reconstruct.fsx`](../examples/sat/Reconstruct.fsx) — **ALL GREEN**: closes
-  `⊢ p∨¬p`, `⊢ ((p⇒q)⇒p)⇒p`, `⊢ (p⇒q)∧(q⇒r)⇒(p⇒r)`, and a **5-atom chain** (past the old ceiling),
-  each matching the goal structurally.
+  `⊢ p∨¬p`, `⊢ ((p⇒q)⇒p)⇒p`, `⊢ (p⇒q)∧(q⇒r)⇒(p⇒r)`, a **5-atom chain** (past the old ceiling),
+  and the **8-atom chain** scaling benchmark, each matching the goal structurally.
 
 ## 6. Current state
 
 Both steps scale — the full pipeline produces a kernel-checked `⊢ φ` with **no atom ceiling** (measured
 end-to-end through 8 atoms: 2→5 s, 5→39 s, 8→142 s).
+
+> **Update 2026-07-25:** after the Sylvia.Expressions optimization pass
+> ([`expressions-perf.md`](expressions-perf.md) — structural `sequal`, hoisted quotation
+> templates, lazy log formatting, identity-preserving rebuilds), the same end-to-end
+> reconstructions measure **3-atom 1.6 s, 5-atom 2.1 s, 8-atom 4.8 s, 12-atom 10.2 s**
+> (~20-30x on the 8-atom case; 12 atoms was never even attempted before). Growth is now
+> ~1.2x per added atom with no wall in sight. The per-step O(|expression|) kernel cost
+> below remains the architectural ceiling, but its constant factor is now ~20x smaller.
 
 - **Step 1 (resolution replay)** — the refutation `R : (∧ inputs) ⇒ F` is produced and verified sound
   (`valid`) for every test goal.
