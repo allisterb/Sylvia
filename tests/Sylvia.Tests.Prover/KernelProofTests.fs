@@ -163,6 +163,12 @@ type KernelProofTests() =
             "normalize_assoc",    EquationalLogic._normalize_assoc,
                 // reassociation-only inputs (order-preserving, so each must reassociate to fire)
                 [ e ((p + q) + r); e ((p * q) * r); e (p + ((q == r) == s)) ]
+            "chain_simp",         EquationalLogic._chain_simp,
+                // whole-chain idempotence, complement, and identity — each with the operands
+                // SEPARATED by association, which is exactly what the node-local laws cannot see
+                [ e (p + (q + p)); e ((p + q) + !!q); e (p + (q + T))
+                  e (p * (q * p)); e ((p * q) * !!q); e (p * (q * F))
+                  e (p + (F + q)); e (p * (T * q)) ]
             "simp_laws",          EquationalLogic._simp_laws,
                 // identity, annihilator, complement, idempotence, absorption, double-neg, const-≡
                 [ e (p * T); e (p * F); e (p + F); e (p + T)
@@ -244,6 +250,26 @@ type KernelProofTests() =
               (!!(!!p)) == p                    // double negation
               (((p + q) + r)) == (r + (q + p))  // AC-equivalence (via normalize inside simp)
               (p * q) == (q * p) ]              // commutativity (normalize inside simp)
+        for g in goals do
+            let pr = proof PropCalculus.prop_calculus g [ apply PropCalculus.simp ]
+            Assert.True(pr.Complete, sprintf "simp should close %s; last state %s" (src (expand g.Expr)) (src pr.LastState))
+
+    [<Fact>]
+    member _.``simp is confluent on AC-equal clauses (repeated and complementary literals)`` () =
+        // A clause's literals are a SET: two disjunctions over the same set must reduce to the
+        // same normal form no matter how they are associated or ordered, so an equality between
+        // them closes. Without whole-chain normalization `p ∨ (p ∨ q)` and `(p ∨ q) ∨ ¬q` survive
+        // simp untouched (the node-local laws only see one ∨ at a time) — which is what made the
+        // SAT reconstruction fail on a MERGE resolvent, where the two resolved clauses share a
+        // non-pivot literal and the resolvent picks up a duplicate.
+        let goals : Prop list =
+            [ (p + (p + q)) == (p + q)                        // duplicate, separated by association
+              (p + (q + p)) == (p + q)                        // duplicate, separated by order
+              ((p + q) + (r + q)) == (p + (q + r))            // duplicate across two sub-clauses
+              ((p + q) + (p + q)) == (q + p)                  // whole clause repeated
+              ((p + q) + !!q) == T                            // complementary pair, not adjacent
+              (p * (p * q)) == (p * q)                        // the ∧ dual
+              ((p * q) * !!q) == F ]
         for g in goals do
             let pr = proof PropCalculus.prop_calculus g [ apply PropCalculus.simp ]
             Assert.True(pr.Complete, sprintf "simp should close %s; last state %s" (src (expand g.Expr)) (src pr.LastState))
@@ -386,7 +412,12 @@ type KernelProofTests() =
         let goals : Prop list =
             [ !!(((p ==> q) ==> p) ==> p)                                             // ¬Peirce, 2 atoms
               !!((p ==> q) * (q ==> r) ==> (p ==> r))                                 // ¬chain, 3 atoms
-              !!((p ==> q) * (q ==> r) * (r ==> s2) * (s2 ==> t2) * (t2 ==> u2) ==> (p ==> u2)) ]  // 6 atoms
+              !!((p ==> q) * (q ==> r) * (r ==> s2) * (s2 ==> t2) * (t2 ==> u2) ==> (p ==> u2))   // 6 atoms
+              // ≢ (xor) is propositional structure, not an atom: without a case for it the whole
+              // subformula is abstracted away and a valid xor goal becomes unprovable (its CNF
+              // comes back satisfiable). Both polarities.
+              !!((p != q) == (q != p))
+              (p != q) * !!(p != r) ]
         for g in goals do
             let (cnf, pf) = Cnf.toCnf g
             Assert.Equal<Expr>(expand (g == cnf).Expr, pf.Stmt)   // the theorem is exactly `g == cnf`

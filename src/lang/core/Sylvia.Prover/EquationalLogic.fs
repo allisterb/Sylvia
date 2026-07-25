@@ -542,9 +542,45 @@ module EquationalLogic =
         | Equals(p, q) when sequal p q -> tE
         | expr -> expr
 
+    /// Whole-CHAIN simplification of a ∨ or ∧: apply idempotence, complement, and the
+    /// identity/annihilator constants to the FLATTENED operand list instead of to one node.
+    ///
+    /// `_simp_laws` sees a single node at a time, so it cannot spot a repeated or complementary
+    /// operand that association has separated — `p ∨ (q ∨ p)` and `(p ∨ q) ∨ ¬q` both survive it.
+    /// That makes `_simp` NON-CONFLUENT on clauses: two AC-equal clauses can reduce to different
+    /// normal forms (one collapsing to T, the other not), so an equality between them fails to
+    /// close. Flattening first removes the dependence on association entirely.
+    ///
+    /// Equivalence-preserving (every case is an instance of idempotence, complement, identity or
+    /// annihilation, modulo associativity/commutativity) and size-reducing, so it drives a
+    /// terminating fixpoint. Operand ORDER is preserved and the chain is left untouched when
+    /// nothing is removed, so it never disturbs a shape that `_simp` would otherwise have kept.
+    let _chain_simp : Expr -> Expr =
+        let rec flatten split e =
+            match split e with
+            | Some (l, r) -> flatten split l @ flatten split r
+            | None -> [ e ]
+        let dedup ops = ops |> List.fold (fun acc x -> if acc |> List.exists (sequal x) then acc else acc @ [x]) []
+        let go split rebuild isUnit isAnnih unit_ annih e =
+            let ops = flatten split e
+            // an annihilator operand anywhere, or a complementary pair anywhere, collapses the chain
+            if ops |> List.exists isAnnih then annih
+            elif ops |> List.exists (fun x -> match x with Not a -> ops |> List.exists (sequal a) | _ -> false) then annih
+            else
+                let kept = ops |> List.filter (isUnit >> not) |> dedup
+                if List.length kept = List.length ops then e            // nothing removed: keep the shape
+                elif List.isEmpty kept then unit_
+                else List.reduceBack rebuild kept
+        let isTrue = function True -> true | _ -> false
+        let isFalse = function False -> true | _ -> false
+        function
+        | Or _ as e -> go (function Or (l, r) -> Some(l, r) | _ -> None) mk_or isFalse isTrue fE tE e
+        | And _ as e -> go (function And (l, r) -> Some(l, r) | _ -> None) mk_and isTrue isFalse tE fE e
+        | e -> e
+
     /// Deterministic propositional simplifier: apply the size-reducing rules
-    /// (`_simp_laws`, `_reduce_constants`) at every subterm position bottom-up, then
-    /// AC-normalize the whole term, iterating to a fixpoint. Closes any (sub)goal that
+    /// (`_simp_laws`, `_reduce_constants`, `_chain_simp`) at every subterm position bottom-up,
+    /// then AC-normalize the whole term, iterating to a fixpoint. Closes any (sub)goal that
     /// collapses to T (or to a canonical identity `x = x`); leaves anything it cannot
     /// reduce unchanged. Terminating (each law is size-non-increasing, `_normalize` is
     /// idempotent) with a hard iteration cap as a safety net. Sound by construction: it
@@ -553,8 +589,8 @@ module EquationalLogic =
         // Apply the local laws bottom-up (implicit position enumeration via traverse).
         let rec localpass (e: Expr) =
             let e' = traverse e localpass
-            e' |> _reduce_constants |> _simp_laws
-        let onepass e = e |> localpass |> _normalize |> _reduce_constants |> _simp_laws
+            e' |> _reduce_constants |> _simp_laws |> _chain_simp
+        let onepass e = e |> localpass |> _normalize |> _reduce_constants |> _simp_laws |> _chain_simp
         let rec fix n e =
             if n <= 0 then e
             else let e' = onepass e in if sequal e' e then e else fix (n - 1) e'

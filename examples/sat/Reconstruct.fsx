@@ -30,6 +30,10 @@ Proof.LogLevel <- 0
 let sat = Cadical(exePath = @"C:\Projects\Sylvia\bin\cadical.exe", timeoutMs = 20000)
 
 // Extract a CnfProblem directly from a clean CNF Prop (so it matches `Cnf.toCnf`'s equivalence proof).
+// Repeated literals within a clause are dropped: `Cnf.toCnf`'s distribution readily produces them
+// (Peirce's law gives a `p ∨ p`), and carrying them into the input conjunction `A` mis-targets the
+// `idemp_or` rewrite inside `absorb_or`, which `strengthen_and` — and hence `conjElimAll` — is built
+// on. `A` is then no longer AC-identical to the CNF, so `bridgeEq` below closes the gap with `simp`.
 let clausesOf (goal:Prop) (cnfProp:Prop) : CnfProblem =
     let atoms = System.Collections.Generic.List<Expr>()
     let varOf (e:Expr) =
@@ -39,7 +43,7 @@ let clausesOf (goal:Prop) (cnfProp:Prop) : CnfProblem =
     let litOf e = match e with Not a -> -(varOf a) | _ -> varOf e
     let rec lits e = match e with Or(x,y) -> lits x @ lits y | _ -> [litOf e]
     let rec cls e  = match e with And(x,y) -> cls x @ cls y | _ -> [lits e]
-    let clauses = cls (expand cnfProp.Expr)
+    let clauses = cls (expand cnfProp.Expr) |> List.map List.distinct
     let aov = System.Collections.Generic.Dictionary<int,Prop>()
     atoms |> Seq.iteri (fun i a -> aov.[i+1] <- Prop(expand_as<bool> a))
     { NumVars = atoms.Count; Clauses = clauses
@@ -51,6 +55,33 @@ let transEq (p1:Theorem) (p2:Theorem) : Theorem =
     | Equals(x,_), Equals(_,z) ->
         theorem prop_calculus (Prop(expand_as<bool> x) == Prop(expand_as<bool> z)) [ Ident p1 |> apply_left; Ident p2 |> apply_left ]
     | _ -> failwith "transEq"
+
+// Rewrite every clause of a CNF to its literal-DEDUPED form, in place, by congruence: each clause
+// equality is a small local `simp` (idempotence collapses the repeat) and is lifted through the ∧
+// tree at an EXACT position, so nothing searches and nothing can mis-target. Returns `None` when
+// no clause had a repeated literal. This is what keeps the input conjunction `A` — which the whole
+// refutation is threaded through — free of the `p ∨ p` clauses `Cnf.toCnf`'s distribution produces.
+let rec dedupCnf (p:Prop) : Prop * Theorem option =
+    let pOf (e:Expr) = Prop(expand_as<bool> e)
+    match expand p.Expr with
+    | And(x, y) ->
+        let dx, tx = dedupCnf (pOf x)
+        let dy, ty = dedupCnf (pOf y)
+        match tx, ty with
+        | None, None -> p, None
+        | _ ->
+            let steps =
+                [ match tx with Some t -> yield Ident t |> at [left_branch; left_branch] | None -> ()
+                  match ty with Some t -> yield Ident t |> at [left_branch; right_branch] | None -> () ]
+            (dx * dy), Some(theorem prop_calculus ((pOf x * pOf y) == (dx * dy)) steps)
+    | clause ->
+        let rec lits e = match e with Or(a, b) -> lits a @ lits b | _ -> [pOf e]
+        let ls = lits clause
+        let kept = ls |> List.fold (fun acc l -> if acc |> List.exists (fun (k:Prop) -> sequal (expand k.Expr) (expand l.Expr)) then acc else acc @ [l]) []
+        if List.length kept = List.length ls then p, None
+        else
+            let d = kept |> List.reduce (+)
+            d, Some(theorem prop_calculus (p == d) [ simp ])
 
 let mutable failures = 0
 let ok label cond = (if not cond then failures <- failures + 1); printfn "  %s  %s" (if cond then "✓" else "✗") label
@@ -80,46 +111,71 @@ let conjElimAll (inputs:Prop list) : Theorem[] =
             elif i = n-1 then aToRest.[n-1]                                 // A ⇒ rest_{n-1} = A ⇒ C_{n-1}
             else Calc.chainImp aToRest.[i] (strengthen_and arr.[i] (rest (i+1))))
 
-// ---- one binary resolution → cp(apos) ∧ cp(aneg) ⇒ cp(resolvent) --------------------------------
-let acEq (l:Prop) (r:Prop) : Rule = ident prop_calculus (l == r) [ simp ]   // AC clause equality (no merge)
-let resolveStep (cnf:CnfProblem) (h1:int list) (h2:int list) =
-    let pivot = h1 |> List.pick (fun l -> if List.contains (-l) h2 then Some (abs l) else None)
-    let apos, aneg = if List.contains pivot h1 then h1, h2 else h2, h1
-    let cL = apos |> List.filter (fun l -> l <> pivot)
-    let dL = aneg |> List.filter (fun l -> l <> -pivot)
-    let resolvent = (cL @ dL) |> List.distinct
+// ---- clause shaping: AC equality (with merge/dedup) and subset weakening ------------------------
+// `simp` AC-normalizes and now also collapses a repeated operand of a flattened ∨-chain, so this
+// closes MERGE resolvents (two clauses sharing a non-pivot literal) as well as plain reorderings.
+let acEq (l:Prop) (r:Prop) : Rule = ident prop_calculus (l == r) [ simp ]
+// `src ⇒ dst` whenever src's literals are a SUBSET of dst's: weaken by the missing literals
+// (Gries 3.76a) and AC-match the rest. Covers the reorder case (no extras) and the LRAT case where
+// a step declares a weaker clause than its hint chain actually derives.
+let clauseImp (cnf:CnfProblem) (srcLits:int list) (dstLits:int list) : Theorem =
     let cp lits = clauseProp cnf lits
-    let C, D, v = cp cL, cp dL, cnf.AtomOfVar.[pivot]
-    resolvent, apos, aneg,
-    theorem prop_calculus (cp apos * cp aneg ==> cp resolvent) [
+    let eqImp (a:Prop) (b:Prop) =                                          // a ⇒ b, same clause up to AC
+        if sequal (expand a.Expr) (expand b.Expr) then reflex_implies a
+        else theorem prop_calculus (a ==> b) [ acEq b a |> at [right_branch]
+                                               reflex_implies a |> Taut |> apply ]
+    match dstLits |> List.filter (fun l -> not (List.contains l srcLits)) |> List.distinct with
+    | [] -> eqImp (cp srcLits) (cp dstLits)
+    | extras -> Calc.chainImp (weaken_or (cp srcLits) (cp extras)) (eqImp (cp srcLits + cp extras) (cp dstLits))
+
+// ---- one binary resolution → cp(apos) ∧ cp(aneg) ⇒ cp(out), clashing on variable `pv` -----------
+let resolveStep (cnf:CnfProblem) (apos:int list) (aneg:int list) (pv:int) (out:int list) : Theorem =
+    let cL = apos |> List.filter (fun l -> l <> pv)
+    let dL = aneg |> List.filter (fun l -> l <> -pv)
+    let cp lits = clauseProp cnf lits
+    let C, D, v = cp cL, cp dL, cnf.AtomOfVar.[pv]
+    theorem prop_calculus (cp apos * cp aneg ==> cp out) [
         acEq (cp apos) (C + v) |> at [left_branch; left_branch]
         acEq (cp aneg) (-v + D) |> at [left_branch; right_branch]
-        acEq (cp resolvent) (C + D) |> at [right_branch]
+        acEq (cp out) (C + D) |> at [right_branch]
         resolve C D v |> Taut |> apply ]
 
 // ---- STEP 1: assemble R : (∧ inputs) ⇒ F  from the LRAT trace -----------------------------------
+// EVERY `Add` step is replayed, binary or not: `SAT.rupChain` unfolds a step's hints into an
+// explicit chain of binary resolutions (a 2-hint step is simply a one-link chain), and the chain's
+// clause is weakened to the declared one. Nothing in the trace is skipped.
 let refute (cnf:CnfProblem) (steps:LratStep list) : Prop * Theorem option =
     let inputs = cnf.Clauses |> List.map (clauseProp cnf)
     let A = inputs |> List.reduceBack (*)
     let lits = System.Collections.Generic.Dictionary<int,int list>()
-    let imp = System.Collections.Generic.Dictionary<int,Theorem>()
+    let imp = System.Collections.Generic.Dictionary<int,Theorem>()          // id ⟼ A ⇒ cp(lits[id])
     let elims = conjElimAll inputs
     cnf.Clauses |> List.iteri (fun i c -> lits.[i+1] <- c; imp.[i+1] <- elims.[i])
+    let clauseOf id = match lits.TryGetValue id with | true, c -> Some c | _ -> None
+    // A ⇒ cp xs  and  A ⇒ cp ys  ⟼  A ⇒ cp out   (one resolution, under the antecedent A)
+    let resolveUnder (impX:Theorem) (impY:Theorem) xs ys pv out =
+        let apos, aneg = if List.contains pv xs then xs, ys else ys, xs
+        let impPos, impNeg = if apos = xs then impX, impY else impY, impX
+        let cPos, cNeg = clauseProp cnf apos, clauseProp cnf aneg
+        let both = conj impPos impNeg (A ==> cPos) (A ==> cNeg)
+        let aToBoth = mp both (combine_implies A cPos cNeg) ((A ==> cPos) * (A ==> cNeg)) (A ==> (cPos * cNeg))
+        Calc.chainImp aToBoth (resolveStep cnf apos aneg pv out)
     let mutable r = None
     for step in steps do
         match step with
-        | Add(id, cl, [h1; h2]) ->
-            let resolvent, apos, aneg, sTh = resolveStep cnf lits.[h1] lits.[h2]
-            lits.[id] <- cl
-            let impPos = if apos = lits.[h1] then imp.[h1] else imp.[h2]
-            let impNeg = if aneg = lits.[h1] then imp.[h1] else imp.[h2]
-            let cPos, cNeg = clauseProp cnf apos, clauseProp cnf aneg
-            let both = conj impPos impNeg (A ==> cPos) (A ==> cNeg)
-            let aToBoth = mp both (combine_implies A cPos cNeg) ((A ==> cPos) * (A ==> cNeg)) (A ==> (cPos * cNeg))
-            imp.[id] <- Calc.chainImp aToBoth sTh
-            if List.isEmpty cl then r <- Some imp.[id]
-        | Add(id, cl, _) -> lits.[id] <- cl   // non-binary RUP step (rare) — not folded here
         | Delete _ -> ()
+        | Add(id, cl, hints) ->
+            match rupChain clauseOf cl hints with
+            | Error e -> failwithf "LRAT step %d: %s" id e
+            | Ok chain ->
+                let mutable cur = lits.[chain.Start]
+                let mutable curImp = imp.[chain.Start]
+                for link in chain.Links do
+                    curImp <- resolveUnder curImp imp.[link.Antecedent] cur lits.[link.Antecedent] link.Pivot link.Result
+                    cur <- link.Result
+                lits.[id] <- cl
+                imp.[id] <- if cur = cl then curImp else Calc.chainImp curImp (clauseImp cnf cur cl)
+                if List.isEmpty cl then r <- Some imp.[id]
     A, r
 
 // ---- STEP 2: ¬φ = A via Cnf.toCnf (scalable), then ¬φ ⇒ F, then Contradiction ⟹ ⊢ φ ------------
@@ -127,12 +183,19 @@ let reconstruct (goal:Prop) : Theorem =
     let neg = !!goal
     let (cnfProp, cnfPf) = Cnf.toCnf neg                         // ¬φ == cnfProp  (kernel proof, no atom ceiling)
     let cnf = clausesOf goal cnfProp                             // DIMACS clauses read off that CNF
-    let res = sat.Prove goal
-    if res.Status <> Unsat then failwith "goal not valid (¬φ satisfiable)"
+    // Solve THAT clause list, not a separately-derived one: the LRAT clause ids and variable
+    // indices are only meaningful against the exact DIMACS we hand the solver. (`sat.Prove goal`
+    // would re-clausify with `cnfOfNegatedGoal`, whose clause order, literal order and
+    // tautology-dropping need not agree with `Cnf.toCnf`'s.)
+    let res = sat.Solve cnf
+    if res.Status <> Unsat then failwithf "goal not proved: ¬φ is %A" res.Status
     let A, rOpt = refute cnf (parseLrat res.Lrat)
     let rTh = match rOpt with Some t -> t | None -> failwith "no binary empty-clause derivation"
-    let bridge = theorem prop_calculus (cnfProp == A) [ normalize ]   // AC: same clauses, reassociated
-    let ceq = transEq cnfPf bridge                              // ¬φ == A
+    // ¬φ == A in two exact moves: clause-wise literal dedup (congruence), then pure-AC
+    // reassociation of the same clause multiset into the right-associated `A`.
+    let (cnfDedup, dedupPf) = dedupCnf cnfProp
+    let bridge = theorem prop_calculus (cnfDedup == A) [ normalize ]
+    let ceq = transEq cnfPf (match dedupPf with Some d -> transEq d bridge | None -> bridge)  // ¬φ == A
     let negImpF = theorem prop_calculus (neg ==> F) [ Ident ceq |> apply_left; Taut rTh |> apply ]
     Contradiction negImpF
 
@@ -158,5 +221,22 @@ check "5-atom chain"                      ((p ==> q) * (q ==> r) * (r ==> s) * (
 check "8-atom chain"                      ((p ==> q) * (q ==> r) * (r ==> s) * (s ==> t) * (t ==> u) * (u ==> v) * (v ==> w) ==> (p ==> w))
 // 12 atoms — well past anything measured pre-optimization:
 check "12-atom chain"                     ((p ==> q) * (q ==> r) * (r ==> s) * (s ==> t) * (t ==> u) * (u ==> v) * (v ==> w) * (w ==> x) * (x ==> y) * (y ==> z) * (z ==> a) ==> (p ==> a))
+
+// Goals whose refutations are NOT plain binary chains — these exercise the two gaps that used to
+// make the replay give up (see docs/prover-sat-reconstruction.md §7):
+//   * merge resolution — the two resolved clauses share a NON-pivot literal, so the resolvent has
+//     a duplicate that only a dedup-capable clause normalizer can discharge;
+//   * non-binary RUP steps — a step with 1, or 3+, hints, unfolded into a resolution chain.
+printfn "\nDenser refutations (merge resolvents + non-binary RUP steps):"
+check "merge  (p∨q)∧(¬p∨q) ⇒ q"           (((p + q) * (!!p + q)) ==> q)
+check "3-var all-8-clause refutation"     (!!((p+q+r) * (!!p+q+r) * (p+ !!q+r) * (!!p+ !!q+r) * (p+q+ !!r) * (!!p+q+ !!r) * (p+ !!q+ !!r) * (!!p+ !!q+ !!r)))
+check "resolution chain to s"             (((p + q) * (!!q + r) * (!!r + s) * (!!p + s)) ==> s)
+check "∨ distributes over ∧"              ((p * (q + r)) == ((p * q) + (p * r)))
+// `≢` is handled by Cnf.toCnf (via Gries 3.10) — but each one doubles the CNF under direct
+// distribution, so nested xor is where the clausifier's exponential-in-FORMULA-SIZE blowup bites
+// (xor associativity: 441 clauses). Tseitin encoding is the fix; see the design notes.
+check "xor commutes  (p≢q) ≡ (q≢p)"       ((p != q) == (q != p))
+check "pigeonhole 3→2"                    (!!((p+q) * (r+s) * (t+u) * (!!p + !!r) * (!!q + !!s) * (!!p + !!t) * (!!q + !!u) * (!!r + !!t) * (!!s + !!u)))
+check "≡ chain  (p≡q)∧(q≡r)∧(r≡s) ⇒ p≡s"  (((p == q) * (q == r) * (r == s)) ==> (p == s))
 
 printfn "\n%s  (%d failed)" (if failures = 0 then "ALL GREEN" else "FAILURES") failures

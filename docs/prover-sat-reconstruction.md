@@ -4,12 +4,17 @@
 [`prover-automation.md`](prover-automation.md) and [`prover-e-atp.md`](prover-e-atp.md).*
 
 **Status at a glance.** The pipeline **CaDiCaL → LRAT → kernel-checked `⊢ φ`** works
-end-to-end for propositional goals with NO atom-count ceiling (verified through 8 atoms — Peirce,
+end-to-end for propositional goals with NO atom-count ceiling (verified through 12 atoms — Peirce,
 implication chains, biconditionals). New trusted theorems `resolve` and `combine_implies`, a recursive CNF converter
 `Cnf.toCnf`, a general `Memo` combinator, and the `Sylvia.Solver.CaDiCaL` project are all in the tree;
-suite is **97/97**.
-Both step 1 (the resolution replay) and step 2 (the CNF-equivalence link) now scale; the remaining
-limitation is **speed**, not the atom ceiling.
+suite is **104/104**.
+Both step 1 (the resolution replay) and step 2 (the CNF-equivalence link) now scale.
+
+As of **2026-07-25** the replay is also *complete over the trace*: every LRAT step is replayed, not
+just the binary ones, and merge resolvents are discharged (§4.7–4.9). That is what took the pipeline
+from "implication chains" to arbitrary refutations — pigeonhole, distributivity, `≡`-chains, the
+full 8-clause refutation over 3 variables. The remaining limitations are **speed**, and
+clausification blowup in formula *size* (not atom count) — see §7.
 
 Runnable demos:
 
@@ -113,6 +118,7 @@ Depends only on `Sylvia.Expressions`. Public surface:
 | `Cadical(?exePath,?timeoutMs)` | class | `.Solve(cnf)` / `.Prove(goal)` — runs CaDiCaL with a wrapper-enforced timeout (like `EProver`), parses the `v`-line countermodel on SAT. |
 | `parseLrat` | `string -> LratStep list` | `Add(id, literals, hints) \| Delete(afterId, ids)`. |
 | `reconstructionPlan` | `CnfProblem -> LratStep list -> ResolutionStep list` | The integer proof lifted to Sylvia `Prop` obligations (`clause ⇐ antecedents`, empty clause = `F`). |
+| `rupChain` | `(int -> Clause option) -> Clause -> int list -> Result<RupChain,string>` | Unfold ONE LRAT step's hints into an explicit chain of binary resolutions (see §4.7). |
 | `litProp` / `clauseProp` | | Build a `Prop` from a DIMACS literal / clause. |
 
 Design note: clausification is **direct NNF+distribute** (worst-case exponential in formula size, but
@@ -223,22 +229,104 @@ precedent. It is a thin plumbing layer over trusted lemmas — **no new kernel p
 - `reconstruct` — STEP 2: `¬φ = A` via `Cnf.toCnf` (clauses read off its CNF; `normalize` bridges to
   `A`), rewrite R, then `PropCalculus.Contradiction` → **`⊢ φ`**.
 
-Reconnaissance finding that shaped this: CaDiCaL emits **almost entirely binary** resolution steps (2
-hints) even for long implication chains — so folding is ~one `resolve` per step; 3+‑hint RUP steps are
-rare.
+Reconnaissance finding that shaped this: on long implication chains CaDiCaL emits **almost entirely
+binary** resolution steps (2 hints) — so folding is ~one `resolve` per step. That is a property of
+*chains*, not of refutations in general; see §4.7.
+
+### 4.7 `SAT.rupChain` — every LRAT step as a binary-resolution chain
+
+The original replay handled only 2-hint steps and skipped the rest. Measuring what CaDiCaL actually
+emits (probe over eight goals) showed that assumption is specific to implication chains:
+
+| Goal | binary steps | of which MERGE | non-binary steps |
+|---|---:|---:|---:|
+| 3-atom implication chain | 3 | 0 | 0 |
+| `(p∨q)∧(¬p∨q) ⇒ q` | 1 | 0 | 1 (3 hints) |
+| all 8 clauses over 3 vars | 7 | **6** | 1 (1 hint) |
+| `∨` distributes over `∧` | 2 | 0 | 1 (3 hints) |
+| pigeonhole 3→2 | 5 | 0 | 2 (3 and 5 hints) |
+| `(p≡q)∧(q≡r)∧(r≡s) ⇒ (p≡s)` | 3 | 0 | 2 (3 and 4 hints) |
+
+Non-binary steps appear in **every** non-chain refutation, and the empty clause itself is often
+derived by one — so the old replay did not merely miss a rare case, it could not close these goals
+at all. `rupChain` removes the special case entirely:
+
+> LRAT hints are the antecedents of a *unit-propagation* refutation. Assign every literal of the
+> step's clause to false and walk the hints in order: each is unit under the running assignment and
+> propagates its one remaining literal, until the last is falsified — the conflict. That is a
+> resolution derivation in disguise. Starting from the conflicting clause and resolving BACKWARDS
+> against each propagating antecedent, on the literal it propagated, eliminates exactly the assigned
+> literals and lands on a clause that subsumes the declared one.
+
+A 2-hint step comes out as a one-link chain, so the binary case is *subsumed* rather than kept
+alongside. A 1-hint step (CaDiCaL restating a clause) comes out as a link-free chain. `Derived` may
+be a strict subset of the declared clause, which the replay closes by ∨-weakening (§4.9). Negative
+hints (RAT steps), unknown antecedents and non-unit hints are rejected with a message rather than
+mis-replayed — the chain is checked by the kernel afterwards either way, but failing early says why.
+
+### 4.8 `_chain_simp` — making `simp` confluent on clauses
+
+`resolve` produces the resolvent `C ∨ D`; the replay must then AC-match it to the clause the solver
+declared. When the two resolved clauses share a **non-pivot** literal — a *merge* resolution, 6 of 7
+binary steps in the all-8-clauses refutation — `C ∨ D` has a duplicate the declared clause does not.
+
+`simp` could not discharge that. Its laws (`_simp_laws`) match a single node, so they see
+`p ∨ p` but not `p ∨ (q ∨ p)`; the same blind spot hides a complementary pair that association has
+separated (`(p ∨ q) ∨ ¬q`). The consequence is sharper than "a missing simplification": `simp` was
+**not confluent on clauses** — two disjunctions over the same literal set could reduce to different
+normal forms (one collapsing to `T`, the other not), so an equality between them failed to close.
+
+`EquationalLogic._chain_simp` applies idempotence, complement and the identity/annihilator constants
+to the **flattened** operand list of a `∨`/`∧` chain rather than to one node, and is folded into
+`_simp`'s bottom-up pass. Operand order is preserved and a chain with nothing to remove is returned
+untouched, so it never disturbs a shape `simp` would otherwise have kept. Every case is an instance
+of a law already in the trusted base, modulo associativity/commutativity; it is covered by the
+admissible-rule equivalence sweep alongside the others.
+
+### 4.9 Clause weakening, input dedup, and one CNF
+
+Three smaller repairs in the replay (`examples/sat/Reconstruct.fsx`), all needed before the dense
+goals close:
+
+- **`clauseImp`** — `src ⇒ dst` whenever src's literals are a subset of dst's: ∨-weaken by the
+  missing literals (Gries 3.76a), then AC-match. This is what absorbs the gap between what a chain
+  derives and what the step declares, and it also covers the case where CaDiCaL lists the resolvent's
+  literals in a different order than the replay computes them (observed).
+- **`dedupCnf`** — `Cnf.toCnf`'s distribution readily emits clauses with repeated literals (Peirce's
+  law yields a `p ∨ p`). Carrying those into the input conjunction `A` mis-targets the `idemp_or`
+  rewrite inside `absorb_or`, which `strengthen_and` — and hence `conjElimAll` — is built on, and the
+  reconstruction fails on a lemma that has nothing to do with the refutation. Each clause is rewritten
+  to its deduped form by **congruence at an exact position** (no searching, so nothing can
+  mis-target); `¬φ == A` is then the dedup proof followed by pure-AC reassociation.
+- **One CNF, not two.** `reconstruct` used to clausify twice — `Cnf.toCnf` for the equivalence proof
+  and `cnfOfNegatedGoal` (inside `Cadical.Prove`) for the solver — and interpret the LRAT clause ids
+  against the first while the solver numbered them by the second. The two agree on implication chains
+  and diverge elsewhere (`cnfOfNegatedGoal` drops tautological clauses, `Cnf.toCnf` keeps them). The
+  replay now solves the exact clause list it reads off `Cnf.toCnf`.
+
+`Cnf.toCnf` also gained a case for `≢`/xor (via Gries 3.10, `def_not_eq`). It previously fell through
+to `VAtom`, abstracting the whole subformula away — which is sound but leaves a valid xor goal
+unprovable, reported as "¬φ is satisfiable".
 
 ## 5. Tests and demos
 
-- **Suite 97/97** (`tests/Sylvia.Tests.Prover/KernelProofTests.fs`): `resolve` (atoms,
+- **Suite 104/104** (`tests/Sylvia.Tests.Prover/`): in `KernelProofTests.fs` — `resolve` (atoms,
   compound-clause robustness, tautology-vs-oracle incl. the empty-clause `resolve F F p`), `Memo`
-  (cache-hit same-instance, distinct-arg no-collision), `combine_implies`, and `Cnf.toCnf` (checked
-  equivalence to clean CNF at up to 6 atoms).
+  (cache-hit same-instance, distinct-arg no-collision), `combine_implies`, `Cnf.toCnf` (checked
+  equivalence to clean CNF at up to 6 atoms, both xor polarities), `_chain_simp` in the
+  admissible-rule equivalence sweep, and simp-confluence on AC-equal clauses. In `SatChainTests.fs` —
+  `rupChain` over verbatim CaDiCaL LRAT traces (1-, 2- and 3-hint steps, merge resolvents), with every
+  link checked to be a genuine binary resolution and every chain checked to subsume the declared
+  clause, plus the rejection cases. These are pure integer logic: no solver executable is involved.
 - [`examples/sat/CaDiCaL.fsx`](../examples/sat/CaDiCaL.fsx) — decides validity of 6 goals (incl. an
   **8-atom tautology**, past the old ceiling), dumps DIMACS + LRAT + the reconstruction plan, and shows
   a real wide resolution `((a∨b∨g)∧(¬g∨(c∨d))) ⇒ (a∨b∨(c∨d))` as a checked theorem.
-- [`examples/sat/Reconstruct.fsx`](../examples/sat/Reconstruct.fsx) — **ALL GREEN**: closes
-  `⊢ p∨¬p`, `⊢ ((p⇒q)⇒p)⇒p`, `⊢ (p⇒q)∧(q⇒r)⇒(p⇒r)`, a **5-atom chain** (past the old ceiling),
-  and the **8-atom chain** scaling benchmark, each matching the goal structurally.
+- [`examples/sat/Reconstruct.fsx`](../examples/sat/Reconstruct.fsx) — **ALL GREEN, 13 goals**. The
+  chains: `⊢ p∨¬p`, `⊢ ((p⇒q)⇒p)⇒p`, `⊢ (p⇒q)∧(q⇒r)⇒(p⇒r)`, and the 5-, 8- and 12-atom scaling
+  benchmarks. The dense refutations (§4.7–4.9), none of which the replay could close before: the
+  minimal merge `(p∨q)∧(¬p∨q) ⇒ q`, the all-8-clauses-over-3-variables refutation, a 4-clause
+  resolution chain, `∨` distributing over `∧`, xor commutativity, pigeonhole 3→2, and the
+  `≡`-transitivity chain. Each result is checked structurally against the goal.
 
 ## 6. Current state
 
@@ -258,6 +346,13 @@ end-to-end through 8 atoms: 2→5 s, 5→39 s, 8→142 s).
 - **Step 2 (CNF-equivalence)** — `¬φ = A` is produced by `Cnf.toCnf`, a recursive CNF proof that is
   size-bounded, not atom-exponential. The old `autoproof_anf` ≤5-atom ceiling is gone.
 
+> **Update 2026-07-25 (replay completeness).** The replay no longer skips anything. Every LRAT step
+> is unfolded into binary resolutions by `SAT.rupChain` (§4.7); merge resolvents are discharged by a
+> `simp` that is now confluent on clauses (§4.8); and the input side is deduped, weakened and
+> clausified once (§4.9). Before this, the pipeline closed implication chains and nothing denser —
+> the all-8-clauses, distributivity, pigeonhole and `≡`-chain goals all failed, most of them because
+> the empty clause was derived by a non-binary step. Timings are unchanged (8-atom chain 1.1 s).
+
 The remaining limitation is **speed**, and it is **architectural**. The bottleneck is
 `Calc.chainImp` at ~1.9 s per call — it pushes the large input-clause conjunction `A` through several
 kernel steps (`Taut`/`reduce`/completeness-check), each **O(|expression|)** — and it is called O(n)
@@ -276,12 +371,19 @@ concern that motivates a fresh-start redesign.
    not fix it (tried, reverted). An O(m) `conjElimAll` (share the peel-chain) is in place but is a wash
    at these sizes. The real levers are kernel-layer: interned/hash-consed terms (cheap identity + keys)
    and cheaper proof steps / a proof object with `instantiate`. See the architectural-limits memory.
-2. **Merge-clause AC-dedup.** `acEq` uses `simp`, which handles reorder + F-drop + *adjacent* dedup but
-   not *non-adjacent* duplicate literals (`a∨(a∨b) ≠ a∨b` under `simp`/`normalize`). This arises when
-   two resolving clauses share a non-pivot literal (denser CNFs). Needs a real clause AC-normalizer.
-3. **Non-binary RUP steps** (3+ hints, rare) are not folded yet — need the RUP → binary-resolution-chain
-   extraction.
-4. **Schema-instantiation gap** (`prover-schema-instantiation-gap` memory). Because derived rules are
+2. ~~**Merge-clause AC-dedup.**~~ **DONE (2026-07-25)** — `_chain_simp` (§4.8).
+3. ~~**Non-binary RUP steps.**~~ **DONE (2026-07-25)** — `SAT.rupChain` (§4.7). They are not rare.
+4. **Clausification blowup (formula size).** `Cnf.toCnf` and `cnfOfNegatedGoal` both distribute
+   directly, which is exponential in the formula's ∨/∧ nesting — independent of the atom count that
+   used to be the ceiling. Nested `≢` is where it bites first: xor associativity over 3 variables
+   produces **441 clauses / 2940 literals**, enough to overflow the replay's stack, while xor
+   commutativity (36 clauses) reconstructs fine. Tseitin/Plaisted-Greenbaum is the fix; the cost is
+   teaching the replay to discharge the definitional clauses for the auxiliary variables.
+5. **`absorb_or`'s positional rewrites are shape-sensitive.** Its `idemp_or` step searches for a
+   `p ∨ p`, so it can pick the wrong occurrence when the other operand contains one. §4.9's input
+   dedup keeps such clauses out of `A`, but the fragility is in the theorem, not the caller, and the
+   same pattern recurs across the Gries derivations. A precise-position variant would fix the class.
+6. **Schema-instantiation gap** (`prover-schema-instantiation-gap` memory). Because derived rules are
    F# functions that *replay*, a fresh-argument instantiation costs a full derivation, not a
    substitution. Memoization fixes repeats; the systemic fix is LCF-style *prove-once-at-metavars +
    uniform substitution* (`Thm.instantiate`), a new trusted primitive.
@@ -290,13 +392,15 @@ concern that motivates a fresh-start redesign.
 
 | Path | What |
 |------|------|
-| `src/lang/solvers/Sylvia.Solver.CaDiCaL/CaDiCaL.fs` | Clausifier, runner, LRAT parser, reconstruction plan |
+| `src/lang/solvers/Sylvia.Solver.CaDiCaL/CaDiCaL.fs` | Clausifier, runner, LRAT parser, `rupChain`, reconstruction plan |
 | `src/lang/core/Sylvia.Prover/Theories/PropCalculus.fs` | `resolve`, `combine_implies` (+ their memoized aliases) |
 | `src/lang/core/Sylvia.Prover/Theories/Cnf.fs` | `Cnf.toCnf` — recursive CNF conversion with kernel proof |
+| `src/lang/core/Sylvia.Prover/EquationalLogic.fs` | `_chain_simp` — whole-chain ∨/∧ normalization inside `_simp` |
 | `src/lang/core/Sylvia.Prover/Proof.fs` | `Memo` combinator |
 | `examples/sat/CaDiCaL.fsx` | Validity decision + `resolve` demo |
 | `examples/sat/Reconstruct.fsx` | Full LRAT → `⊢ φ` reconstruction |
-| `tests/Sylvia.Tests.Prover/KernelProofTests.fs` | `resolve` / `Memo` / `combine_implies` tests |
+| `tests/Sylvia.Tests.Prover/KernelProofTests.fs` | `resolve` / `Memo` / `combine_implies` / `Cnf` / simp-confluence tests |
+| `tests/Sylvia.Tests.Prover/SatChainTests.fs` | `rupChain` over real LRAT traces |
 | `bin/cadical.exe` | CaDiCaL 3.0.0 (MSYS2 build) |
 | `reference/papers/dpllt.pdf` | The DPLL(T) paper that motivated the approach |
 

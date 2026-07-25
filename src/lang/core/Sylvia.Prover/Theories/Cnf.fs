@@ -32,6 +32,7 @@ module Cnf =
         | VNot of Prop
         | VImp of Prop * Prop
         | VIff of Prop * Prop
+        | VXor of Prop * Prop
         | VAtom
 
     let private view (p: Prop) : V =
@@ -41,6 +42,7 @@ module Cnf =
         | Or(x, y) -> VOr(pOf x, pOf y)
         | Implies(x, y) -> VImp(pOf x, pOf y)
         | Equals(x, y) when x.Type = typeof<bool> -> VIff(pOf x, pOf y)
+        | NotEquals(x, y) when x.Type = typeof<bool> -> VXor(pOf x, pOf y)
         | _ -> VAtom
 
     (* ---- congruence + equality plumbing (compose equational sub-proofs) ---- *)
@@ -79,6 +81,8 @@ module Cnf =
         theorem prop_calculus ((-(x + y)) == (-x * -y)) [ distrib_not_or x y |> apply ]
     let private dmAndEq (x: Prop) (y: Prop) : Theorem =                        // Gries 3.47a
         theorem prop_calculus ((-(x * y)) == (-x + -y)) [ distrib_not_and x y |> apply ]
+    let private xorEq (x: Prop) (y: Prop) : Theorem =                          // Gries 3.10
+        theorem prop_calculus ((x != y) == (-(x == y))) [ def_not_eq x y |> apply ]
     let private iffEq (x: Prop) (y: Prop) : Theorem =
         theorem prop_calculus ((x == y) == ((x ==> y) * (y ==> x))) [ mutual_implication' x y |> Commute |> apply ]
     // ∨ distributes over ∧, both orientations.
@@ -121,6 +125,7 @@ module Cnf =
             c, transEq (congOr px py) pc
         | VImp(x, y) -> let (c, pc) = toCnf ((-x) + y) in c, transEq (implEq x y) pc
         | VIff(x, y) -> let (c, pc) = toCnf ((x ==> y) * (y ==> x)) in c, transEq (iffEq x y) pc
+        | VXor(x, y) -> let (c, pc) = toCnf (-(x == y)) in c, transEq (xorEq x y) pc
         | VNot a ->
             match view a with
             | VAtom -> p, refl p                                                       // ¬atom is a literal
@@ -129,6 +134,7 @@ module Cnf =
             | VOr(x, y) -> let (c, pc) = toCnf ((-x) * (-y)) in c, transEq (dmOrEq x y) pc
             | VImp(x, y) -> let (c, pc) = toCnf (-((-x) + y)) in c, transEq (congNot (implEq x y)) pc
             | VIff(x, y) -> let (c, pc) = toCnf (-((x ==> y) * (y ==> x))) in c, transEq (congNot (iffEq x y)) pc
+            | VXor(x, y) -> let (c, pc) = toCnf (-(-(x == y))) in c, transEq (congNot (xorEq x y)) pc
 
     /// True if `p` is in CNF (∧ of clauses; each a ∨ of literals; negation only on atoms).
     let rec isCnf (p: Prop) : bool =

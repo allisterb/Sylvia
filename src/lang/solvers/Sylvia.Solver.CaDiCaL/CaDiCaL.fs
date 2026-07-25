@@ -322,6 +322,88 @@ module SAT =
                     yield Add(id, lits, hints) ]
 
     (* ---------------------------------------------------------------------- *)
+    (* RUP step  ->  explicit chain of BINARY resolutions                       *)
+    (* ---------------------------------------------------------------------- *)
+
+    /// One binary resolution in an unfolded RUP chain: resolve the running clause with clause
+    /// `Antecedent` on variable `Pivot`, giving the new running clause `Result`.
+    type ChainLink =
+        { Antecedent: int
+          Pivot: int
+          Result: Clause }
+
+    /// An LRAT step's hints, unfolded into an explicit binary-resolution derivation: start from
+    /// clause `Start` and apply `Links` in order, ending at `Derived`.
+    type RupChain =
+        { /// The falsified antecedent (the conflict) the chain starts from.
+          Start: int
+          /// The binary resolutions, in application order.
+          Links: ChainLink list
+          /// The clause the chain actually derives. A SUBSET of the step's declared clause — the
+          /// solver may declare a weaker clause, so a replay closes the gap by ∨-weakening.
+          Derived: Clause }
+
+    /// Unfold one LRAT `Add` step into a chain of binary resolutions.
+    ///
+    /// LRAT hints are the antecedents of a *unit-propagation* refutation: assign every literal of
+    /// the step's clause to false, then walk the hints IN ORDER — each is unit under the running
+    /// assignment and propagates its one remaining literal, until the last is falsified (the
+    /// conflict). That is a resolution derivation in disguise: starting from the conflicting clause
+    /// and resolving BACKWARDS against each propagating antecedent, on the literal that antecedent
+    /// propagated, eliminates exactly the assigned literals and lands on a clause that subsumes the
+    /// declared one.
+    ///
+    /// The ordinary binary step (2 hints) comes out as a single link, so this subsumes — and
+    /// replaces — a special-cased binary resolution. `clauseOf` resolves a clause id to its
+    /// literals (input clauses and previously derived ones alike).
+    let rupChain (clauseOf: int -> Clause option) (derived: Clause) (hints: int list) : Result<RupChain, string> =
+        if hints |> List.exists (fun h -> h <= 0) then
+            // A negative hint marks a RAT candidate: satisfiability-preserving, not entailed, so it
+            // has no forward reading as resolution. Keep the solver on RUP-only proofs.
+            Error "RAT step (negative hint) — only RUP steps replay as resolution"
+        elif derived |> List.exists (fun l -> List.contains -l derived) then
+            Error "the derived clause is tautological — no falsifying assignment to propagate from"
+        else
+            let value = Dictionary<int, bool>()                      // var -> value forced so far
+            let isTrue l = match value.TryGetValue(abs l) with true, v -> v = (l > 0) | _ -> false
+            let isFalse l = match value.TryGetValue(abs l) with true, v -> v <> (l > 0) | _ -> false
+            for l in derived do value.[abs l] <- (l < 0)             // falsify the clause being derived
+            let props = ResizeArray<int * int>()                     // (antecedent, literal it propagated)
+            let mutable conflict = None
+            let mutable err = None
+            for h in hints do
+                if conflict.IsNone && err.IsNone then
+                    match clauseOf h with
+                    | None -> err <- Some(sprintf "hint %d refers to an unknown clause" h)
+                    | Some c ->
+                        if c |> List.exists isTrue then ()           // already satisfied: contributes nothing
+                        else
+                            match c |> List.filter (isFalse >> not) |> List.distinct with
+                            | [] -> conflict <- Some h
+                            | [ u ] -> value.[abs u] <- (u > 0); props.Add(h, u)
+                            | _ -> err <- Some(sprintf "hint %d is not unit under the propagated assignment" h)
+            match err, conflict with
+            | Some e, _ -> Error e
+            | None, None -> Error "the hints never reach a conflict — not a RUP step"
+            | None, Some cid ->
+                let mutable res = (clauseOf cid).Value |> List.distinct
+                let links = ResizeArray<ChainLink>()
+                for i in props.Count - 1 .. -1 .. 0 do
+                    let (h, u) = props.[i]
+                    if res |> List.contains -u then                  // this propagation is used by the chain
+                        let c = (clauseOf h).Value
+                        res <-
+                            (res |> List.filter (fun l -> l <> -u))
+                            @ (c |> List.filter (fun l -> l <> u))
+                            |> List.distinct
+                        links.Add { Antecedent = h; Pivot = abs u; Result = res }
+                let declared = Set.ofList derived
+                if not (Set.isSubset (Set.ofList res) declared) then
+                    Error(sprintf "the chain derives %A, which is not subsumed by the declared clause %A" res derived)
+                else
+                    Ok { Start = cid; Links = List.ofSeq links; Derived = res }
+
+    (* ---------------------------------------------------------------------- *)
     (* Reconstruction plan  (LRAT trace  ->  Sylvia Prop obligations)          *)
     (* ---------------------------------------------------------------------- *)
 

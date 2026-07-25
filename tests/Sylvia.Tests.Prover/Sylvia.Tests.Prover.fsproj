@@ -13,6 +13,7 @@
     <Compile Include="DisplayTests.fs" />
     <Compile Include="ParserTests.fs" />
     <Compile Include="KernelProofTests.fs" />
+    <Compile Include="SatChainTests.fs" />
     <Compile Include="QuantifierKernelTests.fs" />
     <Compile Include="PredCalculusTests.fs" />
   </ItemGroup>
@@ -27,6 +28,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\base\Sylvia.Runtime.Fs\Sylvia.Runtime.Fs.fsproj" />
     <ProjectReference Include="..\..\src\lang\core\Sylvia.Prover\Sylvia.Prover.fsproj" />
+    <!-- SatChainTests exercises SAT.rupChain, which is pure LRAT/integer logic: no solver
+         executable is involved, so this adds no runtime dependency on cadical. -->
+    <ProjectReference Include="..\..\src\lang\solvers\Sylvia.Solver.CaDiCaL\Sylvia.Solver.CaDiCaL.fsproj" />
   </ItemGroup>
 
 </Project>
