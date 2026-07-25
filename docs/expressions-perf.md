@@ -233,6 +233,42 @@ parameterized patterns (`Binary op` still runs SpecificCall's template destructu
 probe — fixable by switching the pattern parameters to cached `CallPattern` matchers, an
 API change).
 
+## Phase 3 results (2026-07-25, decompiler confinement + lazy log formatting)
+
+Implementation:
+
+- **Proof.fs**: `_prooflog`/`prooflog`/`alwayslog` now take a thunk — a log line that the
+  current level suppresses is never formatted (each line formats via `print_formula`,
+  which decompiles the whole expression through Unquote). The per-step message is a
+  `Lazy<string>` (capturing the pre-step state so deferred evaluation can't observe the
+  state mutation); `Proof.State` exposes the same `(Expr * string) list` content,
+  materialized on access. The `theory.Axioms` re-probe done purely for the completion
+  message also moved inside the thunk. **Printed output is byte-identical** — verified by
+  diffing full PropCalculus.fsx and SetTheory.fsx logs before/after.
+- **Term.fs**: `Prop.Display`, `Scalar.Display`, `ScalarRelation.Display`,
+  `IndexVar.Name/Display`, `ScalarVar.Name/Label`, `Pred.Symbol` are now lazily cached
+  per instance (they back `Term.Equals`/`GetHashCode`, which previously decompiled on
+  every comparison/hash); the `ScalarVar` constructor no longer decompiles when a label
+  is supplied (`defaultArg` evaluated the decompile unconditionally).
+- `find_expr` (decompiles every subterm) turned out to have **no callers** — left as is.
+
+| Payload | Baseline | Phase 2 | Phase 3 | Total |
+|---|---:|---:|---:|---:|
+| trans_implies (first call) | 681 ms / 627 MB | 219 ms / 66 MB | 217 ms / 55 MB | 3.1x / 11x |
+| trans_implies (second call) | 575 ms / 605 MB | 68 ms / 64 MB | 55 ms / 53 MB | **10.5x / 11.4x** |
+| trans_implies (warm, LogLevel=0) | — | — | **34.6 ms / 35 MB** | **16.6x / 17x** |
+| prover test suite wall time | 64 s | 43 s | 40 s | 1.6x |
+
+The LogLevel=0 row is the number that matters for programmatic use (Giant, SAT
+reconstruction, benchmarks): suppressed lemma-machinery lines now cost nothing. The
+remaining cold/default-level cost is dominated by console printing of the (intended)
+proof trace plus the rules' replay work — Phase 4 (allocation reduction) and the
+memoization TODOs pick those up.
+
+Validation: prover suite 97/97 + Expressions 22/23 (pre-existing MathNet parser failure)
+with `SYLVIA_SEQUAL_CHECK=1`; PropCalculus.fsx + SetTheory.fsx (ALL PASS) with
+byte-identical logs.
+
 ## Sequencing and risk
 
 | Phase | Impact | Risk | Notes |

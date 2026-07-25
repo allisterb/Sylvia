@@ -3,6 +3,7 @@ module Sylvia.Tests.Perf.Program
 open System
 open System.Diagnostics
 
+open Sylvia
 open Sylvia.Tests.Perf
 
 /// Quick Stopwatch/GC harness for before/after comparisons while optimizing.
@@ -32,6 +33,9 @@ let main _ =
     timeOnce "corpus init (module cctor)" (fun () -> Payloads.largeA)
     timeOnce "trans_implies (first call)" Payloads.trans_implies_run
     timeOnce "trans_implies (second call)" Payloads.trans_implies_run
+    Proof.LogLevel <- 0
+    timeOnce "trans_implies (warm, LogLevel=0)" Payloads.trans_implies_run
+    Proof.LogLevel <- 1
     time "sequal small eq" 10000 Payloads.sequal_small_eq
     time "sequal small neq" 10000 Payloads.sequal_small_neq
     time "sequal medium eq" 5000 Payloads.sequal_medium_eq

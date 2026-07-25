@@ -52,11 +52,13 @@ and [<AbstractClass>] TermVar<'t when 't: equality>(n: string) =
     member val Var = var
     override x.Display = symbol
     
-and IndexVar(expr: Expr<int>) = 
+and IndexVar(expr: Expr<int>) =
     inherit Term<int>(expr)
-    member val Name = src expr
+    // Decompiled once on first access, not per construction or per Display call.
+    let name = lazy (src expr)
     new (n: string) = IndexVar(Expr.Var(Var(n, typeof<int>)) |> expand_as<int>)
-    override x.Display = src expr
+    member x.Name = name.Value
+    override x.Display = name.Value
     static member (+) (l:IndexVar, r:int) = let v = exprv r in IndexVar(<@ %l.Expr + %v @>)
     static member (+) (l:int, r:IndexVar) = let v = exprv l in IndexVar(<@ %v + %r.Expr @>)
     static member (+) (l:IndexVar, r:IndexVar) = IndexVar(<@ %l.Expr + %r.Expr @>)
@@ -69,10 +71,14 @@ and [<AbstractClass>] TermConst<'t when 't: equality>(n: string) =
 
 and Scalar<'t when 't: equality and 't :> ValueType and 't :> IEquatable<'t>> (expr:Expr<'t>, ?h:TermHistory) =
     inherit Term<'t>(expr, ?h=h)
-    
+
+    // Rendered once on first access: Display backs Equals/GetHashCode, which
+    // otherwise re-render the expression on every comparison/hash.
+    let display = lazy (sprinte expr)
+
     new (v: 't) = Scalar<'t>(exprv v)
 
-    override x.Display = sprinte expr
+    override x.Display = display.Value
 
     override a.Equals (_b:obj) = 
         match _b with 
@@ -305,14 +311,19 @@ and Scalar<'t when 't: equality and 't :> ValueType and 't :> IEquatable<'t>> (e
     
     static member (+>) (l:ScalarVar<real>, r:real)  = ScalarVarRelation<real>(l, r |> exprv |> Scalar<real>, <@ (>) @>)
     
-and ScalarVar<'t when 't: equality and 't :> ValueType and 't :> IEquatable<'t>> (expr:Expr<'t>, ?label:string) = 
-    inherit TermVar<'t>(defaultArg label (src expr))
-    
+and ScalarVar<'t when 't: equality and 't :> ValueType and 't :> IEquatable<'t>> (expr:Expr<'t>, ?label:string) =
+    // defaultArg would decompile even when a label IS supplied; match so the
+    // decompiler only runs when actually needed.
+    inherit TermVar<'t>(match label with Some l -> l | None -> src expr)
+
+    let name = lazy (src expr)
+    let mutable _label = label
+
     new(n:string, ?label:string) = ScalarVar<'t>(Expr.Var(Var(n, typeof<'t>)) |> expand_as<'t>, ?label=label)
-    
-    member x.Name = src expr
-    
-    member val Label = (defaultArg label (src expr)) with get,set 
+
+    member x.Name = name.Value
+
+    member x.Label with get() = (match _label with Some l -> l | None -> name.Value) and set(v) = _label <- Some v
     
     member x.Var = match x.Expr with | Var v -> v | _ -> failwith ""
     
@@ -481,6 +492,7 @@ and ScalarConst<'t when 't: equality and 't :> ValueType and 't :> IEquatable<'t
 
 and ScalarRelation<'t when 't: equality and 't :> ValueType and 't :> IEquatable<'t>>(lhs:Scalar<'t>, rhs:Scalar<'t>, op:Expr<'t->'t->bool>) =
     inherit Prop(expand_as<bool> <@ (%op) %lhs.Expr %rhs.Expr @>)
+    let display = lazy (sprintf "%s %s %s" (sprinte lhs.Expr) ((src op).Replace("(", "").Replace(")", "")) (sprinte rhs.Expr))
     member val Lhs = lhs
     member val Rhs = rhs
     member val Op = op
@@ -494,8 +506,8 @@ and ScalarRelation<'t when 't: equality and 't :> ValueType and 't :> IEquatable
         let r = subst_var_value v.Var s.Expr rhs.Expr |> expand_as<'t> |> simplifye |> Scalar<'t> in
         ScalarRelation(l, r, op)
     member x.Html() = "$$" + latexe x.Expr + "$$"
-    override x.Display = sprintf "%s %s %s" (sprinte x.Lhs.Expr) ((src op).Replace("(", "").Replace(")", "")) (sprinte x.Rhs.Expr)
-    
+    override x.Display = display.Value
+
     interface IHtmlDisplay with
         member x.Html() = "$$" + latexe x.Expr + "$$"
 
@@ -520,7 +532,11 @@ and ScalarVarRelation<'t when 't: equality and 't :> ValueType and 't :> IEquata
     
 and Prop (expr:Expr<bool>) =
     inherit Term<bool>(expr)
-    
+
+    // Decompiled once on first access: Display backs Term.Equals, which otherwise
+    // decompiles both sides on every comparison.
+    let display = lazy (src expr)
+
     static member (!!) (l:#Prop) = Prop <@ not %l.Expr @>
 
     static member (~-) (l:#Prop) = Prop <@ not %l.Expr @>
@@ -537,7 +553,7 @@ and Prop (expr:Expr<bool>) =
 
     static member (<==) (l:#Prop, r:#Prop) = Prop <@ %r.Expr <=== %l.Expr @>
 
-    override x.Display = src expr
+    override x.Display = display.Value
 
     static member op_Implicit(l:#Prop) : Expr<bool> = l.Expr
 
@@ -560,15 +576,18 @@ and TermHistory =
 and IHistory = 
     abstract member History:TermHistory option
 
-type Pred<'t when 't: equality>(?func:Expr<'t -> bool>, ?symbol:string) = 
-    member val Func = 
+type Pred<'t when 't: equality>(?func:Expr<'t -> bool>, ?symbol:string) =
+    let fn =
         match (symbol, func) with
         | Some n, None -> pred_expr<'t> n
-        | None, Some f -> f 
+        | None, Some f -> f
         | Some _, Some f -> f
         | None, None -> failwith "Either a function expression or symbol or both must be specified for a predicate."
+    // Decompiled once on first access when no symbol is supplied.
+    let sym = lazy (match symbol with | Some s -> s | None -> src fn)
+    member val Func = fn
     member val IsSymbolic = not func.IsSome
-    member x.Symbol = match symbol with | Some s -> s | None -> src x.Func    
+    member x.Symbol = sym.Value
     member x.Prop:Prop = 
         match x.Func with
         | Var v -> PropVar v.Name
