@@ -45,9 +45,25 @@ module FsExpr =
     | Call (_, info, _) -> info.DeclaringType
     | _ -> failwith "Expression does not have information to retrieve module type."
 
+    // Cached template matchers. Partially applying SpecificCall hoists the template
+    // quotation's deserialization and destructuring to module initialization: a
+    // quotation literal written inside a pattern body is re-deserialized on EVERY
+    // match attempt (the top external cost in profiling — see docs/expressions-perf.md).
+    /// The shape of a SpecificCall-style recognizer: target expr -> (instance, type args, args).
+    type CallPattern = Expr -> (Expr option * Type list * Expr list) option
+
+    /// SpecificCall with the template quotation deserialized and destructured exactly
+    /// once, at the point this is (partially) applied — bind the result at module level
+    /// (annotated as CallPattern) and reuse it as an active pattern.
+    let specific_call (template:Expr) : CallPattern =
+        (|SpecificCall|_|) template
+
+    let private (|AndCall|_|) : CallPattern = specific_call <@@ (&&) @@>
+    let private (|OrCall|_|) : CallPattern = specific_call <@@ (||) @@>
+
     let (|And|_|) =
         function
-        | SpecificCall <@@ (&&) @@> (None,_,l::r::[]) -> Some (l, r)
+        | AndCall (None,_,l::r::[]) -> Some (l, r)
         | IfThenElse(l, r, elseBranch) ->
             match elseBranch with
             | ValueWithName(_, _, "False") -> None
@@ -57,7 +73,7 @@ module FsExpr =
 
     let (|Or|_|) =
         function
-        | SpecificCall <@@ (||) @@> (None,_,l::r::[]) -> Some (l, r)
+        | OrCall (None,_,l::r::[]) -> Some (l, r)
         | IfThenElse(l, thenBranch, r) ->
             match thenBranch with
             | ValueWithName(_, _, "True") -> None
@@ -120,34 +136,36 @@ module FsExpr =
         | Number _ -> Some expr
         | _ -> None
 
+    // Match on the precomputed full op_ name: (|UnaryOp|_|)/(|BinaryOp|_|) allocate
+    // "op_" + n on every match attempt.
     let (|Negation|_|) =
         function
-        | UnaryOp "UnaryNegation" l-> Some l 
+        | Call (None, Op "op_UnaryNegation", l::[]) -> Some l
         | _ -> None
 
     let (|Addition|_|) =
         function
-        | BinaryOp "Addition" (l,r)-> Some(l, r) 
+        | Call (None, Op "op_Addition", [l;r]) -> Some(l, r)
         | _ -> None
-    
+
     let (|Subtraction|_|) =
         function
-        | BinaryOp "Subtraction" (l,r)-> Some(l, r)  
+        | Call (None, Op "op_Subtraction", [l;r]) -> Some(l, r)
         | _ -> None
 
     let (|Multiplication|_|) =
         function
-        | BinaryOp "Multiply" (l,r)-> Some(l, r)  
+        | Call (None, Op "op_Multiply", [l;r]) -> Some(l, r)
         | _ -> None
 
     let (|Division|_|) =
         function
-        | BinaryOp "Divide" (l,r)-> Some(l, r)  
+        | Call (None, Op "op_Divide", [l;r]) -> Some(l, r)
         | _ -> None
 
     let (|Exp|_|) =
         function
-        | BinaryOp "Exponentiation" (l,r)-> Some(l, r)  
+        | Call (None, Op "op_Exponentiation", [l;r]) -> Some(l, r)
         | _ -> None
 
     let addOp = 
@@ -717,6 +735,10 @@ module FsExpr =
         | e when (get_vars e) = List.empty -> Some e
         | _ -> None
 
+    let private (|ListToArrayCall|_|) : CallPattern = specific_call <@@ List.toArray @@>
+
+    let private (|EqCall|_|) : CallPattern = specific_call <@@ ( = ) @@>
+
     /// Based on: http://www.fssnip.net/bx/title/Expanding-quotations by Tomas Petricek.
     /// Expand variables and calls to methods and property getters.
     let expand expr =
@@ -725,7 +747,7 @@ module FsExpr =
             match expr with
             | WithValue(_, _, e) -> rexpand vars e
             //| ValueWithName(o,t,_) -> Expr.Value(o, t)
-            | SpecificCall <@@ List.toArray @@>(None,t::[], l::[]) -> 
+            | ListToArrayCall(None,t::[], l::[]) ->
                 match l with
                 | List el -> rexpand vars (Expr.NewArray(t, el))
                 | WithValue(_, _, List el) -> rexpand vars (Expr.NewArray(t, el))
@@ -875,7 +897,7 @@ module FsExpr =
     
     let expand_equality =
         function
-        | SpecificCall <@@ ( = ) @@> (_, _, [l; r]) -> expand l, expand r
+        | EqCall (_, _, [l; r]) -> expand l, expand r
         | expr -> failwithf "The expression %s is not a equality expression." <| src expr
 
     let param_var (f:Expr<'a->'b>) = f |> param_vars |> List.exactlyOne 
@@ -996,9 +1018,11 @@ module FsExpr =
 
     let symbolic_fn<'t> (sym:string) (v: string array) = Unchecked.defaultof<'t>
 
-    let is_symbolic_fn = 
-        function    
-        |  SpecificCall <@@ symbolic_fn @@> (_,_,[String _;NewArray(_, _)]) -> true
+    let private (|SymbolicFnCall|_|) : CallPattern = specific_call <@@ symbolic_fn @@>
+
+    let is_symbolic_fn =
+        function
+        |  SymbolicFnCall (_,_,[String _;NewArray(_, _)]) -> true
         | _ -> false
 
     let rec (|LinearExpr|_|) (x:string) (expr:Expr) =

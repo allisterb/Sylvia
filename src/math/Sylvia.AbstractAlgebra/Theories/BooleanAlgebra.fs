@@ -15,25 +15,28 @@ module BooleanAlgebra =
     
     (* Axioms *)
 
-    let boolean_algebra_axioms (theoryName:string) (join: Expr<'t->'t->'t>) (meet: Expr<'t->'t->'t>) (zero: Expr<'t>) (one: Expr<'t>) (comp: Expr<'t->'t>) = 
+    let boolean_algebra_axioms (theoryName:string) (join: Expr<'t->'t->'t>) (meet: Expr<'t->'t->'t>) (zero: Expr<'t>) (one: Expr<'t>) (comp: Expr<'t->'t>) =
+        // Bound once per theory construction, not re-deserialized on every axiom probe
+        // (see docs/expressions-perf.md).
+        let eq : Expr<'t->'t->bool> = <@ (=) @>
         function
-        | Assoc <@(=)@> join x
-        | Assoc <@(=)@> meet x
-                
-        | Commute <@(=)@> join x
-        | Commute <@(=)@> meet x
+        | Assoc eq join x
+        | Assoc eq meet x
 
-        | Idempotency <@(=)@> join x
-        | Idempotency <@(=)@> meet x
+        | Commute eq join x
+        | Commute eq meet x
 
-        | Identity <@(=)@> join zero x
-        | Identity <@(=)@> meet one x
-                
-        | Inverse <@(=)@> join comp one x
-        | Inverse <@(=)@> meet comp zero x
+        | Idempotency eq join x
+        | Idempotency eq meet x
 
-        | Distrib <@(=)@> join meet x 
-        | Distrib <@(=)@> meet join x -> desc x |> set_axiom_desc_theory theoryName |> Some
+        | Identity eq join zero x
+        | Identity eq meet one x
+
+        | Inverse eq join comp one x
+        | Inverse eq meet comp zero x
+
+        | Distrib eq join meet x
+        | Distrib eq meet join x -> desc x |> set_axiom_desc_theory theoryName |> Some
         | _ -> None
 
     (* Expression functions for admitted rules *)

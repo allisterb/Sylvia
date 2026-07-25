@@ -152,21 +152,30 @@ module EquationalLogic =
                 pattern_desc "Universal Instantiation" <@ fun x P P' -> (forall_expr x true P) = P' @> |> Some
         | _ -> None
 
-    let equational_logic_axioms = 
+    // Hoisted operator templates: a quotation literal written inline in a match arm is
+    // re-deserialized on EVERY probe of equational_logic_axioms — one of the hottest
+    // paths in the prover (see docs/expressions-perf.md). Same quotation values,
+    // evaluated once at module initialization.
+    let private eq_op : Expr<bool->bool->bool> = <@ (=) @>
+    let private neq_op : Expr<bool->bool->bool> = <@ (<>) @>
+    let private or_op : Expr<bool->bool->bool> = <@ (||) @>
+    let private not_op : Expr<bool->bool> = <@ not @>
+
+    let equational_logic_axioms =
         function
         | SEqual x
         | DefTrue x // (3.3)
         | DefFalse x //(3.8)
-        | BinaryOpDef <@ (=) @> <@ (<>) @> <@ (=) @> <@ not @> x // (3.10)
-        
-        | Assoc <@(=)@> <@ (=) @> x  // (3.1)
-        | Assoc <@(=)@> <@ (||) @> x // (3.25)
-        
-        | Symm <@ (=) @> x // (3.2)
-        | Commute <@ (=) @> <@ (||) @> x // (3.24)
+        | BinaryOpDef eq_op neq_op eq_op not_op x // (3.10)
 
-        | Distrib <@(=)@> <@ (||) @> <@ (=) @> x  // (3.27)
-        | DistribNot x // (3.9) 
+        | Assoc eq_op eq_op x  // (3.1)
+        | Assoc eq_op or_op x // (3.25)
+
+        | Symm eq_op x // (3.2)
+        | Commute eq_op or_op x // (3.24)
+
+        | Distrib eq_op or_op eq_op x  // (3.27)
+        | DistribNot x // (3.9)
              
         | IdempotencyOr x // (3.26)
         

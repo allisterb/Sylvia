@@ -198,6 +198,41 @@ Semantic findings the dual-run check surfaced (now encoded in `sequal_structural
    (Note: `try_match`/`apply_first_schema` at FsExpr.fs use `po.Equals to_` on shape
    tokens and may therefore under-match across source locations — worth revisiting.)
 
+## Phase 2 results (2026-07-25, hoisted quotation templates)
+
+Implementation: `FsExpr.specific_call` (+ `CallPattern` type abbreviation) partially applies
+`SpecificCall` so the template quotation is deserialized and destructured once at module
+init; all inline `SpecificCall <@@ … @@>` sites in FsExpr/Formula/Symbolic/MathNetExpr were
+converted to module-level cached matchers (a `: CallPattern` annotation is required — the
+partial application otherwise trips the value restriction). The arithmetic patterns
+(`Addition` etc.) now match precomputed `op_*` names instead of concatenating per probe.
+On the prover side the same hoist was applied to the inline `<@(=)@>`-style templates in
+`EquationalLogic.equational_logic_axioms` (up to 10 deserializations per axiom probe) and
+the axiom functions in `BooleanAlgebra`/`Integers`/`RealNumbers` (in the generic
+`boolean_algebra_axioms` the template binds once per theory construction).
+
+| Payload | Baseline | Phase 1 | Phase 2 | Total change |
+|---|---:|---:|---:|---:|
+| trans_implies (first call) | 681 ms / 627 MB | 546 ms / 480 MB | 219 ms / 66 MB | **3.1x / 9.5x** |
+| trans_implies (second call) | 575 ms / 605 MB | 447 ms / 462 MB | 68 ms / 64 MB | **8.4x / 9.4x** |
+| prover test suite wall time | 64 s | 64 s | 43 s | 1.5x |
+| sequal medium eq | 29.9 us | 1.84 us | 0.93 us | 32x |
+| sequal large eq | 3552 us | 72.7 us | 47.5 us | 75x |
+| replace_expr large | 173 ms | 0.198 ms | 0.145 ms | ~1190x |
+
+Validation: prover suite 97/97 with `SYLVIA_SEQUAL_CHECK=1`; `PropCalculus.fsx` and
+`SetTheory.fsx` (ALL PASS, exercises the BooleanAlgebra/metaset paths) both clean against
+rebuilt Debug DLLs — note the example scripts' `Include.fsx` references **Debug** binaries,
+so Debug must be rebuilt before fsi validation counts.
+
+Still open for Phase 2 scope (lower value): `Term.fs` scalar_eqn/scalar_varmap (cold),
+`Maxima.fs` (18 sites, CAS-only), `Tactics.fs` quotation literals (mostly success-path),
+`EquationalLogic.fs:101/105` splice-built templates in quantifier guards (needs a small
+restructure, only fires on quantified candidates), and the per-call destructuring inside
+parameterized patterns (`Binary op` still runs SpecificCall's template destructure per
+probe — fixable by switching the pattern parameters to cached `CallPattern` matchers, an
+API change).
+
 ## Sequencing and risk
 
 | Phase | Impact | Risk | Notes |

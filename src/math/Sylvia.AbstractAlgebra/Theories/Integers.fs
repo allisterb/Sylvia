@@ -34,18 +34,28 @@ module Integers =
         | Equals(LessThan(l,r), SetTheory.ElementOf(Subtract(r', l'), Zpos)) when sequal2 l r l' r' -> pattern_name "Definition of <" |> Some
         | _ -> None
 
+    // Hoisted operator templates: quotation literals written inline in match arms are
+    // re-deserialized on every axiom probe (see docs/expressions-perf.md).
+    let private eq_op : Expr<int->int->bool> = <@ (=) @>
+    let private add_op : Expr<int->int->int> = <@ (+) @>
+    let private mul_op : Expr<int->int->int> = <@ (*) @>
+    let private sub_op : Expr<int->int->int> = <@ (-) @>
+    let private neg_op : Expr<int->int> = <@ (~-) @>
+    let private zero_int : Expr<int> = <@ 0 @>
+    let private one_int : Expr<int> = <@ 1 @>
+
     let integer_axioms =
-        function                    
-        | Assoc <@(=)@> (<@ (+) @> :Expr<int->int->int>) x
-        | Assoc <@(=)@> (<@ (*) @> :Expr<int->int->int>) x
-        | Commute <@(=)@> (<@ (+) @> :Expr<int->int->int>) x
-        | Commute <@(=)@> (<@ (*) @> :Expr<int->int->int>) x
-        | Identity <@(=)@> (<@ (+) @> :Expr<int->int->int>) <@ 0 @> x 
-        | Identity <@(=)@> (<@ (*) @> :Expr<int->int->int>) <@ 1 @> x
-        | Inverse <@(=)@> (<@ (+) @> :Expr<int->int->int>) <@ (~-) @> <@ 0 @> x
-        | Distrib <@(=)@> (<@ (*) @> :Expr<int->int->int>) (<@ (+) @> :Expr<int->int->int>) x  
-        | LeftCancelNonZero (<@ (+) @> :Expr<int->int->int>) <@ 0 @> x
-        | BinaryOpDefR <@(=)@> <@ (-) @> (<@ (+) @> :Expr<int->int->int>) <@ (~-) @> x  -> Some (desc x)
+        function
+        | Assoc eq_op add_op x
+        | Assoc eq_op mul_op x
+        | Commute eq_op add_op x
+        | Commute eq_op mul_op x
+        | Identity eq_op add_op zero_int x
+        | Identity eq_op mul_op one_int x
+        | Inverse eq_op add_op neg_op zero_int x
+        | Distrib eq_op mul_op add_op x
+        | LeftCancelNonZero add_op zero_int x
+        | BinaryOpDefR eq_op sub_op add_op neg_op x  -> Some (desc x)
         | Exists(_, a::[], Bool true, (Equals(Add(Var _, Var a'), Int32 0))) when vequal a a' -> Some (axiom_desc "Integers" (pattern_name "Additive Inverse")) 
         | DefLessThan x -> Some (desc x)
         | _ -> None

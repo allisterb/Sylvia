@@ -113,31 +113,47 @@ module Symbolic =
 
     (* Print quotation as string *)
 
-    let rec sprinte (x:Expr) = 
+    // Cached template matchers for the printers: hoist the template quotation's
+    // deserialization out of the per-node match attempts (see docs/expressions-perf.md).
+    let private (|LtOp|_|) : CallPattern = specific_call <@@ (<) @@>
+    let private (|LeOp|_|) : CallPattern = specific_call <@@ (<=) @@>
+    let private (|GtOp|_|) : CallPattern = specific_call <@@ (>) @@>
+    let private (|GeOp|_|) : CallPattern = specific_call <@@ (>=) @@>
+    let private (|EqOp|_|) : CallPattern = specific_call <@@ (=) @@>
+    let private (|AddOp|_|) : CallPattern = specific_call <@@ (+) @@>
+    let private (|SubOp|_|) : CallPattern = specific_call <@@ (-) @@>
+    let private (|MulOp|_|) : CallPattern = specific_call <@@ (*) @@>
+    let private (|DivOp|_|) : CallPattern = specific_call <@@ (/) @@>
+    let private (|PowOp|_|) : CallPattern = specific_call <@@ ( ** ) @@>
+    let private (|PipeLeftOp|_|) : CallPattern = specific_call <@@ (<|) @@>
+    let private (|PipeRightOp|_|) : CallPattern = specific_call <@@ (|>) @@>
+    let private (|SymbolicFnOp|_|) : CallPattern = specific_call <@@ symbolic_fn @@>
+
+    let rec sprinte (x:Expr) =
         match x with
         | List list -> "[" + (list |>  List.map sprinte |> List.reduce (fun l r -> l + ", " + r)) + "]"
-        | SpecificCall <@@ (<) @@> (_, _, [l; r]) -> sprintf("%s < %s") (sprinte l) (sprinte r)
-        | SpecificCall <@@ (<=) @@> (_, _, [l; r]) -> sprintf("%s <= %s") (sprinte l) (sprinte r)
-        | SpecificCall <@@ (>) @@> (_, _, [l; r]) -> sprintf("%s > %s") (sprinte l) (sprinte r)
-        | SpecificCall <@@ (>=) @@> (_, _, [l; r]) -> sprintf("%s >= %s") (sprinte l) (sprinte r)
-        | SpecificCall <@@ (=) @@> (_, _, [l; r]) -> sprintf("%s = %s") (sprinte l) (sprinte r)
+        | LtOp(_, _, [l; r]) -> sprintf("%s < %s") (sprinte l) (sprinte r)
+        | LeOp(_, _, [l; r]) -> sprintf("%s <= %s") (sprinte l) (sprinte r)
+        | GtOp(_, _, [l; r]) -> sprintf("%s > %s") (sprinte l) (sprinte r)
+        | GeOp(_, _, [l; r]) -> sprintf("%s >= %s") (sprinte l) (sprinte r)
+        | EqOp(_, _, [l; r]) -> sprintf("%s = %s") (sprinte l) (sprinte r)
         
-        | SpecificCall <@@ (+) @@> (_, _, [l; r]) -> sprintf("%s + %s") (sprinte l) (sprinte r)
-        | SpecificCall <@@ (-) @@> (_, _, [l; r]) -> sprintf("%s - %s") (sprinte l) (sprinte r)
-        | SpecificCall <@@ (*) @@> (_, _, [Double 1.; r]) -> sprintf("%s") (sprinte r)
-        | SpecificCall <@@ (*) @@> (_, _, [Double -1.; Atom r]) -> sprintf("-%s") (sprinte r)
-        | SpecificCall <@@ (*) @@> (_, _, [Double -1.; r]) -> sprintf("-(%s)") (sprinte r)
-        | SpecificCall <@@ (*) @@> (_, _, [Atom l; Atom r]) -> sprintf("%s * %s") (sprinte l) (sprinte r)
-        | SpecificCall <@@ (*) @@> (_, _, [Atom l; r]) -> sprintf("%s * (%s)") (sprinte l) (sprinte r)
-        | SpecificCall <@@ (*) @@> (_, _, [l; Atom r]) -> sprintf("(%s) * %s") (sprinte l) (sprinte r)
-        | SpecificCall <@@ (*) @@> (_, _, [Atom l; Atom r]) -> sprintf("(%s) * (%s)") (sprinte l) (sprinte r)
-        | SpecificCall <@@ (*) @@> (_, _, [l; r]) -> sprintf("%s * %s") (sprinte l) (sprinte r)
-        | SpecificCall <@@ (/) @@> (_, _, [l; r]) -> sprintf("%s / %s") (sprinte l) (sprinte r)
-        | SpecificCall <@@ ( ** ) @@> (_, _, [Atom l; r]) -> sprintf("%s^%s") (sprinte l) (sprinte r)
-        | SpecificCall <@@ ( ** ) @@> (_, _, [l; r]) -> sprintf("(%s)^%s") (sprinte l) (sprinte r)
+        | AddOp(_, _, [l; r]) -> sprintf("%s + %s") (sprinte l) (sprinte r)
+        | SubOp(_, _, [l; r]) -> sprintf("%s - %s") (sprinte l) (sprinte r)
+        | MulOp(_, _, [Double 1.; r]) -> sprintf("%s") (sprinte r)
+        | MulOp(_, _, [Double -1.; Atom r]) -> sprintf("-%s") (sprinte r)
+        | MulOp(_, _, [Double -1.; r]) -> sprintf("-(%s)") (sprinte r)
+        | MulOp(_, _, [Atom l; Atom r]) -> sprintf("%s * %s") (sprinte l) (sprinte r)
+        | MulOp(_, _, [Atom l; r]) -> sprintf("%s * (%s)") (sprinte l) (sprinte r)
+        | MulOp(_, _, [l; Atom r]) -> sprintf("(%s) * %s") (sprinte l) (sprinte r)
+        | MulOp(_, _, [Atom l; Atom r]) -> sprintf("(%s) * (%s)") (sprinte l) (sprinte r)
+        | MulOp(_, _, [l; r]) -> sprintf("%s * %s") (sprinte l) (sprinte r)
+        | DivOp(_, _, [l; r]) -> sprintf("%s / %s") (sprinte l) (sprinte r)
+        | PowOp(_, _, [Atom l; r]) -> sprintf("%s^%s") (sprinte l) (sprinte r)
+        | PowOp(_, _, [l; r]) -> sprintf("(%s)^%s") (sprinte l) (sprinte r)
 
-        | SpecificCall <@@ (<|) @@> (_, _, [l; r]) when src l = "real" -> (sprinte r)
-        | SpecificCall <@@ (|>) @@> (_, _, [l;  Lambda (n1, Call (None, real, [n2]))]) -> (sprinte l)
+        | PipeLeftOp(_, _, [l; r]) when src l = "real" -> (sprinte r)
+        | PipeRightOp(_, _, [l;  Lambda (n1, Call (None, real, [n2]))]) -> (sprinte l)
 
         | Call(None, Op "Exp", Atom x::[]) -> sprintf("e^%s") (sprinte x)
         | Call(None, Op "Identity", x::[]) -> (sprinte x)
@@ -155,7 +171,7 @@ module Symbolic =
         | Double (Double.MaxValue) -> "inf"
         | Double (Double.MinValue) -> "neginf"
         | Call(None, Op "real_frac", Int32 n::Int32 d::[]) -> sprintf "%A/%A" n d
-        | SpecificCall <@@ symbolic_fn @@> (_,_,[String s;NewArray(_, v)]) -> sprintf "%s(%s)" s (v |> List.map (function | String s ->  s | _ -> failwith "") |> List.reduce (sprintf "%s,%s"))
+        | SymbolicFnOp(_,_,[String s;NewArray(_, v)]) -> sprintf "%s(%s)" s (v |> List.map (function | String s ->  s | _ -> failwith "") |> List.reduce (sprintf "%s,%s"))
 
         | Var x as v -> if Symbols.TransliterateGreek && Symbols.isGreek (x.Name) then Symbols.GreekUnicode.[x.Name] else x.Name  
         | Lambda(x, e) -> sprintf("%A = %s") x (sprinte e)        
@@ -173,33 +189,33 @@ module Symbolic =
     let rec latexe (x:Expr) = 
         match x with
         | List list -> "[" + (list |>  List.map latexe |> List.reduce (fun l r -> l + ", " + r)) + "]"
-        | SpecificCall <@@ (<) @@> (_, _, [l; r]) -> sprintf("%s < %s") (latexe l) (latexe r)
-        | SpecificCall <@@ (<=) @@> (_, _, [l; r]) -> sprintf("%s <= %s") (latexe l) (latexe r)
-        | SpecificCall <@@ (>) @@> (_, _, [l; r]) -> sprintf("%s > %s") (latexe l) (latexe r)
-        | SpecificCall <@@ (>=) @@> (_, _, [l; r]) -> sprintf("%s >= %s") (latexe l) (latexe r)
-        | SpecificCall <@@ (=) @@> (_, _, [l; r]) -> sprintf("%s = %s") (latexe l) (latexe r)
+        | LtOp(_, _, [l; r]) -> sprintf("%s < %s") (latexe l) (latexe r)
+        | LeOp(_, _, [l; r]) -> sprintf("%s <= %s") (latexe l) (latexe r)
+        | GtOp(_, _, [l; r]) -> sprintf("%s > %s") (latexe l) (latexe r)
+        | GeOp(_, _, [l; r]) -> sprintf("%s >= %s") (latexe l) (latexe r)
+        | EqOp(_, _, [l; r]) -> sprintf("%s = %s") (latexe l) (latexe r)
 
-        | SpecificCall <@@ (*) @@> (_, _, [Double 1.0; r]) -> latexe r 
-        | SpecificCall <@@ (+) @@> (_, _, [l;SpecificCall <@@ (*) @@> (_, _, [Double -1.0; Atom r])]) -> sprintf("%s - %s") (latexe l) (latexe r)
-        | SpecificCall <@@ (+) @@> (_, _, [l;SpecificCall <@@ (*) @@> (_, _, [Double -1.0; r])]) -> sprintf("%s - (%s)") (latexe l) (latexe r)
-        | SpecificCall <@@ (+) @@> (_, _, [Double l as d; r]) when l < 0. -> sprintf("%s - %s") (latexe r) (latexe (Expr.Value(-l)))
-        | SpecificCall <@@ (+) @@> (_, _, [l; r]) -> sprintf("%s + %s") (latexe l) (latexe r)
-        | SpecificCall <@@ (-) @@> (_, _, [l; r]) -> sprintf("%s - %s") (latexe l) (latexe r)
-        | SpecificCall <@@ (*) @@> (_, _, [ValueWithName(_,_, _) as l; r]) -> sprintf("{%s}{%s}") (latexe l) (latexe <| r)
-        | SpecificCall <@@ (*) @@> (_, _, [l; ValueWithName(_,_, _) as r]) -> sprintf("{%s}{%s}") (latexe l) (latexe r)
-        | SpecificCall <@@ (*) @@> (_, _, [Double l; Double r]) -> sprintf("%s\cdot%s") (latexe <| exprv l) (latexe <|  exprv r)
-        | SpecificCall <@@ (*) @@> (_, _, [l; Call(None, Op "Identity", Double r::[])]) -> sprintf("%s\cdot%s") (latexe l) (latexe <|  exprv r)
-        | SpecificCall <@@ (*) @@> (_, _, [Call(None, Op "Identity", Double l::[]); r]) -> sprintf("%s\cdot%s") (latexe <| exprv l) (latexe r)
-        | SpecificCall <@@ (*) @@> (_, _, [Atom l; Atom r]) -> sprintf("%s%s") (latexe l) (latexe r)
-        | SpecificCall <@@ (*) @@> (_, _, [l; Atom r]) -> sprintf("%s%s") (latexe l) (latexe r)
-        | SpecificCall <@@ (*) @@> (_, _, [l; SpecificCall <@@ ( ** ) @@> (_, _, [Atom b; Atom e])]) -> sprintf("%s%s^%s") (latexe l) (latexe b) (latexe e)
-        | SpecificCall <@@ (*) @@> (_, _, [l; r]) -> sprintf("(%s)(%s)") (latexe l) (latexe r)
-        | SpecificCall <@@ (/) @@> (_, _, [l; Atom r]) -> sprintf("\\frac{%s}{%s}") (latexe l) (latexe r)
-        | SpecificCall <@@ (/) @@> (_, _, [l; r]) -> sprintf("\\frac{%s}{(%s)}") (latexe l) (latexe r)
-        | SpecificCall <@@ ( ** ) @@> (_, _, [Atom l; Atom r]) -> sprintf("%s^{%s}") (latexe l) (latexe r)
-        | SpecificCall <@@ ( ** ) @@> (_, _, [Atom l; r]) -> sprintf("%s^{(%s)}") (latexe l) (latexe r)
-        | SpecificCall <@@ ( ** ) @@> (_, _, [l; Atom r]) -> sprintf("(%s)^{%s}") (latexe l) (latexe r)
-        | SpecificCall <@@ ( ** ) @@> (_, _, [l; r]) -> sprintf("(%s)^{(%s)}") (latexe l) (latexe r)
+        | MulOp(_, _, [Double 1.0; r]) -> latexe r 
+        | AddOp(_, _, [l;MulOp(_, _, [Double -1.0; Atom r])]) -> sprintf("%s - %s") (latexe l) (latexe r)
+        | AddOp(_, _, [l;MulOp(_, _, [Double -1.0; r])]) -> sprintf("%s - (%s)") (latexe l) (latexe r)
+        | AddOp(_, _, [Double l as d; r]) when l < 0. -> sprintf("%s - %s") (latexe r) (latexe (Expr.Value(-l)))
+        | AddOp(_, _, [l; r]) -> sprintf("%s + %s") (latexe l) (latexe r)
+        | SubOp(_, _, [l; r]) -> sprintf("%s - %s") (latexe l) (latexe r)
+        | MulOp(_, _, [ValueWithName(_,_, _) as l; r]) -> sprintf("{%s}{%s}") (latexe l) (latexe <| r)
+        | MulOp(_, _, [l; ValueWithName(_,_, _) as r]) -> sprintf("{%s}{%s}") (latexe l) (latexe r)
+        | MulOp(_, _, [Double l; Double r]) -> sprintf("%s\cdot%s") (latexe <| exprv l) (latexe <|  exprv r)
+        | MulOp(_, _, [l; Call(None, Op "Identity", Double r::[])]) -> sprintf("%s\cdot%s") (latexe l) (latexe <|  exprv r)
+        | MulOp(_, _, [Call(None, Op "Identity", Double l::[]); r]) -> sprintf("%s\cdot%s") (latexe <| exprv l) (latexe r)
+        | MulOp(_, _, [Atom l; Atom r]) -> sprintf("%s%s") (latexe l) (latexe r)
+        | MulOp(_, _, [l; Atom r]) -> sprintf("%s%s") (latexe l) (latexe r)
+        | MulOp(_, _, [l; PowOp(_, _, [Atom b; Atom e])]) -> sprintf("%s%s^%s") (latexe l) (latexe b) (latexe e)
+        | MulOp(_, _, [l; r]) -> sprintf("(%s)(%s)") (latexe l) (latexe r)
+        | DivOp(_, _, [l; Atom r]) -> sprintf("\\frac{%s}{%s}") (latexe l) (latexe r)
+        | DivOp(_, _, [l; r]) -> sprintf("\\frac{%s}{(%s)}") (latexe l) (latexe r)
+        | PowOp(_, _, [Atom l; Atom r]) -> sprintf("%s^{%s}") (latexe l) (latexe r)
+        | PowOp(_, _, [Atom l; r]) -> sprintf("%s^{(%s)}") (latexe l) (latexe r)
+        | PowOp(_, _, [l; Atom r]) -> sprintf("(%s)^{%s}") (latexe l) (latexe r)
+        | PowOp(_, _, [l; r]) -> sprintf("(%s)^{(%s)}") (latexe l) (latexe r)
 
         | Call(None, Op "Exp", x::[]) -> sprintf("exp(%s)") (latexe x)
 

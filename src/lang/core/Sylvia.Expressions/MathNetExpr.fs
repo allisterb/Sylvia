@@ -20,19 +20,32 @@ open MathNet.Symbolics.Operators
 type MathNetExpr = MathNet.Symbolics.Expression
 
 module MathNetExpr =
+    // Cached template matchers: hoist the template quotation's deserialization out of
+    // the per-node match attempts (see docs/expressions-perf.md).
+    let private (|AddCall|_|) : CallPattern = specific_call <@@ ( + ) @@>
+    let private (|SubCall|_|) : CallPattern = specific_call <@@ ( - ) @@>
+    let private (|NegCall|_|) : CallPattern = specific_call <@@ ( ~- ) @@>
+    let private (|PosCall|_|) : CallPattern = specific_call <@@ ( ~+ ) @@>
+    let private (|MulCall|_|) : CallPattern = specific_call <@@ ( * ) @@>
+    let private (|DivCall|_|) : CallPattern = specific_call <@@ ( / ) @@>
+    let private (|PowCall|_|) : CallPattern = specific_call <@@ ( ** ) @@>
+    let private (|RealCall|_|) : CallPattern = specific_call <@@ Numbers.real @@>
+    let private (|RealFracCall|_|) : CallPattern = specific_call <@@ Numbers.real_frac @@>
+    let private (|EqCall|_|) : CallPattern = specific_call <@@ ( = ) @@>
+
     let rec fromQuotation (q:Expr) : Expression =
         match q with
-        | SpecificCall <@@ ( + ) @@> (_, _, [xt; yt]) -> (fromQuotation xt) + (fromQuotation yt)
-        | SpecificCall <@@ ( - ) @@> (_, _, [xt; yt]) -> (fromQuotation xt) - (fromQuotation yt)
-        | SpecificCall <@@ ( ~- ) @@> (_, _, [xt]) -> -(fromQuotation xt)
-        | SpecificCall <@@ ( ~+ ) @@> (_, _, [xt]) -> +(fromQuotation xt)
-        | SpecificCall <@@ ( * ) @@> (_, _, [xt; yt]) -> (fromQuotation xt) * (fromQuotation yt)
-        | SpecificCall <@@ ( / ) @@> (_, _, [Int32 xt; Int32 yt]) -> Expression.Rational(BigRational.FromBigIntFraction(BigInteger xt, BigInteger yt))
-        | SpecificCall <@@ ( / ) @@> (_, _, [xt; yt]) -> (fromQuotation xt) / (fromQuotation yt)
-        | SpecificCall <@@ ( ** ) @@> (_, _, [xt; yt]) -> (fromQuotation xt) ** (fromQuotation yt)
-        
-        | SpecificCall <@@ Numbers.real @@> (_, _, Int32 n::[]) -> Expression.Real (float n)
-        | SpecificCall <@@ Numbers.real @@> (_, _, e::[]) -> fromQuotation e
+        | AddCall (_, _, [xt; yt]) -> (fromQuotation xt) + (fromQuotation yt)
+        | SubCall (_, _, [xt; yt]) -> (fromQuotation xt) - (fromQuotation yt)
+        | NegCall (_, _, [xt]) -> -(fromQuotation xt)
+        | PosCall (_, _, [xt]) -> +(fromQuotation xt)
+        | MulCall (_, _, [xt; yt]) -> (fromQuotation xt) * (fromQuotation yt)
+        | DivCall (_, _, [Int32 xt; Int32 yt]) -> Expression.Rational(BigRational.FromBigIntFraction(BigInteger xt, BigInteger yt))
+        | DivCall (_, _, [xt; yt]) -> (fromQuotation xt) / (fromQuotation yt)
+        | PowCall (_, _, [xt; yt]) -> (fromQuotation xt) ** (fromQuotation yt)
+
+        | RealCall (_, _, Int32 n::[]) -> Expression.Real (float n)
+        | RealCall (_, _, e::[]) -> fromQuotation e
         | Call(None, Op "FromInt32", Value(v, _)::[]) when q.Type = typeof<Rational> -> fromInt32 (v :?> int)
         | Call(None, Op "ToInt", Double v::[]) -> fromInt32 ((int) v)
         | Call(None, Op "ToInt", e::[]) -> fromQuotation e
@@ -55,7 +68,7 @@ module MathNetExpr =
         | Call(None, Op "Exp", v::[]) -> Expression.Exp(fromQuotation v)
         | Call(None, Op "Log", v::[]) -> Expression.Ln(fromQuotation v)
         | Call(None, Op "log", v::[]) -> Expression.Ln(fromQuotation v)
-        | SpecificCall <@@ Numbers.real_frac @@> (_,_, Int32 n::Int32 d::[]) -> Expression.Rational(BigRational.FromIntFraction(n, d))
+        | RealFracCall (_,_, Int32 n::Int32 d::[]) -> Expression.Rational(BigRational.FromIntFraction(n, d))
         | Call(None, Op "factorial", v::[]) -> Expression.Factorial (fromQuotation v)
         | Call(None, Op "Factorial", v::[]) -> Expression.Factorial (fromQuotation v)
         | Call(None, Op "binomial_coeff", n::r::[]) -> 
@@ -92,9 +105,9 @@ module MathNetExpr =
 
         | _ -> failwithf "Expression %A of type %A is not currently supported." q (q.Type)
 
-    let fromEqualityQuotation = 
+    let fromEqualityQuotation =
         function
-        | SpecificCall <@@ ( = ) @@> (_, _, [l; r]) -> fromQuotation l, fromQuotation r
+        | EqCall (_, _, [l; r]) -> fromQuotation l, fromQuotation r
         | expr -> failwithf "The expression %s is not an equality." <| src expr
 
     let rec _toQuotation<'t> (vars: Var list) (expr: Expression)  =    

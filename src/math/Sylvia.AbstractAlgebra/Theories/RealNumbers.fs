@@ -16,21 +16,34 @@ module RealNumbers =
     let desc = axiom_desc "Real Numbers"
     
     (* Axioms *)
+
+    // Hoisted operator templates: quotation literals written inline in match arms are
+    // re-deserialized on every axiom probe (see docs/expressions-perf.md).
+    let private eq_op : Expr<real->real->bool> = <@ (=) @>
+    let private add_op : Expr<real->real->real> = <@ (+) @>
+    let private mul_op : Expr<real->real->real> = <@ (*) @>
+    let private sub_op : Expr<real->real->real> = <@ (-) @>
+    let private div_op : Expr<real->real->real> = <@ (/) @>
+    let private neg_op : Expr<real->real> = <@ (~-) @>
+    let private inv_op : Expr<real->real> = <@ inv @>
+    let private zero_real : Expr<real> = <@ 0. @>
+    let private one_real : Expr<real> = <@ 1. @>
+
     let real_numbers_axioms =
-        function                            
-        | Assoc <@(=)@> (<@ (+) @> :Expr<real->real->real>) x
-        | Assoc <@(=)@> (<@ (*) @> :Expr<real->real->real>) x
-        | Commute <@(=)@> (<@ (+) @> :Expr<real->real->real>) x
-        | Commute <@(=)@> (<@ (*) @> :Expr<real->real->real>) x
-        | Identity <@(=)@> (<@ (+) @> :Expr<real->real->real>) <@ 0. @> x 
-        | Identity <@(=)@> (<@ (*) @> :Expr<real->real->real>) <@ 1. @> x
-        | Inverse <@(=)@> (<@ (+) @> :Expr<real->real->real>) <@ (~-) @> <@ 0. @> x
-        | Inverse <@(=)@> (<@ (/) @> :Expr<real->real->real>) <@ inv @> <@ 1. @> x
-        | Distrib <@(=)@> (<@ (*) @> :Expr<real->real->real>) (<@ (+) @> :Expr<real->real->real>) x  
-        | LeftCancelNonZero (<@ (+) @> :Expr<real->real->real>) <@ 0. @> x
-        | LeftCancelNonZero (<@ (/) @> :Expr<real->real->real>) <@ 1. @> x
-        | BinaryOpDefR <@(=)@> <@ (-) @> (<@ (+) @> :Expr<real->real->real>) <@ (~-) @> x  -> Some (desc x)
-        | BinaryOpDefR <@(=)@> <@ (/) @> (<@ (*) @> :Expr<real->real->real>) <@ inv @> x  -> Some (desc x)
+        function
+        | Assoc eq_op add_op x
+        | Assoc eq_op mul_op x
+        | Commute eq_op add_op x
+        | Commute eq_op mul_op x
+        | Identity eq_op add_op zero_real x
+        | Identity eq_op mul_op one_real x
+        | Inverse eq_op add_op neg_op zero_real x
+        | Inverse eq_op div_op inv_op one_real x
+        | Distrib eq_op mul_op add_op x
+        | LeftCancelNonZero add_op zero_real x
+        | LeftCancelNonZero div_op one_real x
+        | BinaryOpDefR eq_op sub_op add_op neg_op x  -> Some (desc x)
+        | BinaryOpDefR eq_op div_op mul_op inv_op x  -> Some (desc x)
         | Exists(_, a::[], Bool true, (Equals(Add(Var _, Var a'), Double 0.))) when vequal a a' -> Some (desc (pattern_name "Additive Inverse"))
         | Exists(_, a::[], Bool true, (Equals(Multiply(Var _, Var a'), Double 1.))) when vequal a a' -> Some (desc (pattern_name "Multiplicative Inverse"))
         | _ -> None

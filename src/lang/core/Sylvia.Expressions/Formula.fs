@@ -62,31 +62,42 @@ module Formula =
         | ValueWithName(_, t, "False") when t = typeof<bool> -> Some()
         | _ -> None
 
-    let (|Equals|_|) = 
+    // Cached template matchers: hoist the template quotation's deserialization and
+    // destructuring to module initialization instead of re-running it on every match
+    // attempt (see docs/expressions-perf.md).
+    let private (|EqCall|_|) : CallPattern = specific_call <@@ (=) @@>
+    let private (|NotCall|_|) : CallPattern = specific_call <@@ not @@>
+    let private (|NeqCall|_|) : CallPattern = specific_call <@@ (<>) @@>
+    let private (|ImpliesCall|_|) : CallPattern = specific_call <@@ (===>) @@>
+    let private (|ConseqCall|_|) : CallPattern = specific_call <@@ (<===) @@>
+    let private (|LtCall|_|) : CallPattern = specific_call <@@ (<) @@>
+    let private (|RangeCall|_|) : CallPattern = specific_call <@@ (..) @@>
+
+    let (|Equals|_|) =
          function
-         | SpecificCall <@@ (=) @@> (None,_,l::r::[]) when l.Type = r.Type -> Some(l, r)
+         | EqCall (None,_,l::r::[]) when l.Type = r.Type -> Some(l, r)
          | _ -> None
-   
+
     let (|Not|_|) =
         function
-        | SpecificCall <@@ not @@> (None,_,l::[]) -> Some l
+        | NotCall (None,_,l::[]) -> Some l
         | _ -> None
 
     let (|NotEquals|_|) =
          function
-         | SpecificCall <@@ (<>) @@> (None,_,l::r::[]) -> Some (l, r)
+         | NeqCall (None,_,l::r::[]) -> Some (l, r)
          | _ -> None
 
-    
+
 
     let (|Implies|_|) =
         function
-        | SpecificCall <@@ (===>) @@> (None,_,l::r::[]) -> Some (l, r)
+        | ImpliesCall (None,_,l::r::[]) -> Some (l, r)
         | _ -> None
 
     let (|Conseq|_|) =
         function
-        | SpecificCall <@@ (<===) @@> (None,_,l::r::[]) -> Some (l, r)
+        | ConseqCall (None,_,l::r::[]) -> Some (l, r)
         | _ -> None
 
     let (|Argument|_|) =
@@ -157,12 +168,12 @@ module Formula =
 
     let (|LessThan|_|) =
          function
-         | SpecificCall <@@ (<) @@> (None,_,l::r::[]) -> Some (l, r)
+         | LtCall (None,_,l::r::[]) -> Some (l, r)
          | _ -> None
 
     let (|Range|_|) =
         function
-        | SpecificCall <@@ (..) @@> (None,_,l::r::[]) -> Some(l,r)
+        | RangeCall (None,_,l::r::[]) -> Some(l,r)
         | _ -> None
 
     let (|Sequence|_|) =
