@@ -117,22 +117,33 @@ module Formula =
         | Implies(a, c) -> (a, c, get_conjuncts a) |> Some
         | _ -> None
 
+    // These parameterized patterns are probed constantly by the axiom matchers with
+    // module-level hoisted operator templates: use the per-template-instance caches so
+    // neither SpecificCall's template destructuring nor getFuncInfo re-runs per probe.
     let (|Binary|_|) (op:Expr<'t->'t->'u>) =
-        function
-        | SpecificCall op (None,_,l::r::[]) when l.Type = typeof<'t> && r.Type = typeof<'t> -> Some (l,r)
-        | And(l,r ) when (getFuncInfo op).Name = "op_BooleanAnd" -> Some(l, r)
-        | Or(l,r ) when (getFuncInfo op).Name = "op_BooleanOr" -> Some(l, r)
-        | _ -> None
+        let matcher = specific_call_cached op
+        fun e ->
+            match matcher e with
+            | Some (None, _, [l; r]) when l.Type = typeof<'t> && r.Type = typeof<'t> -> Some (l, r)
+            | _ ->
+                match e with
+                | And(l, r) when (getFuncInfo_cached op).Name = "op_BooleanAnd" -> Some(l, r)
+                | Or(l, r) when (getFuncInfo_cached op).Name = "op_BooleanOr" -> Some(l, r)
+                | _ -> None
 
     let (|Binary'|_|) (op:Expr<'t->'u->'u>) =
-        function
-        | SpecificCall op (None,_,l::r::[]) when l.Type = typeof<'t> && r.Type = typeof<'u> -> Some (l,r)
-        | _ -> None
+        let matcher = specific_call_cached op
+        fun e ->
+            match matcher e with
+            | Some (None, _, [l; r]) when l.Type = typeof<'t> && r.Type = typeof<'u> -> Some (l, r)
+            | _ -> None
 
     let (|Unary|_|) (op:Expr<'t->'u>) =
-        function
-        | SpecificCall op (None,_,r::[]) when r.Type = typeof<'t> -> Some r
-        | _ -> None
+        let matcher = specific_call_cached op
+        fun e ->
+            match matcher e with
+            | Some (None, _, [r]) when r.Type = typeof<'t> -> Some r
+            | _ -> None
 
     let (|BinaryCall|_|) =
         function

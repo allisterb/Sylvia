@@ -58,6 +58,42 @@ module FsExpr =
     let specific_call (template:Expr) : CallPattern =
         (|SpecificCall|_|) template
 
+    let private specific_call_cache = System.Runtime.CompilerServices.ConditionalWeakTable<Expr, CallPattern>()
+    // Explicit delegate: CallPattern is itself a function type, so a bare lambda here
+    // would be uncurried by the F# delegate conversion.
+    let private specific_call_factory =
+        System.Runtime.CompilerServices.ConditionalWeakTable<Expr, CallPattern>.CreateValueCallback(fun t -> specific_call t)
+
+    /// specific_call memoized per template INSTANCE. For parameterized patterns that
+    /// receive a (module-level, hoisted) template as an argument, this turns the
+    /// per-probe template destructuring (Lambdas match + GetGenericMethodDefinition)
+    /// SpecificCall otherwise repeats on every attempt into a weak-table hit.
+    let specific_call_cached (template:Expr) : CallPattern =
+        specific_call_cache.GetValue(template, specific_call_factory)
+
+    let private func_info_cache = System.Runtime.CompilerServices.ConditionalWeakTable<Expr, MethodInfo>()
+
+    /// getFuncInfo memoized per expression INSTANCE (for hoisted operator templates).
+    let getFuncInfo_cached (expr:Expr) : MethodInfo =
+        func_info_cache.GetValue(expr, fun e -> getFuncInfo e)
+
+    let private reflected_defn_cache = System.Collections.Concurrent.ConcurrentDictionary<MethodBase, Expr option>()
+
+    /// Expr.TryGetReflectedDefinition memoized per method: the underlying FSharp.Core
+    /// lookup (tryGetReflectedDefinitionInstantiated) deserializes/instantiates the
+    /// definition on every call, and `expand` probes it for EVERY Call node it visits.
+    /// A reflected definition is static per (instantiated) method, so caching is exact.
+    let try_reflected_definition (mb:MethodBase) : Expr option =
+        reflected_defn_cache.GetOrAdd(mb, fun m -> Expr.TryGetReflectedDefinition m)
+
+    /// Cached drop-in for DerivedPatterns.MethodWithReflectedDefinition.
+    let (|MethodWithReflectedDefinitionCached|_|) (mb:MethodBase) : Expr option =
+        try_reflected_definition mb
+
+    /// Cached drop-in for DerivedPatterns.PropertyGetterWithReflectedDefinition.
+    let (|PropertyGetterWithReflectedDefinitionCached|_|) (pi:PropertyInfo) : Expr option =
+        try_reflected_definition (pi.GetGetMethod(true))
+
     let private (|AndCall|_|) : CallPattern = specific_call <@@ (&&) @@>
     let private (|OrCall|_|) : CallPattern = specific_call <@@ (||) @@>
 
@@ -502,10 +538,10 @@ module FsExpr =
 
     let vequal' (lv1:Var list) (lv2:Var list) = lv1.Length = lv2.Length && List.fold2(fun s v1 v2 -> s && vequal v1 v2) true lv1 lv2
 
-    let rec body = 
+    let rec body =
         function
         | Lambda(_, (Lambda(_, _) as l)) -> body l
-        | Lambda(_, (Call(_, f, _) as b))  -> match Expr.TryGetReflectedDefinition f with | Some e -> body e | None -> b
+        | Lambda(_, (Call(_, f, _) as b))  -> match try_reflected_definition f with | Some e -> body e | None -> b
         | Lambda(_, b) -> b
         | Let(_, _, b) -> b
         | expr -> failwithf "The expression %A is not a function or a let binding." expr
@@ -808,11 +844,11 @@ module FsExpr =
             | Call(None, Op "FromInt32" ,Value(v, _)::[]) as e when e.Type = typeof<Rational> -> Expr.Value(Rational((v :?> int32), 1))
             | Call(None, Op "ToDouble" ,Value(v, _)::[]) as e when e.Type = typeof<real> -> Expr.Value(Convert.ToDouble(v))
             | Call (None, Op "FromZero", _) as e -> e
-            | Call(body, MethodWithReflectedDefinition meth, args) ->
+            | Call(body, MethodWithReflectedDefinitionCached meth, args) ->
                 let this = match body with Some b -> Expr.Application(meth, b) | _ -> meth
                 let res = Expr.Applications(this, [ for a in args -> [a]])
                 rexpand vars res
-            | PropertyGet(body, PropertyGetterWithReflectedDefinition p, []) -> 
+            | PropertyGet(body, PropertyGetterWithReflectedDefinitionCached p, []) ->
                 let this = match body with Some b -> b | None -> p
                 rexpand vars this
             //| PropertyGet(None, p, []) -> rexpand vars (Expr.Var(Var(p.Name, p.PropertyType)))

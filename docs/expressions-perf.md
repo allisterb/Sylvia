@@ -469,6 +469,43 @@ every transcription provably produces the same trees. Left as-is (cold or generi
 `Term.(==)` (generic `'t` equality), `Pred`/`ScalarRelation` lambda splices, the
 `pnot` helpers in tests/payloads, and the math-theory literals.
 
+## Phase 8 results (2026-07-25, profiler-driven: per-instance caches for template
+destructuring and reflected definitions)
+
+With the literals hoisted, the profile still showed two per-probe reflection costs:
+(1) `equational_logic_axioms`' parameterized patterns (`Assoc eq_op eq_op x`, …) re-ran
+`SpecificCall`'s template destructuring (Lambdas match + `GetGenericMethodDefinition`)
+inside `Binary`/`Unary` on every attempt; (2) `tryGetReflectedDefinitionInstantiated`
+(11.6% self) — `expand` probing `MethodWithReflectedDefinition` (an uncached
+deserialize/instantiate in FSharp.Core) for every Call node it visits.
+
+Fix (FsExpr + Formula):
+
+- `specific_call_cached` — `specific_call` memoized per template INSTANCE via
+  `ConditionalWeakTable` (the hoisted module-level templates are perfect keys; note the
+  factory needs an explicit `CreateValueCallback` delegate — a bare lambda uncurries
+  because `CallPattern` is itself a function type). `Formula.(|Binary|_|)`/`Binary'`/
+  `Unary` now use it, plus `getFuncInfo_cached` for the And/Or fallback guard.
+- `try_reflected_definition` — `Expr.TryGetReflectedDefinition` memoized per method in a
+  `ConcurrentDictionary` (a reflected definition is static per instantiated method, so
+  the cache is exact); `expand` and `body` use cached drop-ins
+  (`MethodWithReflectedDefinitionCached`/`PropertyGetterWithReflectedDefinitionCached`).
+
+| Payload | Phase 7 | Phase 8 | vs baseline |
+|---|---:|---:|---:|
+| trans_implies (warm, default log) | 14.3 ms / 16 MB | **12.2 ms / 12 MB** | 575 ms → **47x** |
+| trans_implies (warm, LogLevel=0) | 11.2 ms / 14 MB | **8.8 ms / 10 MB** | **65x** |
+| reconstruct chain 8 | 1.35 s / 2.6 GB | 1.32 s / 2.1 GB | 142 s → **~108x** |
+| reconstruct chain 12 | 1.68 s / 5.3 GB | **1.34 s / 4.4 GB** | — |
+| conjElimAll 12 clauses | 0.94 s / 3.0 GB | **0.72 s / 2.5 GB** | — |
+
+chain-12 now costs barely more than chain-8 — the atom-scaling curve is approaching
+linear. Validation: prover suite 97/97 with `SYLVIA_SEQUAL_CHECK=1`, both examples ALL
+PASS, logs **byte-identical**. Known remaining (deliberate): `_normalize_with` and the
+ANF normalizers sort by `x.ToString()` (StructuredFormat keys) — changing the sort key
+changes the canonical operand ORDER, i.e. observable proof output, so it was left alone;
+`strengthen_and`-style rule replay is the memoization/architectural frontier.
+
 ## Sequencing and risk
 
 | Phase | Impact | Risk | Notes |
