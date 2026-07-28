@@ -561,12 +561,29 @@ concern that motivates a fresh-start redesign.
    Xor associativity now **reconstructs end to end in 6.1 s**, and is in `Reconstruct.fsx`'s goal
    list. It was the only goal that had ever overflowed the replay.
 
-   **What remains, honestly stated.** Conversion still *builds* the 441 clauses before pruning them
-   (≈4 s for that goal), so the recursive descent is still doing exponential work even though its
-   output no longer is. Pruning inside `distribOr`, rather than once at the end, would keep the
-   intermediates small too. That is the next thing to try — and it is a far smaller change than
-   Tseitin, which no longer has a measurement supporting it. Tseitin remains the right answer for
-   genuine size blowup; nothing measured here is an instance of one.
+   **Pruning moved inside `distribOr` (2026-07-28).** The version above pruned once, at the end, so
+   conversion still *built* all 441 clauses before discarding 433 of them. Distribution is
+   multiplicative, so a tautology left in an intermediate is multiplied against every clause of
+   every enclosing `∨` — the descent was still doing exponential work even though its output was
+   not. Each clause is now tested the moment `distribOr` builds it and replaced by `T` if it holds a
+   complementary pair, with `T` absorbed through the enclosing `∨` (Gries 3.29) and collapsed out of
+   the enclosing `∧` (3.39). The final CNF is identical either way; the intermediates are now the
+   size of the answer.
+
+   | goal | clausification before | after |
+   |---|--:|--:|
+   | implication chains 4 – 24 | 28 – 55 ms | unchanged |
+   | xor associativity, 3 vars | 4459 ms | **1265 ms** |
+   | xor associativity, 4 vars | **229 360 ms** | **1722 ms** |
+
+   (Release build, warm. The 4-variable case end to end: 141 s → 5.3 s.) Clausification is no longer
+   a super-linear term anywhere measured. Tseitin still has no measurement supporting it; it remains
+   the right answer for genuine size blowup, and nothing measured here is an instance of one.
+
+   One consequence to keep in mind: pruning can now reduce the whole conversion to `T`, which is not
+   a clause set. That happens exactly when `¬φ` is valid — i.e. `φ` is unsatisfiable, not a theorem —
+   and `toCnf` handles it by converting again with pruning off, so the caller still has clauses to
+   hand the solver and still gets a `SAT` verdict rather than an internal error.
 5. ~~**`absorb_or`'s positional rewrites are shape-sensitive.**~~ **DONE (2026-07-25)** — and it was
    a class, not one theorem. A reflection-driven sweep instantiating every all-`Prop`-parameter
    schema in `PropCalculus` at arguments *containing* the terms its own steps search for (`p ∨ p`,

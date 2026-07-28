@@ -163,7 +163,12 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
     /// The logical theory used for the proof.
     static let mutable logic:Theory = Theory.S
     /// The proof log level.
-    static let mutable logLevel:int = 1 
+    static let mutable logLevel:int = 1
+    // TEMP INSTRUMENTATION
+    static let mutable statProofs = 0
+    static let mutable statLemmas = 0
+    static let mutable statSteps = 0
+    static let mutable statNodes = 0L
 
     let ruleNames = List.concat [
             let logicRules = (logic.Rules: Rule list) in logicRules |> List.map (fun (r:Rule) -> r.Name) 
@@ -215,6 +220,17 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
             alwayslog (fun () -> sprintf "[Lemma] %s:" (print_formula a))
         else if not l then
             alwayslog (fun () -> sprintf "Proof of %s:" (print_formula a))
+
+    // TEMP INSTRUMENTATION
+    do statProofs <- statProofs + 1
+       if l then statLemmas <- statLemmas + 1
+       statSteps <- statSteps + steps.Length
+       let rec sz (e: Expr) =
+           match e with
+           | ExprShape.ShapeVar _ -> 1L
+           | ExprShape.ShapeLambda(_, b) -> 1L + sz b
+           | ExprShape.ShapeCombination(_, args) -> 1L + (args |> List.sumBy sz)
+       statNodes <- statNodes + sz a * int64 (max 1 steps.Length)
 
     let mutable _state = a
     let mutable state:(Expr * Lazy<string>) list = []
@@ -347,6 +363,10 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
     member val Subst = steps |> List.map (fun s  -> s.ApplyRule) |> List.fold(fun e r -> e >> r) id
     member val Msg = fun (s:string) -> prooflog (fun () -> s)
     member x.Log with get() = logBuilder.ToString() and set(_:string) = logBuilder.Clear() |> ignore
+
+    // TEMP INSTRUMENTATION
+    static member Stats = (statProofs, statLemmas, statSteps, statNodes)
+    static member ResetStats() = statProofs <- 0; statLemmas <- 0; statSteps <- 0; statNodes <- 0L
 
     /// Proof log level.
     static member LogLevel with get() = logLevel and set(v) = logLevel <- v

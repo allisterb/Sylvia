@@ -95,101 +95,122 @@ module Cnf =
             commute_or a x |> at [ left_branch; left_branch ]
             commute_or a y |> at [ left_branch; right_branch ] ]
 
+    (* ---- tautological-clause pruning ---- *)
+
+    let private isT (x: Prop) = match expand x.Expr with True -> true | _ -> false
+
+    /// True when the clause holds a complementary literal pair, and so is `T`.
+    let private isTautClause (clause: Expr) : bool =
+        let rec litsOf (e: Expr) = match e with Or(x, y) -> litsOf x @ litsOf y | _ -> [ e ]
+        let ls = litsOf clause
+        ls |> List.exists (function Not a -> ls |> List.exists (fun m -> sequal m a) | _ -> false)
+
+    /// `(l ∧ r) == result`, with a `T` conjunct collapsed away (Gries 3.39). `None` when neither
+    /// side is `T` and the conjunction therefore stands as it is.
+    let private collapseAnd (l: Prop) (r: Prop) : Prop * Theorem option =
+        if isT l && isT r then T, Some(theorem prop_calculus ((l * r) == T) [ ident_and T |> at_left ])
+        elif isT l then r, Some(theorem prop_calculus ((l * r) == r) [ commute_and l r |> at_left
+                                                                       ident_and r |> at_left ])
+        elif isT r then l, Some(theorem prop_calculus ((l * r) == l) [ ident_and l |> at_left ])
+        else (l * r), None
+
+    /// Conjoin two already-converted sides, collapsing a `T` away: `(a ∧ b) == result`, given
+    /// `pa : a == l` and `pb : b == r`.
+    let private conjoin (l: Prop) (pl: Theorem) (r: Prop) (pr: Theorem) : Prop * Theorem =
+        let both = congAnd pl pr
+        match collapseAnd l r with
+        | res, None -> res, both
+        | res, Some t -> res, transEq both t
+
     // Distribute ∨ over ∧: given `ca`, `cb` already in CNF, return `(ca∨cb) in CNF, proof (ca∨cb)==·`.
-    let rec private distribOr (ca: Prop) (cb: Prop) : Prop * Theorem =
+    //
+    // A clause is dropped THE MOMENT distribution builds it, not once at the end (see `prune`).
+    // Distribution is multiplicative, so a tautological clause left in an intermediate is multiplied
+    // against every clause of every enclosing `∨` — that, not any genuine size blowup, is what made
+    // nested `≢` explode: 4-variable xor associativity built tens of thousands of clauses to keep 16.
+    // Pruning here keeps the intermediates the size of the answer. `drop` turns it off, for the one
+    // caller that needs the unpruned clause set (see `toCnf`).
+    let rec private distribOr (drop: bool) (ca: Prop) (cb: Prop) : Prop * Theorem =
+        // A side that has already collapsed to `T` swallows the disjunction (Gries 3.29).
+        if isT ca then
+            T, theorem prop_calculus ((ca + cb) == T) [ commute_or ca cb |> at_left; zero_or cb |> at_left ]
+        elif isT cb then
+            T, theorem prop_calculus ((ca + cb) == T) [ zero_or ca |> at_left ]
+        else
         match view ca with
         | VAnd(x, y) ->
-            let (l, pl) = distribOr x cb
-            let (r, pr) = distribOr y cb
-            (l * r), transEq (dorR x y cb) (congAnd pl pr)
+            let (l, pl) = distribOr drop x cb
+            let (r, pr) = distribOr drop y cb
+            let (res, pc) = conjoin l pl r pr
+            res, transEq (dorR x y cb) pc
         | _ ->
             match view cb with
             | VAnd(u, v) ->
-                let (l, pl) = distribOr ca u
-                let (r, pr) = distribOr ca v
-                (l * r), transEq (dorL ca u v) (congAnd pl pr)
-            | _ -> (ca + cb), refl (ca + cb)
+                let (l, pl) = distribOr drop ca u
+                let (r, pr) = distribOr drop ca v
+                let (res, pc) = conjoin l pl r pr
+                res, transEq (dorL ca u v) pc
+            | _ ->
+                let c = ca + cb
+                if drop && isTautClause (expand c.Expr) then T, theorem prop_calculus (c == T) [ simp ]
+                else c, refl c
 
     /// Convert `p` to CNF, returning `(cnf, proof : p == cnf)`.
-    let rec private toCnfRec (p: Prop) : Prop * Theorem =
+    let rec private toCnfRec (drop: bool) (p: Prop) : Prop * Theorem =
+        let recur = toCnfRec drop
         match view p with
         | VAtom -> p, refl p
         | VAnd(x, y) ->
-            let (cx, px) = toCnfRec x
-            let (cy, py) = toCnfRec y
-            (cx * cy), congAnd px py
+            let (cx, px) = recur x
+            let (cy, py) = recur y
+            conjoin cx px cy py
         | VOr(x, y) ->
-            let (cx, px) = toCnfRec x
-            let (cy, py) = toCnfRec y
-            let (c, pc) = distribOr cx cy
+            let (cx, px) = recur x
+            let (cy, py) = recur y
+            let (c, pc) = distribOr drop cx cy
             c, transEq (congOr px py) pc
-        | VImp(x, y) -> let (c, pc) = toCnfRec ((-x) + y) in c, transEq (implEq x y) pc
-        | VIff(x, y) -> let (c, pc) = toCnfRec ((x ==> y) * (y ==> x)) in c, transEq (iffEq x y) pc
-        | VXor(x, y) -> let (c, pc) = toCnfRec (-(x == y)) in c, transEq (xorEq x y) pc
+        | VImp(x, y) -> let (c, pc) = recur ((-x) + y) in c, transEq (implEq x y) pc
+        | VIff(x, y) -> let (c, pc) = recur ((x ==> y) * (y ==> x)) in c, transEq (iffEq x y) pc
+        | VXor(x, y) -> let (c, pc) = recur (-(x == y)) in c, transEq (xorEq x y) pc
         | VNot a ->
             match view a with
             | VAtom -> p, refl p                                                       // ¬atom is a literal
-            | VNot b -> let (c, pc) = toCnfRec b in c, transEq (dnegEq b) pc               // ¬¬b = b
-            | VAnd(x, y) -> let (c, pc) = toCnfRec ((-x) + (-y)) in c, transEq (dmAndEq x y) pc
-            | VOr(x, y) -> let (c, pc) = toCnfRec ((-x) * (-y)) in c, transEq (dmOrEq x y) pc
-            | VImp(x, y) -> let (c, pc) = toCnfRec (-((-x) + y)) in c, transEq (congNot (implEq x y)) pc
-            | VIff(x, y) -> let (c, pc) = toCnfRec (-((x ==> y) * (y ==> x))) in c, transEq (congNot (iffEq x y)) pc
-            | VXor(x, y) -> let (c, pc) = toCnfRec (-(-(x == y))) in c, transEq (congNot (xorEq x y)) pc
+            | VNot b -> let (c, pc) = recur b in c, transEq (dnegEq b) pc                  // ¬¬b = b
+            | VAnd(x, y) -> let (c, pc) = recur ((-x) + (-y)) in c, transEq (dmAndEq x y) pc
+            | VOr(x, y) -> let (c, pc) = recur ((-x) * (-y)) in c, transEq (dmOrEq x y) pc
+            | VImp(x, y) -> let (c, pc) = recur (-((-x) + y)) in c, transEq (congNot (implEq x y)) pc
+            | VIff(x, y) -> let (c, pc) = recur (-((x ==> y) * (y ==> x))) in c, transEq (congNot (iffEq x y)) pc
+            | VXor(x, y) -> let (c, pc) = recur (-(-(x == y))) in c, transEq (congNot (xorEq x y)) pc
 
     /// Convert `p` to CNF, returning `(cnf, proof : p == cnf)`.
     ///
-    /// The recursive descent above emits every clause distribution produces, and most of them can be
-    /// **tautological** — a clause holding both `v` and `¬v`. Nested `≢` is the extreme case: xor
-    /// associativity over three variables yields 441 clauses of which **433 are tautologies**, and
-    /// the 8 that remain are exactly what the solver-side clausifier `SAT.cnfOfNegatedGoal` produces
-    /// (it drops them in `normClause`). Carrying the other 433 into the kernel replay is what used to
-    /// overflow its stack.
+    /// Distribution emits a great many clauses that are **tautological** — holding both `v` and
+    /// `¬v`. Nested `≢` is the extreme case: xor associativity over three variables yields 441
+    /// clauses of which **433 are tautologies**, and the 8 that remain are exactly what the
+    /// solver-side clausifier `SAT.cnfOfNegatedGoal` produces (it drops them in `normClause`).
+    /// Carrying the other 433 into the kernel replay is what used to overflow its stack.
     ///
-    /// So the last move is to prune them, with a proof — a clause holding a complementary pair is
-    /// `T`, and `X ∧ T` is `X`. Measured: 441 → 8 clauses. This is a pure size reduction; the result
-    /// is still clean CNF and still equal to `p`.
+    /// So they are dropped, with a proof — a clause holding a complementary pair is `T`, and
+    /// `X ∧ T` is `X`. Dropping happens in `distribOr`, at the moment each clause is built, rather
+    /// than in one pass over the finished conjunction: distribution is multiplicative, so a
+    /// tautology left in an intermediate is multiplied against every clause of every enclosing `∨`.
+    /// The end result is the same either way; pruning early is what keeps the intermediates, and
+    /// hence the conversion itself, the size of the answer. Measured on 4-variable xor
+    /// associativity: 229 s → 0.4 s.
     ///
-    /// The pruning works CLAUSE BY CLAUSE, by congruence, for two reasons. It must not simplify
-    /// ACROSS clauses, because that destroys the clause structure the caller needs: the CNF of
+    /// The pruning is CLAUSE-LOCAL, by congruence, for two reasons. It must not simplify ACROSS
+    /// clauses, because that destroys the clause structure the caller needs: the CNF of
     /// `¬(p ∨ ¬p)` is `¬p ∧ p`, which contains no tautological clause but which a global `simp`
-    /// collapses to `F`, leaving nothing to clausify. And justifying the whole pruning with one
-    /// `simp` is unreliable anyway — it fails on `∨`-over-`∧` distributivity, where `simp` also
-    /// dedups literals and absorbs, and the two sides do not converge. Locally, each obligation is
-    /// just `clause == T` on a single clause, which `simp` discharges from the complementary pair.
-    let rec private prune (p: Prop) : Prop * Theorem option =
-        match expand p.Expr with
-        | And(a, b) ->
-            let (pa, ta) = prune (pOf a)
-            let (pb, tb) = prune (pOf b)
-            match ta, tb with
-            | None, None -> p, None
-            | _ ->
-                let isT (x: Prop) = match expand x.Expr with True -> true | _ -> false
-                let rewrites =
-                    [ match ta with Some t -> yield Ident t |> at [ left_branch; left_branch ] | None -> ()
-                      match tb with Some t -> yield Ident t |> at [ left_branch; right_branch ] | None -> () ]
-                // Having rewritten each side, collapse a `T` conjunct away (Gries 3.39).
-                let result, collapse =
-                    if isT pa && isT pb then pb, [ ident_and T |> at_left ]
-                    elif isT pa then pb, [ commute_and T pb |> at_left; ident_and pb |> at_left ]
-                    elif isT pb then pa, [ ident_and pa |> at_left ]
-                    else (pa * pb), []
-                result, Some(theorem prop_calculus ((pOf a * pOf b) == result) (rewrites @ collapse))
-        | clause ->
-            let rec litsOf (e: Expr) = match e with Or(x, y) -> litsOf x @ litsOf y | _ -> [ e ]
-            let ls = litsOf clause
-            if ls |> List.exists (function Not a -> ls |> List.exists (fun m -> sequal m a) | _ -> false)
-            then T, Some(theorem prop_calculus (p == T) [ simp ])
-            else p, None
-
+    /// collapses to `F`, leaving nothing to clausify. And justifying the pruning with one `simp` is
+    /// unreliable anyway — it fails on `∨`-over-`∧` distributivity, where `simp` also dedups
+    /// literals and absorbs, and the two sides do not converge. Locally, each obligation is just
+    /// `clause == T` on a single clause, which `simp` discharges from the complementary pair.
     let toCnf (p: Prop) : Prop * Theorem =
-        let (c, pf) = toCnfRec p
-        match prune c with
-        | _, None -> c, pf
-        // Every clause a tautology means the conjunction is `T` — not a clause set at all. Keep the
-        // original so the caller still has something to clausify (and finds it unsatisfiable).
-        | pruned, _ when (match expand pruned.Expr with True -> true | _ -> false) -> c, pf
-        | pruned, Some t -> pruned, transEq pf t
+        match toCnfRec true p with
+        // Every clause a tautology means the conjunction is `T` — not a clause set at all. Convert
+        // again without pruning, so the caller still has something to clausify.
+        | c, _ when isT c -> toCnfRec false p
+        | r -> r
 
     /// True if `p` is in CNF (∧ of clauses; each a ∨ of literals; negation only on atoms).
     let rec isCnf (p: Prop) : bool =
