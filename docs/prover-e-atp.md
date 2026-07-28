@@ -192,38 +192,50 @@ The mechanism:
    `exists_intro` instance is added to the antecedent as a (proven) hypothesis, giving the kernel-checked
    certificate `(∧ used ∧ [Q[E] ⇒ ∃x|:Q]) ⇒ (∃x|:Q)`. This is the genuinely **E-guided** case: E's proof
    picks the instance `E`; without it Sylvia wouldn't know which term to introduce.
-5. Otherwise → `ProvableButManual`, and the narrowed fact set is the starting point for a hand / LLM proof.
+5. **∀-instantiation reconstruction** (`tryForallInst`): for a bare existential goal `∃x |: Q` whose
+   used facts include **universals**, instantiate each at E's witness term with `inst` (Gries 9.13,
+   `(∀y|:F) ⇒ F[E]`), add `exists_intro` at the same term, and discharge the residual with `decide`.
+6. **∃-elimination *then* ∀-instantiation** (`tryWitnessForallInst`): when there is no ground witness
+   — E's is a Skolem constant out of an existential fact — eliminate that fact to a fresh `x̂` via
+   `witness`, and do the instantiation *inside* the witness obligation, where `x̂` is in scope.
+7. Otherwise → `ProvableButManual`, and the narrowed fact set is the starting point for a hand / LLM proof.
 
-`tryExistsIntro` fires only when the used facts are **ground** — if any is universal it defers, because
-that certificate would carry large quantified atoms (see the frontier note).
+The `inst` / `exists_intro` instances are **discharged** from the final statement (`conjThms` +
+`dischargeHyps`: rewriting `G` to `H ⇒ G` is an equality step because `⊢ H`, then `rshunt` re-forms the
+antecedent). So a reconstruction proves exactly `(∧ used facts) ⇒ goal`, not that plus the machinery
+it needed — the example asserts this structurally rather than accepting whatever comes back.
 
-Demonstrated (6/6): (1) goal `s` among seven propositional lemmas → E filters to `{f1,f2,f3}`, Sylvia
-certifies `((p⇒q) ∧ (q⇒s) ∧ p) ⇒ s`; (2) `∃x. r x` from **universal** facts → boundary; (3)
-`(∃x|: p x ∧ (p x⇒q)) ⇒ q` → **∃-elimination via `witness`**; (4) `∃x. q x` from ground facts
-`p(a), p(a)⇒q(a)` → **∃-introduction at E's witness `a`**; (5) `∃x. r x` from `p(a)` + universal rules →
-∀-instantiation boundary; (6) a non-theorem → `CounterSatisfiable`, not reconstructed.
+Demonstrated (7/7): (1) goal `s` among seven propositional lemmas → E filters to `{f1,f2,f3}`, Sylvia
+certifies `((p⇒q) ∧ (q⇒s) ∧ p) ⇒ s`; (2) `∃x. r x` from universal facts + an existential →
+**∃-elimination then ∀-instantiation**; (3) `(∃x|: p x ∧ (p x⇒q)) ⇒ q` → **∃-elimination via
+`witness`**; (4) `∃x. q x` from ground facts `p(a), p(a)⇒q(a)` → **∃-introduction at E's witness `a`**;
+(5) `∃x. r x` from `p(a)` + universal rules → **∀-instantiation at `a`**; (6) a propositional
+non-theorem and (7) a first-order non-theorem of the same shape as (2)/(5) → `CounterSatisfiable`,
+nothing reconstructed.
 
-The remaining frontier is **∀-instantiation** (2, 5): the reduction is mechanically clear — instantiate
-each universal used-fact at the witness with `inst` (Gries 9.13, `(∀y|:F) ⇒ F[E]`), add it and
-`exists_intro` to the certificate, and it becomes propositional. The bottleneck is purely the
-*propositional* reconstruction prover, **not E** (E answers in ~40 ms throughout). Both `autoproof_anf`
-(complete, ANF/Boolean-ring) and the heuristic `autoproof` are **exponential in the atom count** and hang
-at ~6 atoms with this nested-implication (Horn) structure — the ∀-instantiation certificate has 6
-(`p(a), ∀x.p⇒q, ∀x.q⇒r, q(a), r(a), ∃x.r x`). Confirmed empirically: `autoproof_anf` is ≈22 s at 4
-atoms and non-terminating at 6. **Atom-abstraction does *not* help** — replacing the (large, quantified)
-atoms with fresh boolean variables leaves the atom *count* unchanged, and the 6-boolvar skeleton hangs
-`autoproof_anf` and `autoproof` just the same. The true fix is a **scalable propositional decision
-procedure** (DPLL/CDCL or ordered resolution) that avoids full ANF expansion — a substantial, separate
-piece of Sylvia infrastructure. Deeper cases (nested / mixed quantifiers) then want a fuller Metis-style
-internal search. E keeps delivering the parts that don't need it — a provability verdict, a relevance
-filter, the witness term — and gates every reconstruction; the wall is Sylvia's own propositional prover.
+### 7.1 How the ∀-instantiation boundary fell
+
+This was the standing frontier of the whole E arc, and it is worth recording why it moved, because the
+diagnosis had been right for a long time before the fix existed.
+
+The reduction was always mechanically clear. The bottleneck was purely the *propositional* reconstruction
+prover, **not E** — E answered in ~40 ms throughout. Both `autoproof_anf` (complete, ANF/Boolean-ring)
+and the heuristic `autoproof` are **exponential in atom count** and hang at ~6, and the ∀-instantiation
+certificate has exactly 6: `p(a), ∀x.p⇒q, ∀x.q⇒r, q(a), r(a), ∃x.r x`. Measured: ≈22 s at 4 atoms,
+non-terminating at 6. **Atom-abstraction did not help** — replacing the large quantified atoms with fresh
+boolean variables leaves the *count* unchanged, and the 6-boolvar skeleton hung just the same.
+
+`PropCalculus.decide` with the SAT backend installed has no atom ceiling, so the same certificate is now
+discharged in well under a second. Nothing about the reduction changed; only the prover underneath it.
+Deeper cases (nested / mixed quantifiers, several witnesses) still want a fuller Metis-style internal
+search — see the open items below.
 
 ## 8. Files
 
 - `src/lang/atp/Sylvia.ATP.E/E.fs` — the `ATP` module: translator, `EProver`, status/fact parsing.
 - `src/lang/atp/Sylvia.ATP.E/Sylvia.ATP.E.fsproj` — thin project (references `Sylvia.Expressions` + Runtime).
 - `examples/atp/E.fsx` — translation + verdicts against live E (5/5).
-- `examples/atp/Sledgehammer.fsx` — relevance filter + reconstruction loop: propositional, ∃-elimination (`witness`), ∃-introduction (`exists_intro` + E's `--answers` witness); ∀-instantiation is the documented boundary (6/6).
+- `examples/atp/Sledgehammer.fsx` — relevance filter + five reconstruction routes: propositional, ∃-elimination (`witness`), ∃-introduction (`exists_intro` + E's `--answers` witness), ∀-instantiation (`inst`), and ∃-elim-then-∀-inst (7/7).
 - `bin/eprover-E-3.3.5/eprover.exe` — the bundled Windows (MSYS2) build; `reference/books/eprover.pdf` — the manual.
 
 ## 9. Status and next steps
@@ -234,8 +246,24 @@ filter, the witness term — and gates every reconstruction; the wall is Sylvia'
 - **Loop** — relevance filtering + native certification for the propositional-modulo-lemmas fragment,
   **∃-elimination `(∃x|R:P) ⇒ Q`** (via `witness`), and **∃-introduction `∃x|:Q`** (via `exists_intro`
   at E's `--answers` witness term); honest boundary otherwise.
-- **Open** — (a) a **scalable propositional decision procedure** (DPLL/CDCL or ordered resolution) to
-  unblock **∀-instantiation**: both `autoproof_anf` and `autoproof` are exponential in atom *count* and
-  hang at ~6 atoms; atom-abstraction was tried and does not help (the blowup is count, not size). The
-  bottleneck is Sylvia's prop prover, not E (§7). (b) a set-algebra encoding E can actually saturate
-  (§6); (c) promoting the Sledgehammer orchestration into a module (`Sylvia.ATP.Sledgehammer`).
+- **∀-INSTANTIATION — DONE (2026-07-25).** The standing boundary of this whole arc is closed. It was
+  never an E limitation (E answered in ~40 ms throughout); the blocker was Sylvia's own residual
+  prover, since a reconstruction certificate carries the quantified facts as opaque atoms (`∀x.…`,
+  `∃x.…`) *alongside* their instances, and `autoproof_anf` is exponential in atom count.
+  `PropCalculus.decide` with the `Sylvia.Prover.SAT` backend installed removes that ceiling (see
+  [`prover-sat-reconstruction.md`](prover-sat-reconstruction.md)), and two new routes close:
+  - **D, ∀-instantiation** — goal `∃x|:Q` from universal facts: instantiate each at E's witness term
+    with `inst` (9.13), introduce the goal's existential with `exists_intro` (9.28), discharge with
+    `decide`. Proves `(p a ∧ ∀x.(p x⇒q x) ∧ ∀x.(q x⇒r x)) ⇒ ∃x. r x`.
+  - **E, ∃-elimination then ∀-instantiation** — when there is no ground witness (E's is a Skolem
+    constant), eliminate an existential *fact* to a fresh `x̂` via `witness` (9.30) and instantiate
+    the universals at `x̂`. Proves `(∃x.p x) ⇒ ((∀x.(p x⇒q x) ∧ ∀x.(q x⇒r x)) ⇒ ∃x. r x)`.
+
+  The `inst`/`exists_intro` instances that carry the quantifier reasoning are **discharged**, so the
+  final statement is exactly `(∧ used facts) ⇒ goal` rather than that plus the machinery; the example
+  asserts the statement structurally, and a first-order negative control checks the routes do not
+  fabricate. `examples/atp/Sledgehammer.fsx` is 7/7.
+- **Open** — (a) a set-algebra encoding E can actually saturate (§6); (b) promoting the Sledgehammer
+  orchestration into a module (`Sylvia.ATP.Sledgehammer`); (c) the routes instantiate at ONE witness
+  term and handle a single existential fact — multi-witness / nested-quantifier goals are the next
+  generalisation.

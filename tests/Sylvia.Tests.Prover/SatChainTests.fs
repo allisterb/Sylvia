@@ -140,7 +140,8 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
 
     do Proof.LogLevel <- 0
 
-    let p, q, r = boolvar "p", boolvar "q", boolvar "r"
+    let p, q, r, s = boolvar "p", boolvar "q", boolvar "r", boolvar "s"
+    let t, u, v, w = boolvar "t", boolvar "u", boolvar "v", boolvar "w"
 
     /// The bundled solver, if this checkout has one: walk up from the test assembly for bin/cadical.exe,
     /// else fall back to whatever `Cadical()` resolves (SYLVIA_CADICAL / PATH).
@@ -208,3 +209,83 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
             match SatProof.tryProveWith (Cadical(exePath = "no-such-cadical.exe")) (p + !!p) with
             | Ok _ -> Assert.Fail "a missing solver cannot have proved anything"
             | Error e -> Assert.Contains("not found", e)
+
+    [<Fact>]
+    member _.``decide falls back to the atom-capped prover when no backend is installed`` () =
+        // The guard is on the EXPONENTIAL provers, not on propositional proof as such — so with no
+        // decider registered, a small goal still proves and a large one fails fast with a message
+        // that points at the SAT route rather than just quoting the limit.
+        SatProof.uninstall ()
+        let small = p + !!p
+        Assert.True(sequal (PropCalculus.decide small).Stmt (expand small.Expr))
+        let big = ((p ==> q) * (q ==> r) * (r ==> s) * (s ==> t) * (t ==> u)) ==> (p ==> u)
+        Assert.True(PropCalculus.prop_atom_count (expand big.Expr) > PropCalculus.autoproof_max_atoms)
+        let e = Assert.ThrowsAny<exn>(fun () -> PropCalculus.decide big |> ignore)
+        Assert.Contains("Sylvia.Prover.SAT", e.Message)
+
+    [<Fact>]
+    member _.``installing the SAT backend lifts decide's atom ceiling`` () =
+        match solver with
+        | None -> out.WriteLine "SKIPPED (no cadical): examples/sat/Reconstruct.fsx is the end-to-end gate"
+        | Some sat ->
+            // 8 atoms — well past `autoproof_max_atoms`, which is NOT raised: the point is that the
+            // limit only governs the fallback, so installing a scalable decider removes the ceiling
+            // without making the exponential provers attempt anything they cannot finish.
+            let big = ((p ==> q) * (q ==> r) * (r ==> s) * (s ==> t) * (t ==> u) * (u ==> v) * (v ==> w)) ==> (p ==> w)
+            Assert.Equal(5, PropCalculus.autoproof_max_atoms)
+            Assert.True(PropCalculus.prop_atom_count (expand big.Expr) > PropCalculus.autoproof_max_atoms)
+            try
+                SatProof.installWith sat
+                let th = PropCalculus.decide big
+                Assert.True(sequal th.Stmt (expand big.Expr), sprintf "proved %s, expected the goal" (src th.Stmt))
+            finally SatProof.uninstall ()
+
+    [<Fact>]
+    member _.``decide rejects a decider that answers a different question`` () =
+        // `prop_decider` is a registration slot for code outside the kernel assembly, so `decide`
+        // re-checks the statement. This is what keeps the slot from widening the trusted base.
+        try
+            // A perfectly valid theorem — of the WRONG proposition.
+            PropCalculus.prop_decider <-
+                Some(fun _ -> theorem PropCalculus.prop_calculus (q + !!q)
+                                  [ PropCalculus.excluded_middle' q |> PropCalculus.Taut' |> apply ])
+            // Must be ABOVE the atom guard, or `decide` never consults the decider at all.
+            let big = ((p ==> q) * (q ==> r) * (r ==> s) * (s ==> t) * (t ==> u) * (u ==> v)) ==> (p ==> v)
+            Assert.True(PropCalculus.prop_atom_count (expand big.Expr) > PropCalculus.autoproof_max_atoms)
+            let e = Assert.ThrowsAny<exn>(fun () -> PropCalculus.decide big |> ignore)
+            Assert.Contains("but the goal was", e.Message)
+        finally SatProof.uninstall ()
+
+    [<Fact>]
+    member _.``installing a backend never makes a small goal slower or worse`` () =
+        // The two provers blow up on different axes, so `decide` routes by atom count instead of
+        // always preferring the backend. Regression guard: with the backend installed, goals under
+        // the atom limit must still go to the in-kernel prover. `∨`-over-`∧` distributivity and xor
+        // associativity are 3-atom goals that the in-kernel prover does in ~1 ms and 0 ms, while
+        // clausification for the SAT route explodes on their nesting (8.3 s, and a STACK OVERFLOW —
+        // which no try/catch can rescue, so this has to be prevented, not handled).
+        match solver with
+        | None -> out.WriteLine "SKIPPED (no cadical): examples/sat/Reconstruct.fsx is the end-to-end gate"
+        | Some sat ->
+            try
+                SatProof.installWith sat
+                for g in [ (p * (q + r)) == ((p * q) + (p * r))
+                           ((p != q) != r) == (p != (q != r))
+                           p + !!p ] do
+                    Assert.True(PropCalculus.prop_atom_count (expand g.Expr) <= PropCalculus.decide_max_anf_atoms)
+                    let th = PropCalculus.decide g
+                    Assert.True(sequal th.Stmt (expand g.Expr))
+            finally SatProof.uninstall ()
+
+    [<Fact>]
+    member _.``the routing preference never costs a solver-free caller a goal it could prove`` () =
+        // `decide_max_anf_atoms` (3) is a PREFERENCE — above it `decide` would rather use the
+        // backend. `autoproof_max_atoms` (5) is a GUARD — beyond it the in-kernel prover stops
+        // working. They are separate knobs precisely so that a 4- or 5-atom goal with no backend
+        // installed still falls back to the in-kernel prover instead of failing on the preference.
+        SatProof.uninstall ()
+        Assert.True(PropCalculus.decide_max_anf_atoms < PropCalculus.autoproof_max_atoms)
+        let g = ((p ==> q) * (q ==> r) * (r ==> s)) ==> (p ==> s)     // 4 atoms: above pref, below guard
+        let n = PropCalculus.prop_atom_count (expand g.Expr)
+        Assert.True(n > PropCalculus.decide_max_anf_atoms && n <= PropCalculus.autoproof_max_atoms)
+        Assert.True(sequal (PropCalculus.decide g).Stmt (expand g.Expr))

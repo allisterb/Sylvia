@@ -84,4 +84,37 @@ try
     ok "SatProof.SatWith closes a subgoal inside a hand proof" (sequal th.Stmt (expand (sub + r).Expr))
 with e -> ok "SatProof.SatWith closes a subgoal inside a hand proof" false; printfn "      %s" (e.Message.Split('\n').[0])
 
+// ---- lifting the atom ceiling ------------------------------------------------------------------
+// `PropCalculus.decide` is the theory-level entry point. On its own it falls back to `autoproof_anf`,
+// which is complete but exponential in the atom count and so is capped at `autoproof_max_atoms`.
+// Installing this backend registers it as the decider, and the cap stops mattering — note that the
+// cap itself is NOT raised: it still guards the exponential prover, which is the only thing it was
+// ever protecting against.
+printfn "\nPropCalculus.decide, with and without the SAT backend:"
+let eightAtom = ((p ==> q) * (q ==> r) * (r ==> s) * (s ==> t) * (t ==> u) * (u ==> v) * (v ==> w)) ==> (p ==> w)
+printfn "  goal has %d atoms; autoproof_max_atoms = %d" (prop_atom_count (expand eightAtom.Expr)) autoproof_max_atoms
+
+SatProof.uninstall ()
+(try decide eightAtom |> ignore; ok "decide refuses it with no backend installed" false
+ with e -> ok "decide refuses it with no backend installed" true
+           printfn "      %s" ((e.Message.Split('\n').[0]).Substring(0, 96) + "…"))
+(try ok "decide still proves a small goal from the fallback" (sequal (decide (p + !!p)).Stmt (expand (p + !!p).Expr))
+ with _ -> ok "decide still proves a small goal from the fallback" false)
+
+SatProof.installWith sat
+(try
+    let sw = System.Diagnostics.Stopwatch.StartNew()
+    let th = decide eightAtom
+    sw.Stop()
+    printfn "      ⊢ %s   (%dms)" (prop_calculus.PrintFormula th.Stmt) sw.ElapsedMilliseconds
+    ok "decide proves it once the SAT backend is installed" (sequal th.Stmt (expand eightAtom.Expr))
+ with e -> ok "decide proves it once the SAT backend is installed" false; printfn "      %s" (e.Message.Split('\n').[0]))
+// The registration slot does not widen the trusted base: `decide` re-checks that what came back is
+// a theorem of the goal it asked about. (Asked with an OVER-the-limit goal — under it, `decide`
+// routes to the in-kernel prover and never consults the decider at all.)
+prop_decider <- Some(fun _ -> theorem prop_calculus (q + !!q) [ excluded_middle' q |> Taut' |> apply ])
+(try decide eightAtom |> ignore; ok "decide rejects a decider that answers a different question" false
+ with _ -> ok "decide rejects a decider that answers a different question" true)
+SatProof.uninstall ()
+
 printfn "\n%s  (%d failed)" (if failures = 0 then "ALL GREEN" else "FAILURES") failures

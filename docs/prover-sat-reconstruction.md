@@ -7,7 +7,7 @@
 end-to-end for propositional goals with NO atom-count ceiling (verified through 12 atoms — Peirce,
 implication chains, biconditionals). New trusted theorems `resolve` and `combine_implies`, a recursive CNF converter
 `Cnf.toCnf`, a general `Memo` combinator, and the `Sylvia.Solver.CaDiCaL` project are all in the tree;
-suite is **110/110**. The pipeline is a library — **`Sylvia.Prover.SAT` / `SatProof.prove`** (§4.6) —
+suite is **113/113**. The pipeline is a library — **`Sylvia.Prover.SAT` / `SatProof.prove`** (§4.6) —
 not a script.
 Both step 1 (the resolution replay) and step 2 (the CNF-equivalence link) now scale.
 
@@ -231,16 +231,11 @@ lemmas — **no new kernel primitive**:
 | `SatProof.proveWith : Cadical -> Prop -> Theorem` | Same, with an explicit solver (path, timeout). `proveWithLog` keeps the kernel trace. |
 | `SatProof.tryProve` / `tryProveWith` | `Result<Theorem,string>`. The message distinguishes **"NOT a theorem"** from "solver not found / timed out" — a caller choosing whether to fall back needs to know which. |
 | `SatProof.Sat` / `SatWith` | The proof as a `Rule`, so a SAT-discharged subgoal can sit inside a hand-written proof: `SatProof.SatWith sat sub \|> apply_left`. |
+| `SatProof.install` / `installWith` / `uninstall` | Register this backend as `PropCalculus.decide`'s decider — see §4.10. |
 | `SatProof.clausesOf` / `dedupCnf` / `refute` / `conjElimAll` | The stages, exposed for testing and for callers that want the refutation rather than the theorem. |
 
 Proof logging is silenced for the duration of a `prove` and restored afterwards (the `Calc` precedent)
 — a reconstruction emits thousands of kernel steps, which is noise at any call site.
-
-An earlier draft considered instead registering the SAT backend into `PropCalculus` through a mutable
-oracle hook, so `autoproof` would upgrade transparently. That was rejected on evidence: **there are no
-in-library callers of `autoproof_anf`** — `metaset` and the E Sledgehammer loop are both `.fsx`
-consumers, above the libraries — so the hook would have bought mutable global state and load-order
-dependence for no caller that exists. Adding one later is easy; removing one is not.
 
 The stages themselves:
 
@@ -336,9 +331,91 @@ goals close:
 to `VAtom`, abstracting the whole subformula away — which is sound but leaves a valid xor goal
 unprovable, reported as "¬φ is satisfiable".
 
+### 4.10 `PropCalculus.decide` — lifting the atom ceiling
+
+`autoproof_max_atoms = 5` is a fail-fast guard on the *exponential* provers. It is **not raised** —
+raising it would not make `autoproof_anf` scale, only let it run longer before hanging. Instead
+`PropCalculus.decide : Prop -> Theorem` **routes by atom count**, on its own knob:
+
+- **at or below `decide_max_anf_atoms` (3)** → the in-kernel `autoproof_anf`;
+- **above it** → the installed decider (no atom ceiling); with none installed it still falls back to
+  the in-kernel prover, which works up to `autoproof_max_atoms`, and only then does the guard fire.
+
+The two thresholds are deliberately separate. `autoproof_max_atoms` (5) is a **guard** — where the
+exponential prover stops working at all (12 s at 5 atoms, fails at 6). `decide_max_anf_atoms` (3) is
+a **preference** — where the backend simply becomes better, which happens earlier. Collapsing them
+would make a solver-free caller *fail* on 4- and 5-atom goals it can currently prove in 1–12 s.
+
+Routing rather than always preferring the backend is not a hedge — **neither prover dominates**, and
+an unconditional dispatch is a regression. The two blow up on different axes: `autoproof_anf` is
+exponential in atom count (exactly what the guard bounds) but untroubled by deep ∨/∧ nesting, while
+the SAT route has no atom ceiling but pays clausification on precisely that nesting. Measured on
+small goals, with the backend installed:
+
+| goal | in-kernel | SAT route |
+|---|---:|---:|
+| `∨` over `∧` distributivity (3 atoms) | **1 ms** | 8328 ms |
+| xor associativity (3 atoms) | **0 ms** | **stack overflow** |
+| `p ∨ ¬p` (2 atoms) | 25 ms | 224 ms |
+
+The overflow is the decisive one: a `StackOverflowException` cannot be caught, so there is no
+try-the-backend-then-fall-back option — the routing has to prevent it. With the atom check in place,
+installing a backend **extends** `decide` rather than altering it: goals under the limit prove exactly
+as they did before. A regression test pins this.
+
+### 4.11 Where the routing threshold came from, and why reuse dominates
+
+The two routes produce *very different proof objects* of the same statement, and the difference is
+larger downstream than it is at construction. Measured on implication chains (the shape ANF handles
+worst) and on `∨`-over-`∧` distributivity (the shape the SAT route handles worst):
+
+| goal | atoms | ANF time | SAT time | ANF top-level steps | SAT top-level steps | ANF peak expr | SAT peak expr |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| Peirce | 2 | **11 ms** | 220 ms | 28 | 2 | 80 | — |
+| chain 3 | 3 | **95 ms** | 489 ms | 100 | 2 | 361 | 339 |
+| chain 4 | 4 | 1130 ms | **340 ms** | 396 | 2 | 1513 | 465 |
+| chain 5 | 5 | 12389 ms | **432 ms** | 1496 | 2 | 5833 | 591 |
+| distributivity | 3 | **0 ms** | 7753 ms | 8 | 2 | 40 | — |
+
+ANF emits **few enormous steps** — its peak intermediate expression grows ~4× per atom, because it
+materialises the exponentially-large polynomial as one term. The SAT replay emits **many tiny steps**
+— peak grows ~1.3×, since it works clause by clause. Its derivation *tree* is larger (3897 vs 396
+nodes at chain-4) yet far cheaper, because kernel step cost is O(|expr|).
+
+**Reuse is the bigger effect.** `Tactics.Taut` builds a new `Proof` whose steps are the theorem's own
+step list plus one — and constructing a `Proof` executes its steps. So every use of a theorem replays
+its whole top-level derivation. On a 4-atom chain, using the theorem inside another proof costs
+**150 ms** (ANF, 396 steps) versus **0.22 ms** (SAT, 2 steps) — ~680×. `Taut th` alone, with no
+application at all, is 152 ms versus 0.16 ms.
+
+That is what set the threshold at 3: at 4+ atoms the backend wins on construction *and* on reuse, so
+there is no trade to make. Below 3 the in-kernel prover wins on both (its proofs there are also short
+— 8 steps for distributivity — so they are cheap to reuse). Note this cost attaches to the *tactic*,
+not the route: all fourteen step-transforming tactics in `Tactics.fs` splice `proof.Steps` the same
+way. `Ident`/`Subst` does **not** — it wraps the existing proof, and measures as free.
+
+The kernel cannot reference a solver — `Sylvia.Prover` must stay solver-free, and the dependency
+runs the other way — so the backend registers *itself*, through `PropCalculus.prop_decider`, via
+`SatProof.install()`. This is the mutable oracle hook considered and rejected in §4.6's design
+discussion; what changed is that there is now a caller for it. It is deliberately narrow:
+
+- a **registration slot**, not general dispatch: `decide` is its only consumer;
+- **explicit**, not a module initializer — a caller that has not asked for the SAT route keeps the
+  previous solver-free behaviour, and `uninstall()` restores it;
+- **it does not widen the trusted base.** The registered function comes from outside the assembly,
+  so `decide` verifies (by `sequal`) that what came back is a theorem of the goal it asked about. An
+  incorrect installer can cause a failure but cannot inject a theorem of something else — there is a
+  test that registers a decider returning a valid theorem of the *wrong* proposition and asserts it
+  is rejected.
+
+```fsharp
+SatProof.installWith sat
+let th = PropCalculus.decide eightAtomGoal      // ⊢ … , ~0.6 s, no ceiling
+```
+
 ## 5. Tests and demos
 
-- **Suite 110/110** (`tests/Sylvia.Tests.Prover/`): in `KernelProofTests.fs` — `resolve` (atoms,
+- **Suite 113/113** (`tests/Sylvia.Tests.Prover/`): in `KernelProofTests.fs` — `resolve` (atoms,
   compound-clause robustness, tautology-vs-oracle incl. the empty-clause `resolve F F p`), `Memo`
   (cache-hit same-instance, distinct-arg no-collision), `combine_implies`, `Cnf.toCnf` (checked
   equivalence to clean CNF at up to 6 atoms, both xor polarities), `_chain_simp` in the
@@ -379,6 +456,10 @@ end-to-end through 8 atoms: 2→5 s, 5→39 s, 8→142 s).
 - **Step 2 (CNF-equivalence)** — `¬φ = A` is produced by `Cnf.toCnf`, a recursive CNF proof that is
   size-bounded, not atom-exponential. The old `autoproof_anf` ≤5-atom ceiling is gone.
 
+> **Update 2026-07-25 (the ceiling is gone).** `PropCalculus.decide` with the backend installed
+> proves goals past `autoproof_max_atoms` — the 8-atom chain in ~0.6 s, where the guard used to fail
+> fast. The guard itself is unchanged and still protects the exponential fallback; see §4.10.
+
 > **Update 2026-07-25 (replay completeness).** The replay no longer skips anything. Every LRAT step
 > is unfolded into binary resolutions by `SAT.rupChain` (§4.7); merge resolvents are discharged by a
 > `simp` that is now confluent on clauses (§4.8); and the input side is deduped, weakened and
@@ -406,12 +487,21 @@ concern that motivates a fresh-start redesign.
    and cheaper proof steps / a proof object with `instantiate`. See the architectural-limits memory.
 2. ~~**Merge-clause AC-dedup.**~~ **DONE (2026-07-25)** — `_chain_simp` (§4.8).
 3. ~~**Non-binary RUP steps.**~~ **DONE (2026-07-25)** — `SAT.rupChain` (§4.7). They are not rare.
-4. **Clausification blowup (formula size).** `Cnf.toCnf` and `cnfOfNegatedGoal` both distribute
-   directly, which is exponential in the formula's ∨/∧ nesting — independent of the atom count that
-   used to be the ceiling. Nested `≢` is where it bites first: xor associativity over 3 variables
-   produces **441 clauses / 2940 literals**, enough to overflow the replay's stack, while xor
-   commutativity (36 clauses) reconstructs fine. Tseitin/Plaisted-Greenbaum is the fix; the cost is
-   teaching the replay to discharge the definitional clauses for the auxiliary variables.
+4. **Clausification blowup (formula size).** `Cnf.toCnf` distributes directly, which is exponential
+   in the formula's ∨/∧ nesting — independent of the atom count that used to be the ceiling. Nested
+   `≢` is where it bites first: xor associativity over 3 variables produces **441 clauses / 2940
+   literals**, enough to overflow the replay's stack, while xor commutativity (36 clauses)
+   reconstructs fine. Tseitin/Plaisted-Greenbaum is the general fix; the cost is teaching the replay
+   to discharge the definitional clauses for the auxiliary variables.
+
+   **But measure before reaching for Tseitin.** The solver-side clausifier `cnfOfNegatedGoal` emits
+   only **8 clauses** for that same goal, in 6 ms — because it expands `x ≢ y` directly to
+   `(x ∨ y) ∧ (¬x ∨ ¬y)`, whereas `Cnf.toCnf` routes through `¬(x = y)` → mutual implication →
+   distribute, which multiplies out. So a large part of this particular blowup is a **bad expansion
+   choice in one case of `Cnf.toCnf`, not an inherent property of CNF**. Giving it a direct
+   `≢`-to-CNF theorem (`(p ≢ q) = ((p ∨ q) ∧ (¬p ∨ ¬q))`) is a much smaller change than Tseitin and
+   should be tried first. A general audit of the other cases against the solver-side clausifier's
+   clause counts is worth doing at the same time.
 5. ~~**`absorb_or`'s positional rewrites are shape-sensitive.**~~ **DONE (2026-07-25)** — and it was
    a class, not one theorem. A reflection-driven sweep instantiating every all-`Prop`-parameter
    schema in `PropCalculus` at arguments *containing* the terms its own steps search for (`p ∨ p`,

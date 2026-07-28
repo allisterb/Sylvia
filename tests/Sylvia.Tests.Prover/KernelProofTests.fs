@@ -751,9 +751,10 @@ type KernelProofTests() =
             |> Array.filter (fun m -> m.IsStatic && m.IsPublic && not (m.Name.StartsWith "get_"))
             |> Array.filter (fun m -> m.ReturnType = typeof<Rule> || m.ReturnType = typeof<Theorem>)
             |> Array.filter (fun m -> m.GetParameters() |> Array.forall (fun pr -> pr.ParameterType = typeof<Prop>))
-            // auto/autoident/autodeduce are meta-provers: they take an arbitrary goal and search
-            // for its proof, so invoking them on a bare variable is not theorem construction.
-            |> Array.filter (fun m -> not (List.contains m.Name [ "auto"; "autoident"; "autodeduce" ]))
+            // auto/autoident/autodeduce/decide are meta-provers: they take an arbitrary goal and
+            // prove it, so invoking them on a bare variable asks them to prove `p`, which is not a
+            // theorem. They are not schemas and this sweep does not apply to them.
+            |> Array.filter (fun m -> not (List.contains m.Name [ "auto"; "autoident"; "autodeduce"; "decide" ]))
         let failures =
             methods
             |> Array.filter (fun m -> not (KernelProofTests.KnownFailing.Contains m.Name))

@@ -55,9 +55,13 @@ let propTy = typeof<Prop>
 let failures = ResizeArray<string * string * string>()
 let mutable attempted = 0
 
+// Meta-provers take an arbitrary goal and prove it; instantiating them like a schema just asks them
+// to prove a bare variable, which is not a theorem (and is slow).
+let metaProvers = set [ "auto"; "autoident"; "autodeduce"; "decide" ]
+
 let sweep (name: string) (ps: Reflection.ParameterInfo[]) (invoke: obj[] -> unit) =
     let n = ps.Length
-    if n > 0 && n <= 4 && ps |> Array.forall (fun x -> x.ParameterType = propTy) then
+    if n > 0 && n <= 4 && not (metaProvers.Contains name) && ps |> Array.forall (fun x -> x.ParameterType = propTy) then
         let tuples =
             [ yield "baseline", (List.truncate n baseArgs)
               for i in 0 .. n - 1 do

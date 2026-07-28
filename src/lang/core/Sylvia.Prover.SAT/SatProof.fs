@@ -287,3 +287,26 @@ module SatProof =
 
     /// `SatWith` with the solver resolved from `SYLVIA_CADICAL` / PATH.
     let Sat (goal: Prop) : Rule = Taut (prove goal)
+
+    (* ---------------------------------------------------------------------- *)
+    (* Registration with PropCalculus                                          *)
+    (* ---------------------------------------------------------------------- *)
+
+    /// Register this backend as `PropCalculus.decide`'s decider, so goals past
+    /// `autoproof_max_atoms` are proved by SAT refutation instead of failing fast.
+    ///
+    /// The kernel cannot reference a solver, so the dependency is inverted: this assembly registers
+    /// itself. `decide` re-checks that what comes back is a theorem of the goal it asked about, so
+    /// installing does not widen the trusted base — and the theorem is a real kernel-checked
+    /// derivation either way.
+    ///
+    /// Installing is explicit rather than automatic (no module initializer): a caller that has not
+    /// asked for the SAT route keeps the previous, solver-free behaviour, and `uninstall` restores
+    /// it. Idempotent.
+    let installWith (sat: Cadical) : unit = PropCalculus.prop_decider <- Some(proveWith sat)
+
+    /// `installWith`, resolving the solver from `SYLVIA_CADICAL` / PATH.
+    let install () : unit = installWith (Cadical())
+
+    /// Restore `PropCalculus.decide`'s solver-free fallback (`autoproof_anf`, atom-capped).
+    let uninstall () : unit = PropCalculus.prop_decider <- None

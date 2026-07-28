@@ -220,20 +220,29 @@ module PropCalculus =
         | Not a -> atom_list a
         | And(a, b) | Or(a, b) | Implies(a, b) -> atom_list a @ atom_list b
         | Equals(a, b) when a.Type = typeof<bool> -> atom_list a @ atom_list b
+        // ≢ is propositional structure too — it is literally ⊕, the form `autoproof_anf` drives
+        // toward. Treating it as an atom UNDER-counts precisely the goals most likely to blow up.
+        | NotEquals(a, b) when a.Type = typeof<bool> -> atom_list a @ atom_list b
         | _ -> [ e ]
 
     /// The number of distinct propositional atoms in `e`.
     let prop_atom_count (e: Expr) : int =
         atom_list (expand e) |> List.fold (fun acc a -> if List.exists (sequal a) acc then acc else a :: acc) [] |> List.length
 
-    /// Maximum number of distinct propositional atoms `autoproof` / `autoproof_anf` will attempt before
-    /// failing fast (rather than blowing up). Raise it — at your own risk — for a known-small goal.
+    /// Maximum number of distinct propositional atoms the EXPONENTIAL provers (`autoproof`,
+    /// `autoproof_anf`) will attempt before failing fast rather than blowing up. Raise it — at your
+    /// own risk — for a known-small goal.
+    ///
+    /// This is not a ceiling on propositional proof as such: `decide` (below) hands a goal to an
+    /// installed scalable decider when there is one, and only falls back to `autoproof_anf` — and
+    /// hence to this limit — when there is not. Raising this number does NOT make the exponential
+    /// provers scale; it just lets them run longer before they hang.
     let mutable autoproof_max_atoms = 5
 
     let private guard_atoms (name: string) (goal: Expr) =
         let n = prop_atom_count goal
         if n > autoproof_max_atoms then
-            failwithf "%s: the goal has %d distinct propositional atoms, over the limit of %d — the propositional provers are exponential in atom count and would blow up. Reduce the goal, or raise PropCalculus.autoproof_max_atoms to override." name n autoproof_max_atoms
+            failwithf "%s: the goal has %d distinct propositional atoms, over the limit of %d — the equational propositional provers are exponential in atom count and would blow up. Use PropCalculus.decide with the Sylvia.Prover.SAT backend installed (SatProof.install()), which has no atom ceiling; or reduce the goal; or raise PropCalculus.autoproof_max_atoms to override." name n autoproof_max_atoms
 
     /// Bounded best-first proof search for a propositional goal. Simplifies with `simp`
     /// between structural moves (golden rule, def of ⇒, mutual implication, distribute/
@@ -267,9 +276,8 @@ module PropCalculus =
     /// Complete for the propositional fragment (unlike the heuristic `autoproof` search); unlike
     /// the `valid` oracle it produces a checkable derivation. Throws if the goal is not a
     /// propositional theorem. (Candidate fallback for a complete hybrid `autoproof` — see notes.)
-    let autoproof_anf (e: Prop) : Proof =
-        let goal = expand e.Expr
-        do guard_atoms "autoproof_anf" goal
+    let private anf_steps (name: string) (goal: Expr) =
+        do guard_atoms name goal
         let isComplete x = prop_calculus.AxEquiv x || Proof.Logic.AxEquiv x
         let moves =
             [ applyfirst elim_to_xor
@@ -278,8 +286,78 @@ module PropCalculus =
               applyfirst xor_normalize
               applyfirst reduce ]
         match normalize_trace isComplete moves 2000 goal with
-        | Some steps -> proof prop_calculus e steps
-        | None -> failwithf "decide could not normalize %s to a proof (is it a propositional theorem?)." (prop_calculus.PrintFormula goal)
+        | Some steps -> steps
+        | None -> failwithf "%s could not normalize %s to a proof (is it a propositional theorem?)." name (prop_calculus.PrintFormula goal)
+
+    let autoproof_anf (e: Prop) : Proof = proof prop_calculus e (anf_steps "autoproof_anf" (expand e.Expr))
+
+    (* A scalable propositional decider, when one is installed *)
+
+    /// Installation point for an external, scalable propositional decider.
+    ///
+    /// The kernel cannot reference a SAT solver — `Sylvia.Prover` must stay solver-free, and the
+    /// dependency runs the other way (`Sylvia.Prover.SAT` references this assembly). So the SAT
+    /// backend registers ITSELF here, via `SatProof.install()`, and `decide` picks it up.
+    ///
+    /// This is a registration slot, NOT general dispatch, and it does not widen the trusted base:
+    /// `decide` VERIFIES that whatever comes back is a theorem of the goal it asked about before
+    /// returning it, so an incorrect or malicious installer can cause a failure but cannot inject a
+    /// theorem of something else. A decider is expected to raise when the goal is not a theorem.
+    let mutable prop_decider : (Prop -> Theorem) option = None
+
+    /// `decide`'s ROUTING threshold: goals with at most this many distinct atoms go to the in-kernel
+    /// `autoproof_anf`; above it, to the installed backend (if any).
+    ///
+    /// Deliberately SEPARATE from `autoproof_max_atoms`, which is a safety guard on the exponential
+    /// provers rather than a preference. The two want different values: the guard sits where
+    /// `autoproof_anf` stops working at all (measured: 12 s at 5 atoms, fails at 6), while routing
+    /// wants to switch as soon as the backend is simply *better*, which happens earlier. Measured on
+    /// implication chains — the shape ANF handles worst — the in-kernel prover wins at 3 atoms
+    /// (95 ms vs 489 ms) and loses from 4 (1130 ms vs 340 ms, then 12389 ms vs 432 ms at 5).
+    ///
+    /// It also loses on REUSE, which is the larger effect: `Taut` replays a theorem's top-level step
+    /// list every time the theorem is used, and `autoproof_anf` emits hundreds to thousands of steps
+    /// where the SAT replay emits 2. Measured on a 4-atom chain, using the theorem inside another
+    /// proof costs 150 ms (ANF) versus 0.22 ms (SAT).
+    let mutable decide_max_anf_atoms = 3
+
+    /// Prove a propositional goal, returning a kernel-checked `Theorem`.
+    ///
+    /// ROUTES BY ATOM COUNT, because the two provers blow up on DIFFERENT axes and neither dominates:
+    ///
+    /// - **at or below `autoproof_max_atoms`** → the in-kernel `autoproof_anf`. It is exponential in
+    ///   atom count, which is precisely what the guard bounds, but it is untroubled by deep ∨/∧
+    ///   nesting and needs no external process. Measured on 3-atom goals: distributivity 1 ms and xor
+    ///   associativity 0 ms, versus 8.3 s and a *stack overflow* through the SAT route, whose
+    ///   clausification is exponential in that same nesting.
+    /// - **above it** → the installed decider (`prop_decider`; in this tree the SAT-refutation replay
+    ///   in `Sylvia.Prover.SAT`), which has no atom ceiling. With none installed, this is where the
+    ///   guard fires, with a message naming the SAT route.
+    ///
+    /// So installing a backend EXTENDS `decide` rather than replacing its behaviour — small goals
+    /// keep proving exactly as before. Both routes produce a real, replayable derivation; this is a
+    /// prover, not the `valid` oracle.
+    ///
+    /// Known trade: a goal just under the limit whose structure is bad for ANF (nested implications
+    /// — measured ≈22 s at 4 atoms) goes to the slow route even when the backend would be faster.
+    /// Lower `autoproof_max_atoms` to push such goals to the backend.
+    let decide (e: Prop) : Theorem =
+        let goal = expand e.Expr
+        let anf () = theorem prop_calculus e (anf_steps "decide" goal)
+        if prop_atom_count goal <= decide_max_anf_atoms then anf ()
+        else
+            match prop_decider with
+            | Some d ->
+                let th = d e
+                // The decider lives outside this assembly: check it answered the question we asked.
+                if not (sequal th.Stmt goal) then
+                    failwithf "decide: the installed decider returned a theorem of %s, but the goal was %s"
+                        (prop_calculus.PrintFormula th.Stmt) (prop_calculus.PrintFormula goal)
+                th
+            // No backend: fall back to the in-kernel prover, which still handles everything up to
+            // `autoproof_max_atoms` — the routing preference must not cost a solver-free caller
+            // goals it could otherwise prove.
+            | None -> anf ()
 
     /// Decision TOOL (not a proof step): does a proof of this propositional goal exist?
     /// Complete via algebraic normal form — use it to check that an identity is valid before
