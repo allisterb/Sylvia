@@ -57,7 +57,9 @@ let mutable attempted = 0
 
 // Meta-provers take an arbitrary goal and prove it; instantiating them like a schema just asks them
 // to prove a bare variable, which is not a theorem (and is slow).
-let metaProvers = set [ "auto"; "autoident"; "autodeduce"; "decide" ]
+// NB `Set.ofList`, not `set [...]` — in scope here `set` is Sylvia's set-comprehension builder,
+// which takes a quotation.
+let metaProvers = Set.ofList [ "auto"; "autoident"; "autodeduce"; "decide" ]
 
 let sweep (name: string) (ps: Reflection.ParameterInfo[]) (invoke: obj[] -> unit) =
     let n = ps.Length

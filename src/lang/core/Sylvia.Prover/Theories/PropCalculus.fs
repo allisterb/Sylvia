@@ -315,10 +315,10 @@ module PropCalculus =
     /// implication chains — the shape ANF handles worst — the in-kernel prover wins at 3 atoms
     /// (95 ms vs 489 ms) and loses from 4 (1130 ms vs 340 ms, then 12389 ms vs 432 ms at 5).
     ///
-    /// It also loses on REUSE, which is the larger effect: `Taut` replays a theorem's top-level step
-    /// list every time the theorem is used, and `autoproof_anf` emits hundreds to thousands of steps
-    /// where the SAT replay emits 2. Measured on a 4-atom chain, using the theorem inside another
-    /// proof costs 150 ms (ANF) versus 0.22 ms (SAT).
+    /// (It also used to lose badly on REUSE, when the tactics in `Tactics.fs` replayed a theorem's
+    /// step list on every use — 150 ms versus 0.22 ms to use the same statement. That is fixed and
+    /// reuse no longer depends on which route proved the goal, so this threshold now rests on
+    /// construction cost alone.)
     let mutable decide_max_anf_atoms = 3
 
     /// Prove a propositional goal, returning a kernel-checked `Theorem`.

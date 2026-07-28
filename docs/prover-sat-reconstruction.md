@@ -382,17 +382,43 @@ materialises the exponentially-large polynomial as one term. The SAT replay emit
 — peak grows ~1.3×, since it works clause by clause. Its derivation *tree* is larger (3897 vs 396
 nodes at chain-4) yet far cheaper, because kernel step cost is O(|expr|).
 
-**Reuse is the bigger effect.** `Tactics.Taut` builds a new `Proof` whose steps are the theorem's own
-step list plus one — and constructing a `Proof` executes its steps. So every use of a theorem replays
-its whole top-level derivation. On a 4-atom chain, using the theorem inside another proof costs
-**150 ms** (ANF, 396 steps) versus **0.22 ms** (SAT, 2 steps) — ~680×. `Taut th` alone, with no
-application at all, is 152 ms versus 0.16 ms.
+**Reuse used to be the bigger effect — it has since been fixed.** Every step-transforming tactic in
+`Tactics.fs` built its new proof by SPLICING the input's own step list:
 
-That is what set the threshold at 3: at 4+ atoms the backend wins on construction *and* on reuse, so
-there is no trade to make. Below 3 the in-kernel prover wins on both (its proofs there are also short
-— 8 steps for distributivity — so they are cheap to reuse). Note this cost attaches to the *tactic*,
-not the route: all fourteen step-transforming tactics in `Tactics.fs` splice `proof.Steps` the same
-way. `Ident`/`Subst` does **not** — it wraps the existing proof, and measures as free.
+```fsharp
+let p = Proof(stmt, theory, <one new step> :: proof.Steps, true)
+```
+
+and a `Proof`'s constructor *executes* its steps. So each use of a theorem re-ran that theorem's whole
+derivation. All fourteen did it (`Truth`, `Taut`, `Taut'`, `Dual`, `Dual'`, `Commute`, `CommuteL`,
+`CommuteR`, `RightAssoc`, `LeftAssoc`, and the four `*Recurse*`), and the composite tactics
+(`MutualImplication`, `Contradiction`, `Cases`) inherited it through the `taut` they are passed.
+
+The fix mirrors what `Subst`/`Ident` had always done — carry the completed proof as a rule's
+*justification* instead of replaying it. `Tactics.theoremIsTrue` is a `Derive` rule holding a
+completed proof that rewrites that proof's statement to `T`. Each tactic is now exactly two steps: its
+own rewrite, which returns the state to the input's statement, then that justified rewrite to `T`,
+which is an axiom. Nothing is re-derived; `A` is already proved, so `A ≡ T` follows directly.
+
+| on a 396-step theorem, ×50 | before | after |
+|---|--:|--:|
+| `Taut th` (no application) | 7534 ms | **9 ms** |
+| using the theorem in another proof | 7510 ms | **12 ms** |
+| the same for a 2-step theorem | 11 ms | 12 ms |
+
+Reuse cost is now **independent of how the theorem was proved** — the ~680× gap between an ANF-built
+and a SAT-built theorem of the same statement is gone.
+
+Verification, since this touches every proof in the codebase: suite 115/115, all nine example scripts
+green, `AdversarialSweep.fsx` ALL CLEAR, and the proof logs of `PropCalculus.fsx`, `PredCalculus.fsx`
+and `SetTheory.fsx` compared line by line. **Every top-level derivation is byte-identical** (108, 142
+and 1107 lines respectively). The only differences are inside `[Lemma]` blocks, and they are all
+*removals* of the redundant replay, plus the header punctuation the constructor switches at
+`steps.Length <= 2` (`= T:` → `= T.`) now that those lemmas are genuinely short.
+
+The threshold of 3 was set before this fix, when reuse still favoured the backend heavily. It happens
+to remain right on construction cost alone (see the table above), but the reuse argument for it no
+longer applies.
 
 The kernel cannot reference a solver — `Sylvia.Prover` must stay solver-free, and the dependency
 runs the other way — so the backend registers *itself*, through `PropCalculus.prop_decider`, via

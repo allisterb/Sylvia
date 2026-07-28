@@ -4,8 +4,27 @@ open FSharp.Quotations
 open Formula
 
 /// Tactics are functions that transform a theorem using valid logical rules into another theorem, or a rule into aanother rule, or a theorem into a rule.
-module Tactics = 
-    
+module Tactics =
+
+    /// A step that rewrites the statement of an ALREADY-COMPLETED proof to `true`, carrying that
+    /// proof as its justification.
+    ///
+    /// This is the same shape as `Subst`/`Ident` (a `Derive` rule holding the proof that licenses
+    /// its rewrite), and it exists to stop the tactics below from re-deriving what they are handed.
+    /// A tactic like `Taut` turns `⊢ A` into `⊢ (A = T)`, and used to do so by SPLICING `A`'s own
+    /// step list into the new proof — but a `Proof`'s constructor executes its steps, so every use
+    /// of a theorem re-ran that theorem's whole derivation (measured: 152 ms per `Taut` of a
+    /// 396-step theorem). Since `A` is already proved, `A ≡ T` follows directly; replaying the
+    /// derivation of `A` establishes nothing the completed proof does not already carry.
+    ///
+    /// Sound exactly when the carried proof is complete, which is checked here and re-checked at
+    /// rewrite time — the same contract `Subst` has held all along.
+    let private theoremIsTrue (p: Proof) : Rule =
+        if not p.Complete then
+            failwithf "The proof of %s is not complete, so it cannot be replaced with true." (p.Theory.PrintFormula p.Stmt)
+        Derive(sprintf "Replace the theorem %s with true in (expression)" (p.Theory.PrintFormula p.Stmt), p,
+               fun (pf: Proof) e -> if pf.Complete then FsExpr.replace_first_expr pf.Stmt T.Expr.Raw e else e)
+
     /// The constant true is a theorem.
     let Truth commute rule = 
         let proof = match rule with | Derive(_,p,_) -> p | _ ->  failwith "This rule is not a derived rule."
@@ -16,7 +35,7 @@ module Tactics =
         let theory = proof.Theory
         let true_id = ident theory ((T == T) == T) [Apply commute]
         let stmt = <@@ (%%l:bool) = (%%T.Expr = %%T.Expr) @@>
-        let p = Proof(stmt, proof.Theory, ApplyRight true_id :: proof.Steps, true) in 
+        let p = Proof(stmt, proof.Theory, [ ApplyRight true_id; Apply(theoremIsTrue proof) ], true) in 
         Theorem(stmt, p) |> Ident
 
     /// If A is a theorem then so is A = true
@@ -25,7 +44,10 @@ module Tactics =
         let theory = proof.Theory
         let expr = proof.Stmt
         let stmt = <@@ (%%expr:bool) = %%T.Expr @@>
-        let p = Proof(stmt, theory, (expr |> ident |> Apply) :: proof.Steps, true) in 
+        // Two steps, regardless of how `A` was proved: `(A = T)` ↦ `A` by the supplied identity,
+        // then `A` ↦ `T` justified by `A`'s completed proof, and `T` is an axiom. Previously this
+        // spliced `proof.Steps`, re-executing the whole derivation of `A` on every call.
+        let p = Proof(stmt, theory, [ expr |> ident |> Apply; Apply(theoremIsTrue proof) ], true) in
         Theorem(stmt, p) |> Ident 
 
     /// If A = B is a theorem then so is (A = B) = true.
@@ -34,7 +56,7 @@ module Tactics =
         let theory = proof.Theory
         let expr = proof.Stmt
         let stmt = <@@ (%%expr:bool) = %%T.Expr @@>
-        let p = Proof(stmt, theory, (expr |> ident |> Apply) :: proof.Steps, true) in 
+        let p = Proof(stmt, theory, [ (expr |> ident |> Apply); Apply(theoremIsTrue proof) ], true) in 
         Theorem(stmt, p) |> Ident 
 
     /// If A is theorem then so is the dual of A.
@@ -43,7 +65,7 @@ module Tactics =
         let theory = proof.Theory
         let expr = proof.Stmt
         let stmt = EquationalLogic._dual expr
-        let p = Proof(stmt, theory, (dual |> Apply) :: proof.Steps, true) in
+        let p = Proof(stmt, theory, [ (dual |> Apply); Apply(theoremIsTrue proof) ], true) in
         Theorem(stmt, p)
 
     /// If A = B is an identity then so is the dual of A with B.
@@ -52,7 +74,7 @@ module Tactics =
         let theory = proof.Theory
         let expr = proof.Stmt
         let stmt = EquationalLogic._dual expr
-        let p = Proof(stmt, theory, (dual |> Apply) :: proof.Steps, true) in
+        let p = Proof(stmt, theory, [ (dual |> Apply); Apply(theoremIsTrue proof) ], true) in
         Theorem(stmt, p) |> Ident
 
     /// If A = B is a theorem then so is B = A.
@@ -62,7 +84,7 @@ module Tactics =
             match proof.Stmt with 
             | Equals(l, r) -> <@@ (%%r:bool) = (%%l:bool) @@>
             | _ -> failwith "This theorem is not an identity."
-        let p = Proof(stmt, proof.Theory, Apply commute :: proof.Steps, true) in 
+        let p = Proof(stmt, proof.Theory, [ Apply commute; Apply(theoremIsTrue proof) ], true) in 
         Theorem(stmt, p) |> Ident
 
     /// If (L = R) = X is a theorem then so is (R = L) = X.
@@ -80,7 +102,7 @@ module Tactics =
             | _ -> failwith "The LHS of this theorem is not an identity."
 
         let stmt = <@@ ((%%l1:bool)) = (%%r:bool) @@>
-        let p = Proof(stmt, proof.Theory, ApplyLeft commute :: proof.Steps, true) in 
+        let p = Proof(stmt, proof.Theory, [ ApplyLeft commute; Apply(theoremIsTrue proof) ], true) in 
         Theorem(stmt, p) |> Ident
 
     /// If X = (L = R) is a theorem then so is X = (R = L).
@@ -98,7 +120,7 @@ module Tactics =
             | _ -> failwith "The rHS of this theorem is not an identity."
 
         let stmt = <@@ ((%%l:bool)) = (%%r1:bool) @@>
-        let p = Proof(stmt, proof.Theory, ApplyRight commute :: proof.Steps, true) in 
+        let p = Proof(stmt, proof.Theory, [ ApplyRight commute; Apply(theoremIsTrue proof) ], true) in 
         Theorem(stmt, p) |> Ident
 
     /// If (A1 = A2) = A3 is a theorem then so is A1 = (A2 = A3)
@@ -108,7 +130,7 @@ module Tactics =
              match proof.Stmt with 
              | Equals(Equals(l1, l2), r) -> <@@ (%%l1:bool) = ((%%l2:bool) = (%%r:bool)) @@>
              | _ -> failwith "This theorem is not an identity."
-         let p = Proof(stmt, proof.Theory, Apply lassoc :: proof.Steps, true) in 
+         let p = Proof(stmt, proof.Theory, [ Apply lassoc; Apply(theoremIsTrue proof) ], true) in 
          Theorem(stmt, p) |> Ident
 
     /// If A1 = (A2 =  A3) is a theorem then so is (A1 = A2) = A3
@@ -118,7 +140,7 @@ module Tactics =
              match proof.Stmt with 
              | Equals(l, Equals(r1, r2)) -> <@@ ((%%l:bool) = (%%r1:bool)) = (%%r2:bool) @@>
              | _ -> failwith "This theorem is not an identity."
-         let p = Proof(stmt, proof.Theory, Apply rassoc :: proof.Steps, true) in 
+         let p = Proof(stmt, proof.Theory, [ Apply rassoc; Apply(theoremIsTrue proof) ], true) in 
          Theorem(stmt, p) |> Ident
 
     /// If ((A1 = A2) = A3) = A4 is a theorem then so is (A1 = (A2 = A3)) = A4
@@ -132,7 +154,7 @@ module Tactics =
              match l with 
              | Equals(Equals(l1, l2), r2) -> <@@ ((%%l1:bool) = ((%%l2:bool) = (%%r2:bool))) = (%%r:bool) @@>
              | _ -> failwith "This theorem is not an identity."
-         let p = Proof(stmt, proof.Theory, ApplyLeft lassoc :: proof.Steps, true) in 
+         let p = Proof(stmt, proof.Theory, [ ApplyLeft lassoc; Apply(theoremIsTrue proof) ], true) in 
          Theorem(stmt, p) |> Ident
 
      /// If A1 = ((A2 = A3) = A4) is a theorem then so is A1 = (A2 = (A3 = A4))
@@ -146,7 +168,7 @@ module Tactics =
              match r with 
              | Equals(Equals(l1, l2), r2) -> <@@ (%%l:bool) = ((%%l1:bool) = ((%%l2:bool) = (%%r2:bool)))  @@>
              | _ -> failwith "This theorem is not an identity."
-         let p = Proof(stmt, proof.Theory, ApplyRight lassoc :: proof.Steps, true) in 
+         let p = Proof(stmt, proof.Theory, [ ApplyRight lassoc; Apply(theoremIsTrue proof) ], true) in 
          Theorem(stmt, p) |> Ident
 
     /// If (A1 = (A2 = A3)) = A4 is a theorem then so is ((A1 = A2) = A3) = A4
@@ -160,7 +182,7 @@ module Tactics =
              match l with 
              | Equals(l1, Equals(r1, r2)) -> <@@ (((%%l1:bool) = (%%r1:bool)) = (%%r2:bool)) = (%%r:bool) @@>
              | _ -> failwith "The LHS of this theorem is not an identity."
-         let p = Proof(stmt, proof.Theory, ApplyLeft rassoc :: proof.Steps, true) in 
+         let p = Proof(stmt, proof.Theory, [ ApplyLeft rassoc; Apply(theoremIsTrue proof) ], true) in 
          Theorem(stmt, p) |> Ident
 
     /// If A1 = (A2 = (A3 = A4)) is a theorem then so is A1 = ((A2 = A3) = A4)
@@ -174,7 +196,7 @@ module Tactics =
              match r with 
              | Equals(l1, Equals(r1, r2)) -> <@@ (%%l:bool) = (((%%l1:bool) = (%%r1:bool)) = (%%r2:bool)) @@>
              | _ -> failwith "The RHS of this theorem is not an identity."
-         let p = Proof(stmt, proof.Theory, ApplyRight rassoc :: proof.Steps, true) in 
+         let p = Proof(stmt, proof.Theory, [ ApplyRight rassoc; Apply(theoremIsTrue proof) ], true) in 
          Theorem(stmt, p) |> Ident
 
     let MutualImplication theory taut ident reduce stmt =
