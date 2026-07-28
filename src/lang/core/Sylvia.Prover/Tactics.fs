@@ -59,8 +59,117 @@ module Tactics =
         let p = Proof(stmt, theory, [ (expr |> ident |> Apply); Apply(theoremIsTrue proof) ], true) in 
         Theorem(stmt, p) |> Ident 
 
+    /// Instantiate a theorem SCHEMA: from `⊢ S` and a substitution `σ` on propositional variables,
+    /// `⊢ Sσ` — in ONE kernel step, without replaying `S`'s derivation.
+    ///
+    /// Sylvia's derived rules and theorems are F# functions, so a lemma applied at fresh arguments
+    /// costs a full re-derivation rather than a substitution. That is the dominant cost of the SAT
+    /// reconstruction: measured on a 24-atom implication chain, 8626 of the 8626 `Proof` objects it
+    /// builds are `trans_implies` replaying its own 45-proof derivation at whatever wide clause
+    /// conjunction the caller is composing (106 ms per call). Deriving the schema ONCE at
+    /// metavariables and instantiating it here is O(|Sσ|) instead.
+    ///
+    /// **This is an admissible rule made constant-time, not a new logical capability.** Uniform
+    /// substitution of propositional variables is admissible in a system whose axioms are SCHEMES:
+    /// every axiom instance appearing in `S`'s derivation remains an axiom instance under `σ`, so
+    /// the substituted derivation is a derivation of `Sσ`. Sylvia's `Admit` rules are exactly such
+    /// schemes (`Expr -> Expr` functions matching structurally), and the prover already relies on
+    /// this every time a derived rule is replayed at new arguments. Nothing is proved here that
+    /// could not be proved by replay — only faster. It is NOT derivable from Leibniz (3.83), which
+    /// needs `e = f` as a premise; substitution is a separate Gries inference rule.
+    ///
+    /// The mechanism carries no new kernel primitive either: as with `Taut` above, the instantiated
+    /// statement is closed by a `Derive` step holding the parent's COMPLETED proof as its
+    /// justification, and the kernel checks the result the same way it checks any proof.
+    ///
+    /// This combinator is therefore the sole soundness guardian, and it refuses unless:
+    ///
+    ///  * the parent proof is complete;
+    ///  * every variable substituted for is a plain propositional variable (a `bool` `Var`), with no
+    ///    duplicates — so `T`/`F` (named constants, not variables) and compound terms are rejected;
+    ///  * the parent statement is free of BINDERS. Quantified statements are refused, and this is
+    ///    the restriction that keeps the admissibility argument honest: `PredCalculus` derivations
+    ///    carry `¬occurs_free` side conditions discharged at derivation time, which substitution can
+    ///    invalidate, and a substituted term can be captured by a binder. Neither hazard exists in
+    ///    the quantifier-free fragment, which is where every measured cost lives. Extending to the
+    ///    quantified case needs its own soundness argument and its own freshness checks.
+    ///
+    /// The substitution is applied SIMULTANEOUSLY, by this function — a caller cannot hand in the
+    /// instantiated statement it would like to have proved.
+    let Instantiate (t: Theorem) (subst: (Prop * Prop) list) : Theorem =
+        let proof = t.Proof
+        let theory = proof.Theory
+        let print = theory.PrintFormula
+        if not proof.Complete then
+            failwithf "The proof of %s is not complete, so it cannot be instantiated." (print t.Stmt)
+        // The domain must be propositional VARIABLES: anything else is not a schema position.
+        let vars =
+            subst |> List.map (fun (v, value) ->
+                match expand v.Expr with
+                | ExprShape.ShapeVar var when var.Type = typeof<bool> -> var, expand value.Expr
+                | e -> failwithf "%s is not a propositional variable, so it is not a schema position of %s."
+                                 (print e) (print t.Stmt))
+        match vars |> List.countBy (fun (v, _) -> v.Name) |> List.tryFind (fun (_, n) -> n > 1) with
+        | Some(n, _) -> failwithf "The variable %s is substituted for more than once." n
+        | None -> ()
+        // Binders would put both capture-avoidance and the discharged side conditions of a
+        // quantified derivation in play; neither is covered by the argument above.
+        let rec hasBinder (e: Expr) =
+            match e with
+            | Quantifier _ -> true
+            | ExprShape.ShapeLambda _ -> true
+            | ExprShape.ShapeVar _ -> false
+            | ExprShape.ShapeCombination(_, args) -> args |> List.exists hasBinder
+        if hasBinder t.Stmt then
+            failwithf "%s contains a binder, so it cannot be instantiated: substitution under a quantifier needs capture-avoidance and freshness checks this rule does not perform." (print t.Stmt)
+        // Simultaneous: `Substitute` visits each variable occurrence once and does not descend into
+        // what it substituted, so σ = {a ↦ b, b ↦ c} cannot compose into a ↦ c.
+        let lookup (v: Var) =
+            vars |> List.tryPick (fun (var, value) ->
+                if v.Name = var.Name && v.Type = var.Type then Some value else None)
+        let stmt = t.Stmt.Substitute lookup |> expand
+        if sequal stmt t.Stmt then t                          // the identity substitution proves nothing new
+        else
+            let rule =
+                Derive(sprintf "Instantiate the theorem %s in (expression)" (print t.Stmt), proof,
+                       fun (pf: Proof) e -> if pf.Complete && sequal e stmt then T.Expr.Raw else e)
+            Theorem(stmt, Proof(stmt, theory, [ Apply rule ], true))
+
+    /// Derive a theorem SCHEMA once, at metavariables, and instantiate it per call.
+    ///
+    /// Sylvia's Gries theorems are F# functions of their `Prop` parameters, so every call replays
+    /// the derivation at the caller's arguments — cost O(derivation × |argument|) rather than
+    /// O(|result|). Wrapping one in `Schema.pN` derives it a single time and serves every later call
+    /// through `Instantiate`, whose guards apply unchanged. This is the same shape as `Memo.pN`, and
+    /// it succeeds where memoization cannot: memoizing only helps when the SAME arguments recur,
+    /// and the arguments in a SAT reconstruction are distinct at every step.
+    ///
+    /// Only for schemas whose parameters are genuinely arbitrary propositions — which is what
+    /// `Instantiate` verifies anyway, since a schema whose statement is not `f` applied to plain
+    /// variables cannot be reconstructed by substitution.
+    module Schema =
+        let private mv (name: string) (i: int) : Prop = boolvar (sprintf "?%s_%d" name i)
+
+        /// Wrap a one-`Prop`-argument theorem schema.
+        let p1 (name: string) (f: Prop -> Theorem) : Prop -> Theorem =
+            let a = mv name 1
+            let s = lazy (f a)
+            fun x -> Instantiate s.Value [ a, x ]
+
+        /// Wrap a two-`Prop`-argument theorem schema.
+        let p2 (name: string) (f: Prop -> Prop -> Theorem) : Prop -> Prop -> Theorem =
+            let a, b = mv name 1, mv name 2
+            let s = lazy (f a b)
+            fun x y -> Instantiate s.Value [ a, x; b, y ]
+
+        /// Wrap a three-`Prop`-argument theorem schema.
+        let p3 (name: string) (f: Prop -> Prop -> Prop -> Theorem) : Prop -> Prop -> Prop -> Theorem =
+            let a, b, c = mv name 1, mv name 2, mv name 3
+            let s = lazy (f a b c)
+            fun x y z -> Instantiate s.Value [ a, x; b, y; c, z ]
+
     /// If A is theorem then so is the dual of A.
-    let Dual (t:Theorem) dual = 
+    let Dual (t:Theorem) dual =
         let proof = t.Proof
         let theory = proof.Theory
         let expr = proof.Stmt

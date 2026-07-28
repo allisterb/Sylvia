@@ -765,3 +765,85 @@ type KernelProofTests() =
                     Some (sprintf "%s: %s" m.Name (msg.Split('\n').[0])))
         Assert.True(methods.Length > 50, sprintf "expected to discover the theory (found %d methods)" methods.Length)
         Assert.True(failures.Length = 0, sprintf "unexpected proof failures:\n%s" (String.Join("\n", failures)))
+
+/// Tests for `Tactics.Instantiate` — schema instantiation as an admissible, constant-time rule.
+///
+/// The combinator is the sole soundness guardian (nothing new is added to the kernel: the
+/// instantiated statement is closed by a `Derive` step carrying the parent's completed proof, the
+/// same mechanism `Taut` uses). So these tests are mostly about what it REFUSES.
+type InstantiateTests() =
+    inherit Sylvia.Tests.Prover.TestsRuntime()
+
+    do Proof.LogLevel <- 0
+
+    let p, q, r = boolvar "p", boolvar "q", boolvar "r"
+    let a, b, c = boolvar "?a", boolvar "?b", boolvar "?c"
+
+    /// `(a ⇒ b) ∧ (b ⇒ c) ⇒ (a ⇒ c)` at metavariables — the schema the SAT replay instantiates.
+    let schema = PropCalculus.trans_implies a b c
+
+    let fails (f: unit -> 'a) = try f () |> ignore; false with _ -> true
+
+    [<Fact>]
+    member _.``instantiating a schema gives exactly the theorem replaying it would give`` () =
+        let replayed = PropCalculus.trans_implies (p * q) r (p + q)
+        let instantiated = Tactics.Instantiate schema [ a, p * q; b, r; c, p + q ]
+        Assert.True(sequal instantiated.Stmt replayed.Stmt,
+                    sprintf "instantiated %s, replay gives %s" (src instantiated.Stmt) (src replayed.Stmt))
+        // and it is a real theorem, checked by the kernel like any other
+        Assert.True(instantiated.Proof.Complete)
+
+    [<Fact>]
+    member _.``the substitution is simultaneous, not sequential`` () =
+        // σ = {a ↦ b, b ↦ a} must SWAP. Applied one after the other it would map both to one.
+        let refl = PropCalculus.reflex_implies (a ==> b)
+        let swapped = Tactics.Instantiate refl [ a, b; b, a ]
+        let expected = PropCalculus.reflex_implies (b ==> a)
+        Assert.True(sequal swapped.Stmt expected.Stmt,
+                    sprintf "expected %s, got %s" (src expected.Stmt) (src swapped.Stmt))
+
+    [<Fact>]
+    member _.``an identity substitution returns the same theorem`` () =
+        let same = Tactics.Instantiate schema [ a, a ]
+        Assert.True(sequal same.Stmt schema.Stmt)
+
+    [<Fact>]
+    member _.``only propositional VARIABLES are schema positions`` () =
+        // A compound term is not a schema position: it is not something the derivation was
+        // parametric in, so substituting for it is not a uniform instantiation.
+        Assert.True(fails (fun () -> Tactics.Instantiate schema [ a * b, p ]))
+        // `T`/`F` are named constants rather than variables — substituting for them would be
+        // outright unsound, and they must not be reachable.
+        Assert.True(fails (fun () -> Tactics.Instantiate schema [ T, p ]))
+        Assert.True(fails (fun () -> Tactics.Instantiate schema [ F, p ]))
+
+    [<Fact>]
+    member _.``a variable cannot be substituted for twice`` () =
+        Assert.True(fails (fun () -> Tactics.Instantiate schema [ a, p; a, q ]))
+
+    [<Fact>]
+    member _.``quantified statements are refused`` () =
+        // Substitution under a binder needs capture-avoidance, and a predicate-calculus derivation
+        // discharges `¬occurs_free` side conditions that substitution can invalidate. Neither is
+        // covered by the admissibility argument, so the whole case is out of scope by construction.
+        let x = intvar "x"
+        let quantified = PredCalculus.forall_conseq x p            // p ⇒ (∀ x |: p)
+        Assert.True(fails (fun () -> Tactics.Instantiate quantified [ p, q ]))
+
+    [<Fact>]
+    member _.``Schema wrappers agree with the functions they wrap`` () =
+        let wrapped3 = Tactics.Schema.p3 "t_trans" PropCalculus.trans_implies
+        Assert.True(sequal (wrapped3 p q r).Stmt (PropCalculus.trans_implies p q r).Stmt)
+        let wrapped2 = Tactics.Schema.p2 "t_strengthen" PropCalculus.strengthen_and
+        Assert.True(sequal (wrapped2 p q).Stmt (PropCalculus.strengthen_and p q).Stmt)
+        let wrapped1 = Tactics.Schema.p1 "t_reflex" PropCalculus.reflex_implies
+        Assert.True(sequal (wrapped1 (p * q)).Stmt (PropCalculus.reflex_implies (p * q)).Stmt)
+
+    [<Fact>]
+    member _.``an instantiated theorem composes like any other`` () =
+        // The point of the rule: what comes out is usable wherever a Theorem is, with no trace of
+        // how it was built. Fold two instances through the ordinary calc machinery.
+        let t1 = Tactics.Instantiate (PropCalculus.strengthen_and p q) []
+        let step = Calc.chainImp (PropCalculus.reflex_implies (p * q)) (PropCalculus.strengthen_and p q)
+        Assert.True(sequal step.Stmt (expand ((p * q) ==> p).Expr))
+        Assert.True(sequal t1.Stmt (PropCalculus.strengthen_and p q).Stmt)

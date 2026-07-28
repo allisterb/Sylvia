@@ -37,6 +37,30 @@ module SatProof =
     let private pOf (e: Expr) : Prop = Prop(expand_as<bool> e)
 
     (* ---------------------------------------------------------------------- *)
+    (* The Gries schemas this replay leans on, derived once and INSTANTIATED    *)
+    (* ---------------------------------------------------------------------- *)
+
+    /// Every one of these is an F# function of its `Prop` parameters, so calling it replays its
+    /// whole derivation at the caller's arguments — and in a reconstruction those arguments are
+    /// entire clause conjunctions, at every one of O(n) steps. Measured per call at 24-atom chain
+    /// scale, with fresh arguments so memoization cannot mask the cost:
+    ///
+    ///     resolve           157 ms, 109 nested proofs        combine_implies    62 ms, 58 proofs
+    ///     strengthen_and     13 ms,   9 nested proofs        commute_and       3.5 ms,  5 proofs
+    ///
+    /// `Tactics.Schema` derives each ONE time at metavariables and serves every later call by
+    /// substitution, which is O(|result|) and one kernel step. Memoization cannot do this: the
+    /// arguments are distinct at every step, so nothing ever hits the cache.
+    ///
+    /// This is confined to the reconstruction rather than pushed into `PropCalculus` itself, so no
+    /// existing proof changes shape. Promoting the wrappers upstream is a separate decision.
+    let private resolve = Tactics.Schema.p3 "sat_resolve" resolve
+    let private combine_implies = Tactics.Schema.p3 "sat_combine_implies" combine_implies
+    let private strengthen_and = Tactics.Schema.p2 "sat_strengthen_and" strengthen_and
+    let private weaken_or = Tactics.Schema.p2 "sat_weaken_or" weaken_or
+    let private reflex_implies = Tactics.Schema.p1 "sat_reflex_implies" reflex_implies
+
+    (* ---------------------------------------------------------------------- *)
     (* Equality / implication plumbing (reused trusted lemmas only)             *)
     (* ---------------------------------------------------------------------- *)
 

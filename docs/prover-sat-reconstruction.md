@@ -606,10 +606,62 @@ concern that motivates a fresh-start redesign.
    `replace_eq` still fails at compound arguments and is the one case that is not a bug: it is
    Leibniz substitution of one variable for another (`subst_and` matches `(Var = Var) ∧ E`), so the
    variable precondition is real. It is now documented on the schema and pinned by a test.
-6. **Schema-instantiation gap** (`prover-schema-instantiation-gap` memory). Because derived rules are
-   F# functions that *replay*, a fresh-argument instantiation costs a full derivation, not a
-   substitution. Memoization fixes repeats; the systemic fix is LCF-style *prove-once-at-metavars +
-   uniform substitution* (`Thm.instantiate`), a new trusted primitive.
+6. ~~**Schema-instantiation gap**~~ **DONE (2026-07-28) — `Tactics.Instantiate`.** Derived rules are
+   F# functions that *replay*, so instantiating a lemma at fresh arguments cost a full derivation
+   rather than a substitution. Memoization only ever fixed repeats, and a reconstruction's arguments
+   are distinct at every step, so it never hit. `Tactics.Instantiate` takes `⊢ S` and a substitution
+   on propositional variables and returns `⊢ Sσ` in one kernel step; `Tactics.Schema.p1/p2/p3` wrap
+   a schema so it is derived once at metavariables and served by substitution thereafter.
+
+   It is **not a new trusted primitive**, on either axis. Logically it is admissible: uniform
+   substitution of propositional variables adds no theorems to a system whose axioms are schemes,
+   and Sylvia's `Admit` rules are exactly such schemes — the prover already relies on this every
+   time a derived rule is replayed at new arguments. Mechanically it adds no kernel case either: the
+   instantiated statement is closed by a `Derive` step holding the parent's completed proof, which
+   is the same device `Taut` has used since the tactic-splicing fix (§7.5). The combinator is the
+   sole guardian and refuses unless the parent proof is complete, every domain element is a plain
+   `bool` `Var` (so `T`/`F`, being named constants, are unreachable) with no duplicates, and the
+   parent statement is **binder-free**. That last restriction is what keeps the admissibility
+   argument honest: quantified derivations discharge `¬occurs_free` side conditions that
+   substitution can invalidate, and a substituted term can be captured. Extending to the quantified
+   case needs its own argument. Eight tests in `KernelProofTests.fs` pin the behaviour, most of them
+   on what it refuses.
+
+   Measured on implication chains, Release, warm — `Calc.chainImp` routed through the instantiated
+   `trans_implies`, and `SatProof` through instantiated `resolve` / `combine_implies` /
+   `strengthen_and` / `weaken_or` / `reflex_implies`:
+
+   | atoms | handoff baseline (Debug) | Release | + `distribOr` pruning | + `Instantiate` |
+   |---:|--:|--:|--:|--:|
+   | 4  |  844 ms |  557 ms |  564 ms | **156 ms** |
+   | 8  | 1465 ms | 1053 ms |  993 ms | **394 ms** |
+   | 12 | 2039 ms | 1245 ms | 1273 ms | **270 ms** |
+   | 16 | 3357 ms | 2060 ms | 2049 ms | **362 ms** |
+   | 20 | 5108 ms | 3231 ms | 3297 ms | **570 ms** |
+   | 24 | 7247 ms | 4899 ms | 4682 ms | **730 ms** |
+
+   and it keeps going: 32 atoms 1.3 s, 40 atoms 2.0 s, 50 atoms 3.0 s, 64 atoms 4.9 s. The §1 target
+   of "20–50 atoms in well under a second" is now met at the low end of that range and missed by
+   about 3× at the top.
+
+   Why it was the right lever, from the profile. At 24 atoms the reconstruction built 8626 `Proof`
+   objects, 92% of them lemmas. Timed at fresh arguments so memoization could not mask anything,
+   the per-call costs were `resolve` 157 ms / 109 nested proofs, `trans_implies` 107 ms / 45,
+   `combine_implies` 62 ms / 58, `strengthen_and` 13 ms / 9 — every one a Gries schema being
+   re-derived over an entire clause conjunction. Instantiating `trans_implies` alone took the 24-atom
+   case from 4682 ms to 1375 ms; the rest followed.
+
+   Instantiation is also **stricter** than replay, which is worth stating because it sounds like the
+   opposite. A `Derive` step rewrites the leftmost-outermost match inside the subterm it addresses,
+   so replaying a schema at compound arguments can target the wrong occurrence — the failure class
+   §7.5 exists to catch, and which named `trans_implies` reached through `chainImp` as live risk in
+   this very pipeline. A schema instantiated by substitution only ever ran its derivation at
+   metavariables, where there is no competing subterm to mis-target.
+
+   Currently wired in at `Calc.chainImp` and inside `SatProof`, deliberately not pushed into
+   `PropCalculus` itself, so no existing proof changes shape. The only proof-log difference across
+   the whole example suite is that `trans_implies`'s derivation now prints once at metavariables
+   instead of at each caller's arguments; every conclusion is byte-identical.
 
 ## 8. File index
 
@@ -620,6 +672,7 @@ concern that motivates a fresh-start redesign.
 | `src/lang/core/Sylvia.Prover/Theories/Cnf.fs` | `Cnf.toCnf` — recursive CNF conversion with kernel proof |
 | `src/lang/core/Sylvia.Prover/EquationalLogic.fs` | `_chain_simp` — whole-chain ∨/∧ normalization inside `_simp` |
 | `src/lang/core/Sylvia.Prover/Proof.fs` | `Memo` combinator |
+| `src/lang/core/Sylvia.Prover/Tactics.fs` | `Instantiate` / `Schema.p1-p3` — schema instantiation (§7.6) |
 | `src/lang/core/Sylvia.Prover.SAT/SatProof.fs` | **The reconstruction library** — `prove`/`proveWith`/`tryProve`/`Sat`, and the stages |
 | `examples/sat/CaDiCaL.fsx` | Validity decision + `resolve` demo |
 | `examples/sat/Reconstruct.fsx` | Demo + end-to-end gate for `SatProof` |

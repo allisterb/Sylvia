@@ -54,6 +54,22 @@ module Calc =
 
     let private pOf (e: Expr) : Prop = e |> expand_as<bool> |> Prop
 
+    /// `trans_implies` (Gries 3.82a) derived ONCE at metavariables, then instantiated per call.
+    ///
+    /// `chainImp` is the fold every `⇒`-chain and every SAT-refutation replay runs through, and
+    /// `trans_implies` is an F# function, so calling it at the caller's actual propositions replays
+    /// its whole 10-step derivation — 45 nested proofs, each step traversing arguments that in a
+    /// reconstruction are entire clause conjunctions. Measured at 24-atom chain scale: 77 ms and 45
+    /// proofs per call, against 0.5 ms and one step through `Tactics.Instantiate`. It was ~99% of
+    /// the reconstruction's total proof-building.
+    ///
+    /// Instantiating the schema is also STRICTER than replaying it. A derived rule's substitution
+    /// steps rewrite the leftmost-outermost match inside the subterm they address, so replaying at
+    /// compound arguments can target the wrong occurrence — the class `examples/proofs/AdversarialSweep.fsx`
+    /// exists to catch, and which named `trans_implies` reached through `chainImp` as live risk.
+    /// The derivation here only ever runs at metavariables, which contain no competing subterm.
+    let private transImplies = Tactics.Schema.p3 "trans_implies" trans_implies
+
     /// A = B  ⟼  A ⇒ B  (weakening: rewrite the antecedent A into B, leaving the axiom B ⇒ B).
     let eqToImp (t: Theorem) : Theorem =
         match t.Stmt with
@@ -75,7 +91,7 @@ module Calc =
             theorem prop_calculus (pa ==> pc) [
                 ident_conseq_true (pa ==> pc) |> Commute |> apply
                 Taut hConj |> Commute |> apply_left
-                Taut (trans_implies pa pb pc) |> apply ]
+                Taut (transImplies pa pb pc) |> apply ]
         | _ -> failwithf "calc: %s / %s are not both implications" (src t1.Stmt) (src t2.Stmt)
 
     /// Build the consequence proposition `a <=== b`  (= Conseq(a, b) = `b ⇒ a`).
