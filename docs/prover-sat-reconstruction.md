@@ -14,8 +14,10 @@ Both step 1 (the resolution replay) and step 2 (the CNF-equivalence link) now sc
 As of **2026-07-25** the replay is also *complete over the trace*: every LRAT step is replayed, not
 just the binary ones, and merge resolvents are discharged (§4.7–4.9). That is what took the pipeline
 from "implication chains" to arbitrary refutations — pigeonhole, distributivity, `≡`-chains, the
-full 8-clause refutation over 3 variables. The remaining limitations are **speed**, and
-clausification blowup in formula *size* (not atom count) — see §7.
+full 8-clause refutation over 3 variables. As of **2026-07-28** `Cnf.toCnf` also prunes tautological
+clauses, which matched its clause counts to the solver-side clausifier's on every goal measured and
+let nested xor reconstruct; the clausification-blowup item in §7 is retracted with it. The remaining
+limitation is **speed**.
 
 Runnable demos:
 
@@ -513,21 +515,58 @@ concern that motivates a fresh-start redesign.
    and cheaper proof steps / a proof object with `instantiate`. See the architectural-limits memory.
 2. ~~**Merge-clause AC-dedup.**~~ **DONE (2026-07-25)** — `_chain_simp` (§4.8).
 3. ~~**Non-binary RUP steps.**~~ **DONE (2026-07-25)** — `SAT.rupChain` (§4.7). They are not rare.
-4. **Clausification blowup (formula size).** `Cnf.toCnf` distributes directly, which is exponential
-   in the formula's ∨/∧ nesting — independent of the atom count that used to be the ceiling. Nested
-   `≢` is where it bites first: xor associativity over 3 variables produces **441 clauses / 2940
-   literals**, enough to overflow the replay's stack, while xor commutativity (36 clauses)
-   reconstructs fine. Tseitin/Plaisted-Greenbaum is the general fix; the cost is teaching the replay
-   to discharge the definitional clauses for the auxiliary variables.
+4. ~~**Clausification blowup (formula size)** — Tseitin is the top blocker.~~ **RETRACTED, and fixed
+   (2026-07-28).** This item claimed the recursive descent was exponential in ∨/∧ nesting on the
+   strength of one measurement: xor associativity over 3 variables produced **441 clauses / 2940
+   literals**, enough to overflow the replay's stack, where the solver-side `cnfOfNegatedGoal`
+   produced **8**. Two successive explanations for that gap were wrong, and the audit is worth
+   recording because the wrong ones were plausible.
 
-   **But measure before reaching for Tseitin.** The solver-side clausifier `cnfOfNegatedGoal` emits
-   only **8 clauses** for that same goal, in 6 ms — because it expands `x ≢ y` directly to
-   `(x ∨ y) ∧ (¬x ∨ ¬y)`, whereas `Cnf.toCnf` routes through `¬(x = y)` → mutual implication →
-   distribute, which multiplies out. So a large part of this particular blowup is a **bad expansion
-   choice in one case of `Cnf.toCnf`, not an inherent property of CNF**. Giving it a direct
-   `≢`-to-CNF theorem (`(p ≢ q) = ((p ∨ q) ∧ (¬p ∨ ¬q))`) is a much smaller change than Tseitin and
-   should be tried first. A general audit of the other cases against the solver-side clausifier's
-   clause counts is worth doing at the same time.
+   The first guess was a *bad xor expansion* — `Cnf.toCnf` routes `x ≢ y` through `¬(x = y)` and
+   mutual implication, so a direct `(x ∨ y) ∧ (¬x ∨ ¬y)` theorem should have collapsed it. But
+   `cnfOfNegatedGoal` does not use that form either; it expands xor to the DNF
+   `(x ∧ ¬y) ∨ (¬x ∧ y)`, essentially what `Cnf.toCnf` already reaches. Counting instead of
+   theorising settled it:
+
+   ```
+   Cnf.toCnf raw clauses        : 441
+     of those, TAUTOLOGICAL     : 433
+     non-tautological           : 8
+   cnfOfNegatedGoal clauses     : 8
+   ```
+
+   Both clausifiers produce **the same essential CNF**. The entire gap was that `cnfOfNegatedGoal`
+   drops tautological clauses (in `normClause`) and `Cnf.toCnf` kept every one. Not an expansion
+   problem, and not size blowup in the Tseitin sense at all.
+
+   `Cnf.toCnf` now prunes them, clause by clause, by congruence — each obligation is `clause == T`
+   from a complementary pair, discharged by `simp`, then the `T` conjunct collapses via `ident_and`
+   (Gries 3.39). Two things that a global `simp` over the conjunction gets wrong, and which cost a
+   round each: it simplifies ACROSS clauses, so the CNF of `¬(p ∨ ¬p)` — which is `¬p ∧ p`, with no
+   tautological clause — collapses to `F`, leaving nothing to clausify; and even where that is not
+   fatal, the two sides do not reliably converge (it fails on `∨`-over-`∧` distributivity).
+
+   `Cnf.toCnf` now matches the solver-side clausifier's clause count on **every** goal measured:
+
+   | goal | `Cnf.toCnf` before | after | `cnfOfNegatedGoal` |
+   |---|--:|--:|--:|
+   | excluded middle / Peirce / chains 3, 8 | 2 / 3 / 4 / 9 | unchanged | 2 / 3 / 4 / 9 |
+   | `∨` over `∧` distributivity | 24 | **12** | 12 |
+   | biconditional chain | 8 | 8 | 8 |
+   | pigeonhole 3→2 | 9 | 9 | 9 |
+   | 3-var all-8-clause | 8 | 8 | 8 |
+   | xor commutativity | 36 | **4** | 4 |
+   | **xor associativity** | **441** | **8** | 8 |
+
+   Xor associativity now **reconstructs end to end in 6.1 s**, and is in `Reconstruct.fsx`'s goal
+   list. It was the only goal that had ever overflowed the replay.
+
+   **What remains, honestly stated.** Conversion still *builds* the 441 clauses before pruning them
+   (≈4 s for that goal), so the recursive descent is still doing exponential work even though its
+   output no longer is. Pruning inside `distribOr`, rather than once at the end, would keep the
+   intermediates small too. That is the next thing to try — and it is a far smaller change than
+   Tseitin, which no longer has a measurement supporting it. Tseitin remains the right answer for
+   genuine size blowup; nothing measured here is an instance of one.
 5. ~~**`absorb_or`'s positional rewrites are shape-sensitive.**~~ **DONE (2026-07-25)** — and it was
    a class, not one theorem. A reflection-driven sweep instantiating every all-`Prop`-parameter
    schema in `PropCalculus` at arguments *containing* the terms its own steps search for (`p ∨ p`,

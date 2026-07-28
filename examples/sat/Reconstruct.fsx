@@ -64,10 +64,12 @@ check "merge  (p∨q)∧(¬p∨q) ⇒ q"           (((p + q) * (!!p + q)) ==> q)
 check "3-var all-8-clause refutation"     (!!((p+q+r) * (!!p+q+r) * (p+ !!q+r) * (!!p+ !!q+r) * (p+q+ !!r) * (!!p+q+ !!r) * (p+ !!q+ !!r) * (!!p+ !!q+ !!r)))
 check "resolution chain to s"             (((p + q) * (!!q + r) * (!!r + s) * (!!p + s)) ==> s)
 check "∨ distributes over ∧"              ((p * (q + r)) == ((p * q) + (p * r)))
-// `≢` is handled by Cnf.toCnf (via Gries 3.10) — but each one doubles the CNF under direct
-// distribution, so nested xor is where the clausifier's exponential-in-FORMULA-SIZE blowup bites
-// (xor associativity: 441 clauses). Tseitin encoding is the fix; see the design notes.
+// `≢` is handled by Cnf.toCnf (via Gries 3.10). Nested xor is the worst case for the recursive
+// descent — associativity distributes out to 441 clauses — but 433 of those are TAUTOLOGIES, which
+// `Cnf.toCnf` now prunes clause-by-clause with a kernel proof, leaving the same 8 clauses the
+// solver-side clausifier produces. Before that pruning this goal overflowed the replay's stack.
 check "xor commutes  (p≢q) ≡ (q≢p)"       ((p != q) == (q != p))
+check "xor assoc  ((p≢q)≢r) ≡ (p≢(q≢r))"  ((((p != q) != r) == (p != (q != r))))
 check "pigeonhole 3→2"                    (!!((p+q) * (r+s) * (t+u) * (!!p + !!r) * (!!q + !!s) * (!!p + !!t) * (!!q + !!u) * (!!r + !!t) * (!!s + !!u)))
 check "≡ chain  (p≡q)∧(q≡r)∧(r≡s) ⇒ p≡s"  (((p == q) * (q == r) * (r == s)) ==> (p == s))
 
