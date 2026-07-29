@@ -525,19 +525,31 @@ concern that motivates a fresh-start redesign.
    | `CallPattern` + `SpecificCall` + `ExprShape.loop`, self CPU | **19.1%** |
 
    The cost is not rewriting terms; it is **asking quotations what they are**. `FSharpOption`,
-   tuples, lists and `FSharpChoice` from active-pattern probes were ~6.3M of 8.0M allocations. Two
-   experiments that did NOT work, recorded so they are not repeated: reference-keyed memoization of
-   `expand` and `AxEquiv` (60%+ hit rates, zero time effect), and routing `Term.(==)` through
-   `mk_eq_bool` (`Prop` already has its own fast overload, so the generic one is not on the hot
-   path).
+   tuples, lists and `FSharpChoice` from active-pattern probes were ~6.3M of 8.0M allocations. One
+   experiment that did NOT work, recorded so it is not repeated: reference-keyed memoization of
+   `expand` and `AxEquiv` (60%+ hit rates, zero time effect — caching the entry point never hits the
+   expensive call, which is a fresh `A ⇒ Cᵢ` at every step).
 
-   What did work: `expand` matched five separate `Call(...)` rules, and F# re-invokes an active
-   pattern per match rule rather than sharing the destructuring, so every call node was probed and
-   allocated five times over. Destructuring once and dispatching on the bound `MethodInfo` gave
-   **-7.7% wall clock and -11% allocations**, with byte-identical proof logs across every example
-   script. Remaining candidates in the same vein: an allocation-free `specific_call` (5.4% self
-   CPU), `traverse` without `ExprShape` (4.8%), and whatever still calls `FSharpExpr.Deserialize40`
-   (3.7%, source not yet located — the parameterized-pattern templates are already hoisted).
+   Two changes that did work, together **-10.6% warm and -17% cold**, with byte-identical proof logs
+   across every example script:
+
+   - **`expand` destructures once.** It matched five separate `Call(...)` rules, and F# re-invokes
+     an active pattern per match rule rather than sharing the destructuring, so every call node was
+     probed and allocated five times over. One `Call(body, mi, args)` and a dispatch on `mi.Name`:
+     -7.7% warm, -11% allocations.
+   - **`Term.(==)` builds through `mk_eq_bool`** instead of a spliced quotation literal, which
+     re-deserializes its pickled template on every evaluation. Worth stating why this was nearly
+     missed: `Prop` declares its own `==` over `#Prop` that already used `mk_eq_bool`, which makes
+     the `Term<'t>` one look dead — but **F# overload resolution picks the inherited `Term<'t>`
+     member for two `Prop`s**. Counted on pigeonhole 4→3: `Term<'t>.(==)` fires 2175 times and
+     `Prop.(==)` fires zero. The `#Prop` overload is the dead one. -3% warm, and the cold win is
+     much larger because the deserialization machinery is never JITted.
+
+   Remaining candidates in the same vein: an allocation-free `specific_call` (5.4% self CPU),
+   `traverse` without `ExprShape` (4.8%), and the other spliced quotation literals in `Term.fs`
+   (`IndexVar` arithmetic, the quantifier builders, `Pred` combinators) — none of which are on a
+   propositional path, but the same trap applies wherever they are hot. **Count the call before
+   assuming an overload is dead.**
 
    Measure warm, not cold: a fresh `dotnet run` spends over a second in JIT on a 1.6 s payload,
    which is why `runDense` repeats the payload and why single-shot numbers in this file's history

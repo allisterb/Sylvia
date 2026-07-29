@@ -41,7 +41,19 @@ type Term<'t when 't: equality> (expr:Expr<'t>, ?h:TermHistory) =
         
     static member op_Implicit (l:Term<'t>):Expr<'t> = l.Expr
  
-    static member (==) (l:Term<'t>, r:Term<'t>) = <@ %l.Expr = %r.Expr @> |> Prop
+    // A spliced quotation literal re-deserializes its pickled template on EVERY evaluation
+    // (`FSharpExpr.Deserialize40`, 3.7% of self CPU in a reconstruction profile). `Prop` declares
+    // its own `==` over `#Prop` using `mk_eq_bool`, but F# overload resolution picks THIS inherited
+    // member for two `Prop`s, not that one — counted on pigeonhole 4→3: this fires 2175 times and
+    // `Prop.(==)` fires zero. So this is the propositional equality builder in practice, and the
+    // `#Prop` overload below is effectively dead.
+    //
+    // `mk_eq_bool` produces exactly the tree `<@ (a:bool) = b @>` produces (its stated contract),
+    // so `sequal` and every pattern are unaffected. Only bool can take the fast path: at any other
+    // 't the quotation instantiates `op_Equality` at 't, a different MethodInfo.
+    static member (==) (l:Term<'t>, r:Term<'t>) =
+        if typeof<'t> = typeof<bool> then Prop(Expr.Cast<bool>(mk_eq_bool l.Expr.Raw r.Expr.Raw))
+        else <@ %l.Expr = %r.Expr @> |> Prop
     
 and [<AbstractClass>] TermVar<'t when 't: equality>(n: string) = 
     inherit Term<'t>(Expr.Var(Var(n, typeof<'t>)) |> expand_as<'t>)
