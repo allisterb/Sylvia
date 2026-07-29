@@ -160,3 +160,151 @@ module Reconstruction =
     let conj_elim_all (n: int) : Theorem[] =
         let clauses = List.init n (fun i -> (boolvar (sprintf "c%d" (i + 1)) :> Prop) + pnot (boolvar (sprintf "d%d" (i + 1))))
         conjElimAll clauses
+
+/// DENSE reconstruction payloads — pigeonhole, for profiling the cost that the chain payloads
+/// above cannot show.
+///
+/// Two things make this different from `Reconstruction`, and both are deliberate.
+///
+/// **It runs the real library.** `Reconstruction` above carries its own copy of the replay
+/// plumbing, which handles only binary `Add(id, cl, [h1; h2])` steps and synthesizes a
+/// unit-propagation refutation. Pigeonhole's refutation is neither binary nor unit-propagatable,
+/// and profiling a copy profiles the wrong code anyway, so this module calls `Sylvia.Prover.SAT`
+/// (`SatProof.clausesOf` / `refute` / `dedupCnf`) — the same path `examples/sat/Reconstruct.fsx`
+/// and `PropCalculus.decide` take.
+///
+/// **The LRAT trace is canned.** CaDiCaL is not invoked: the traces below were emitted by
+/// `cadical -q --lrat --no-binary --plain` against the DIMACS this pipeline produces, and are
+/// embedded verbatim. That keeps the payload hermetic (no external process, no PATH dependency —
+/// `bin/cadical.exe` needs `msys-2.0.dll`, which a profiler host may not have) and, more
+/// importantly, keeps the profile free of solver time: solving pigeonhole 6→5 takes CaDiCaL 27 ms
+/// against 100 s of kernel replay, so the replay is the only interesting part.
+///
+/// `--plain` matters. CaDiCaL's default preprocessing introduces fresh variables and justifies
+/// them with RAT steps, which `rupChain` cannot replay; see the `Cadical` doc comment.
+///
+/// If the clause list ever stops matching the canned trace — a change to `Cnf.toCnf`'s output
+/// order, or to `clausesOf`'s variable numbering — the guard below fails with a clear message
+/// rather than letting the replay fail obscurely deep inside `refute`. Regenerate by dumping
+/// `(sat.Solve cnf).Dimacs` and re-running the cadical command above.
+module ReconstructionDense =
+
+    let private pOf (e: Expr) : Prop = Prop(expand_as<bool> e)
+
+    let private transEq (p1: Theorem) (p2: Theorem) : Theorem =
+        match p1.Stmt, p2.Stmt with
+        | Equals(x, _), Equals(_, z) ->
+            theorem prop_calculus (pOf x == pOf z) [ Ident p1 |> apply_left; Ident p2 |> apply_left ]
+        | _ -> failwith "transEq: not equalities"
+
+    /// Pigeonhole: `holes + 1` pigeons into `holes` holes, as the NEGATION of an unsatisfiable
+    /// conjunction — so the goal is a theorem and its refutation is the dense case. Wide clauses
+    /// (each "some hole" clause has `holes` literals) and a superpolynomial resolution proof.
+    let php_goal (holes: int) : Prop =
+        let p = Array2D.init (holes + 1) holes (fun i j -> boolvar (sprintf "ph%d_%d" i j) :> Prop)
+        let someHole = [ for i in 0 .. holes -> [ for j in 0 .. holes - 1 -> p.[i, j] ] |> List.reduce (+) ]
+        let noClash =
+            [ for j in 0 .. holes - 1 do
+                for i in 0 .. holes do
+                  for k in i + 1 .. holes do yield !!(p.[i, j] * p.[k, j]) ]
+        !!((someHole @ noClash) |> List.reduce ( * ))
+
+    /// pigeonhole 4→3: 12 atoms, 22 clauses, 15 LRAT additions. ~1.4 s — the fast iteration case.
+    let private php3_lrat = "\
+23 -11 -12 0 22 19 13 16 1 3 6 0\n\
+24 -7 -12 0 21 19 6 8 1 2 11 0\n\
+25 -12 0 19 21 22 24 3 12 14 1 2 5 0\n\
+26 -8 0 25 12 14 16 4 7 9 1 2 17 0\n\
+27 -7 0 25 6 8 10 4 13 15 1 2 17 0\n\
+28 9 0 27 26 3 0\n\
+29 -3 0 28 18 0\n\
+30 -6 0 28 20 0\n\
+31 -1 0 30 25 5 7 2 4 15 0\n\
+32 2 0 31 29 1 0\n\
+33 -5 0 32 11 0\n\
+34 -11 0 32 13 0\n\
+35 4 0 33 30 2 0\n\
+36 10 0 34 25 4 0\n\
+37 0 35 36 9 0\n"
+
+    /// pigeonhole 5→4: 20 atoms, 45 clauses, 48 LRAT additions. ~12 s — the signal case.
+    let private php4_lrat = "\
+46 -18 -19 -20 0 35 29 45 39 19 25 1 4 8 0\n\
+47 -13 -19 -20 0 34 29 44 39 8 13 1 3 17 0\n\
+48 -19 -20 0 45 44 39 29 34 35 47 4 18 23 1 3 7 0\n\
+49 -1 -14 -20 0 23 21 44 42 6 7 2 3 30 0\n\
+50 -14 -20 0 44 42 39 18 21 23 49 1 26 27 2 3 10 0\n\
+51 -3 -13 -20 0 13 11 44 42 26 27 2 3 20 0\n\
+52 -13 -20 0 44 42 39 8 11 13 51 1 16 17 2 3 30 0\n\
+53 -9 -20 0 45 50 52 4 31 28 42 39 7 10 1 2 16 0\n\
+54 -20 0 39 42 44 45 50 52 4 28 31 33 53 3 17 20 1 2 6 0\n\
+55 -5 -10 3 0 54 24 23 17 6 11 12 1 5 38 35 4 0\n\
+56 -7 -10 3 0 54 24 23 17 31 32 5 9 15 1 4 38 0\n\
+57 -10 3 0 54 17 20 23 24 55 56 2 36 41 1 8 9 4 5 35 0\n\
+58 -8 -9 3 0 54 14 13 7 36 41 1 18 19 4 5 35 0\n\
+59 -2 8 17 5 0 54 16 19 2 5 32 0\n\
+60 -19 16 8 13 5 0 32 35 2 4 21 0\n\
+61 -9 3 0 54 7 10 13 14 58 59 1 38 60 5 22 25 2 4 31 0\n\
+62 -5 16 -11 0 54 34 33 11 12 4 5 25 0\n\
+63 16 8 -11 0 54 34 33 30 62 2 21 22 4 5 15 0\n\
+64 -6 4 19 3 0 54 16 22 1 5 9 0\n\
+65 8 -11 3 0 54 34 30 63 38 64 2 6 12 1 5 19 0\n\
+66 -18 -11 3 0 65 41 36 33 19 25 1 4 8 0\n\
+67 -11 3 0 54 33 34 65 36 41 66 5 9 15 1 4 18 0\n\
+68 -13 -2 8 0 11 15 59 0\n\
+69 -2 18 -12 0 54 43 40 16 18 68 4 31 35 2 5 12 0\n\
+70 18 3 0 54 61 57 67 3 43 40 37 69 1 6 8 9 60 5 0\n\
+71 3 0 57 61 67 3 37 40 43 70 19 22 25 1 6 8 2 4 31 0\n\
+72 -7 0 71 26 0\n\
+73 -11 0 71 27 0\n\
+74 -15 0 71 28 0\n\
+75 -19 0 71 29 0\n\
+76 -14 8 0 72 54 75 21 25 2 5 12 0\n\
+77 8 16 0 74 72 54 75 76 4 11 15 2 5 22 0\n\
+78 -13 12 0 73 54 75 13 15 3 5 24 0\n\
+79 16 0 74 73 54 75 77 40 78 4 23 25 3 5 14 0\n\
+80 -4 0 79 38 0\n\
+81 -8 0 79 41 0\n\
+82 -12 0 79 43 0\n\
+83 -14 0 81 76 0\n\
+84 -13 0 82 78 0\n\
+85 -17 0 81 72 73 82 12 14 2 3 20 0\n\
+86 18 0 85 75 54 5 0\n\
+87 -2 0 86 19 0\n\
+88 -6 0 86 22 0\n\
+89 -10 0 86 24 0\n\
+90 5 0 88 72 81 2 0\n\
+91 9 0 89 82 73 3 0\n\
+92 -1 0 90 6 0\n\
+93 0 90 91 10 0\n"
+
+    /// Reconstruct a pigeonhole goal from its canned trace: the whole `SatProof.proveWith`
+    /// pipeline minus the solver call. `expectVars`/`expectClauses` pin the shape the trace was
+    /// generated against.
+    let private reconstruct_canned (goal: Prop) (lrat: string) (expectVars: int) (expectClauses: int) : Theorem =
+        let neg = !!goal
+        let (cnfProp, cnfPf) = Cnf.toCnf neg                              // ¬φ == cnfProp, kernel-proved
+        let cnf = SatProof.clausesOf goal cnfProp
+        if cnf.NumVars <> expectVars || List.length cnf.Clauses <> expectClauses then
+            failwithf "canned LRAT is stale: clausification now gives %d vars / %d clauses, trace was generated against %d / %d — regenerate it (see the module comment)"
+                      cnf.NumVars (List.length cnf.Clauses) expectVars expectClauses
+        let A, rOpt = SatProof.refute cnf (parseLrat lrat)                // STEP 1: R : A ⇒ F
+        let rTh = match rOpt with
+                  | Some t -> t
+                  | None -> failwith "canned LRAT never derives the empty clause"
+        let (cnfDedup, dedupPf) = SatProof.dedupCnf cnfProp               // STEP 2: ¬φ == A
+        let bridge = theorem prop_calculus (cnfDedup == A) [ normalize ]
+        let ceq = transEq cnfPf (match dedupPf with Some d -> transEq d bridge | None -> bridge)
+        let negImpF = theorem prop_calculus (neg ==> F) [ Ident ceq |> apply_left; Taut rTh |> apply ]
+        let th = Contradiction negImpF
+        // The payload must prove the GOAL, not merely produce a theorem — a profile of the wrong
+        // computation is worse than no profile.
+        if not (sequal th.Stmt (expand goal.Expr)) then
+            failwith "reconstruction produced the wrong statement"
+        th
+
+    /// pigeonhole 4→3 — 12 atoms, 22 clauses, 15 LRAT steps.
+    let reconstruct_php_4_3 () : Theorem = reconstruct_canned (php_goal 3) php3_lrat 12 22
+
+    /// pigeonhole 5→4 — 20 atoms, 45 clauses, 48 LRAT steps. The main profiling target.
+    let reconstruct_php_5_4 () : Theorem = reconstruct_canned (php_goal 4) php4_lrat 20 45

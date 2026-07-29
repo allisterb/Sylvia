@@ -73,6 +73,32 @@ check "xor assoc  ((p≢q)≢r) ≡ (p≢(q≢r))"  ((((p != q) != r) == (p != (
 check "pigeonhole 3→2"                    (!!((p+q) * (r+s) * (t+u) * (!!p + !!r) * (!!q + !!s) * (!!p + !!t) * (!!q + !!u) * (!!r + !!t) * (!!s + !!u)))
 check "≡ chain  (p≡q)∧(q≡r)∧(r≡s) ⇒ p≡s"  (((p == q) * (q == r) * (r == s)) ==> (p == s))
 
+// ---- DENSE refutations, the class the chains above cannot speak for ----------------------------
+// Every goal up to here is either tiny or an implication chain, and a chain is the cheapest
+// refutation shape there is: one resolution per atom, over narrow clauses. That made the whole
+// benchmark set blind to two things at once.
+//
+// The first was a COMPLETENESS cliff. CaDiCaL's default preprocessing introduces fresh variables and
+// justifies them with RAT steps, which `rupChain` cannot replay — pigeonhole 5→4 failed outright on
+// 12 of its 82 steps while every chain sailed through. `Cadical` now defaults to `--plain` for
+// exactly this reason (see its doc comment); these goals are what would catch a regression.
+//
+// The second is that cost tracks LRAT STEPS × CLAUSE-SET SIZE, not atom count. Measured, Release:
+// 4→3 is 12 atoms / 15 steps / 1.8 s, but 5→4 is 20 atoms / 48 steps / 11.5 s, and 6→5 is 30 atoms /
+// 156 steps / 102 s. A 50-atom chain, by contrast, is 3.1 s. So 5→4 costs what a chain three times
+// its size would. 6→5 is deliberately NOT in this gate — it is the honest ceiling, not a test.
+let pigeonhole n =
+    let ph = Array2D.init (n + 1) n (fun i j -> (boolvar (sprintf "ph%d_%d" i j) :> Prop))
+    let someHole = [ for i in 0 .. n -> [ for j in 0 .. n - 1 -> ph.[i, j] ] |> List.reduce (+) ]
+    let noClash = [ for j in 0 .. n - 1 do
+                      for i in 0 .. n do
+                        for k in i + 1 .. n do yield !!(ph.[i, j] * ph.[k, j]) ]
+    !!((someHole @ noClash) |> List.reduce ( * ))
+
+printfn "\nDense refutations (wide clauses, superpolynomial resolution — the slow, honest cases):"
+check "pigeonhole 4→3"                    (pigeonhole 3)
+check "pigeonhole 5→4"                    (pigeonhole 4)
+
 // The library's other entry points.
 printfn "\nAPI surface:"
 // A non-theorem is reported, not raised — and is distinguishable from "the solver could not tell".

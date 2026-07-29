@@ -208,19 +208,37 @@ module SAT =
     /// process — matching `Sylvia.ATP.E`, we own the clock rather than trusting the solver's own limit
     /// flags under the Windows/MSYS2 build. The solver runs single-threaded (`--lrat` proof tracing),
     /// no forking.
-    type Cadical(?exePath: string, ?timeoutMs: int) =
+    ///
+    /// `plain` (default TRUE) runs the solver with pre- and inprocessing disabled. This is about the
+    /// PROOF, not the verdict. CaDiCaL's default preprocessing introduces FRESH VARIABLES — on a
+    /// 20-variable pigeonhole instance its LRAT referenced variables 21-29 — and justifies the
+    /// clauses defining them with RAT steps, which are satisfiability-preserving rather than
+    /// entailed and so have no reading as resolution. `SAT.rupChain` is RUP-only by design, so those
+    /// steps cannot be replayed: 12 of 82 steps failed on that instance, and reconstruction failed
+    /// outright. With `--plain` the same instance produced 48 steps and no RAT at all.
+    ///
+    /// The cost is bearable because for our purposes solving is never the bottleneck — it is tens of
+    /// milliseconds against seconds of kernel replay — and the whole point of the pipeline is a proof
+    /// we can check. Pass `plain = false` when you only want a VERDICT (`valid`-style checks, or a
+    /// countermodel) and are not going to reconstruct: preprocessing makes the solver stronger on
+    /// instances where solving is genuinely hard.
+    type Cadical(?exePath: string, ?timeoutMs: int, ?plain: bool) =
         let exe =
             defaultArg exePath (
                 match Environment.GetEnvironmentVariable "SYLVIA_CADICAL" with
                 | null | "" -> "cadical.exe"
                 | p -> p)
         let timeout = defaultArg timeoutMs 10000
+        let isPlain = defaultArg plain true
 
         /// The resolved path to the CaDiCaL executable.
         member _.ExePath = exe
 
         /// The wall-clock timeout (ms) the wrapper enforces.
         member _.TimeoutMs = timeout
+
+        /// Whether pre/inprocessing is disabled, keeping the LRAT trace RUP-only and replayable.
+        member _.Plain = isPlain
 
         /// Whether the executable exists (meaningful only for an absolute/relative path, not a PATH lookup).
         member _.IsAvailable = File.Exists exe
@@ -242,7 +260,8 @@ module SAT =
                     let psi =
                         ProcessStartInfo(
                             exe,
-                            sprintf "-q --lrat --no-binary \"%s\" \"%s\"" cnfFile lratFile,
+                            sprintf "-q --lrat --no-binary%s \"%s\" \"%s\""
+                                    (if isPlain then " --plain" else "") cnfFile lratFile,
                             RedirectStandardOutput = true, RedirectStandardError = true,
                             UseShellExecute = false, CreateNoWindow = true)
                     use p = Process.Start psi

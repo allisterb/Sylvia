@@ -489,8 +489,9 @@ with
     member x.RightApplication =
         x.Pos = "right of expression" || System.Text.RegularExpressions.Regex.IsMatch(x.Pos, "right>(\\S)+\\s+of expression")
 
-and Theorem (expr: Expr, proof:Proof) = 
+and Theorem (expr: Expr, proof:Proof) =
     let print_formula = proof.Theory.PrintFormula
+    let lazyName = lazy (print_formula expr)
     do 
         if not (sequal expr proof.Stmt) then failwithf "The provided proof is not a proof of %s." (print_formula expr)
         if not proof.Complete then 
@@ -501,7 +502,10 @@ and Theorem (expr: Expr, proof:Proof) =
     member val LastState = proof.LastState
     member val Proof = proof
     member val Theory = proof.Theory
-    member val Name = expr |> print_formula
+    // `Name` is a DISPLAY property, but `member val` evaluated it eagerly — so constructing any
+    // Theorem decompiled its whole statement, even at LogLevel 0 where nothing is printed. In a SAT
+    // replay the statements are `A ⇒ Cᵢ` over the entire clause conjunction, thousands of times.
+    member x.Name = lazyName.Value
     new (proof:Proof) = Theorem(proof.Stmt, proof)
 
 [<AutoOpen>]

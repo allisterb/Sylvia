@@ -14,6 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\lang\core\Sylvia.Prover\Sylvia.Prover.fsproj" />
     <ProjectReference Include="..\..\src\lang\solvers\Sylvia.Solver.CaDiCaL\Sylvia.Solver.CaDiCaL.fsproj" />
+    <ProjectReference Include="..\..\src\lang\core\Sylvia.Prover.SAT\Sylvia.Prover.SAT.fsproj" />
   </ItemGroup>
 
 </Project>

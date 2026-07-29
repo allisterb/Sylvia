@@ -211,6 +211,44 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
             | Error e -> Assert.Contains("not found", e)
 
     [<Fact>]
+    member _.``the solver defaults to a RUP-only (replayable) proof, and can be asked not to`` () =
+        // CaDiCaL's default preprocessing introduces fresh variables and justifies them with RAT
+        // steps, which `rupChain` cannot replay — pigeonhole 5→4 failed on 12 of its 82 steps that
+        // way. `--plain` is therefore the DEFAULT here, and this pins it: a caller who constructs a
+        // solver in order to reconstruct must get a replayable trace without having to know any of
+        // the above. Opting out is for verdict-only use.
+        Assert.True(Cadical().Plain, "reconstruction needs a RUP-only trace, so plain must default on")
+        Assert.False(Cadical(plain = false).Plain)
+        match solver with
+        | None -> out.WriteLine "SKIPPED (no cadical): the verdict half of this test needs the solver"
+        | Some sat ->
+            // Opting out must still DECIDE correctly — only the proof format changes.
+            let verdictOnly = Cadical(exePath = sat.ExePath, timeoutMs = 20000, plain = false)
+            let cnf = SatProof.clausesOf (p + !!p) (fst (Cnf.toCnf !!(p + !!p)))
+            Assert.Equal(Unsat, (verdictOnly.Solve cnf).Status)
+
+    [<Fact>]
+    member _.``a dense refutation reconstructs, not just implication chains`` () =
+        // Every other end-to-end case here is tiny or a chain, and a chain is the cheapest
+        // refutation shape there is: one resolution per atom over narrow clauses. Pigeonhole 4→3 is
+        // the smallest goal in the suite whose refutation is genuinely dense, and it is the one that
+        // exercises the `--plain` default above. (5→4 is in `examples/sat/Reconstruct.fsx`; at ~20 s
+        // it is too slow for the unit suite.)
+        match solver with
+        | None -> out.WriteLine "SKIPPED (no cadical): examples/sat/Reconstruct.fsx is the end-to-end gate"
+        | Some sat ->
+            let n = 3
+            let ph = Array2D.init (n + 1) n (fun i j -> (boolvar (sprintf "ph%d_%d" i j) :> Prop))
+            let someHole = [ for i in 0 .. n -> [ for j in 0 .. n - 1 -> ph.[i, j] ] |> List.reduce (+) ]
+            let noClash = [ for j in 0 .. n - 1 do
+                              for i in 0 .. n do
+                                for k in i + 1 .. n do yield !!(ph.[i, j] * ph.[k, j]) ]
+            let goal = !!((someHole @ noClash) |> List.reduce ( * ))
+            let th = SatProof.proveWith sat goal
+            Assert.True(sequal th.Stmt (expand goal.Expr),
+                        sprintf "proved %s, expected %s" (src th.Stmt) (src (expand goal.Expr)))
+
+    [<Fact>]
     member _.``decide falls back to the atom-capped prover when no backend is installed`` () =
         // The guard is on the EXPONENTIAL provers, not on propositional proof as such — so with no
         // decider registered, a small goal still proves and a large one fails fast with a message

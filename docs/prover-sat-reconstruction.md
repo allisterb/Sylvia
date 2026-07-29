@@ -508,11 +508,54 @@ concern that motivates a fresh-start redesign.
 
 ## 7. Remaining work (honest boundaries)
 
-1. **Speed of the reconstruction assembly (architectural).** The bottleneck is the O(|expr|)-per-step
-   kernel cost on the large conjunction `A` (via `chainImp`), not leaf re-derivation — memoization does
-   not fix it (tried, reverted). An O(m) `conjElimAll` (share the peel-chain) is in place but is a wash
-   at these sizes. The real levers are kernel-layer: interned/hash-consed terms (cheap identity + keys)
-   and cheaper proof steps / a proof object with `instantiate`. See the architectural-limits memory.
+1. **Speed of the reconstruction assembly (architectural).** Leaf re-derivation is now fixed (§7.6,
+   `Tactics.Instantiate`). What is left is the **O(|A|)-per-step** kernel cost: every step traverses
+   the whole clause conjunction, so the total is O(steps × |A|). The remaining lever is kernel-layer —
+   interned/hash-consed terms giving cheap identity and cheap keys, so a step costs the size of what
+   it changed rather than the size of the goal. See the architectural-limits memory.
+
+   **Atom count is the wrong yardstick, and it flattered every benchmark in this document.** Cost
+   tracks LRAT STEPS × CLAUSE-SET SIZE (and clause WIDTH), and an implication chain is the cheapest
+   refutation shape there is: exactly one resolution per atom, over 2-literal clauses. Measured,
+   Release, warm:
+
+   | goal | atoms | clauses | LRAT adds | total | per step |
+   |---|--:|--:|--:|--:|--:|
+   | chain 50 | 50 | 51 | 50 | 3075 ms | 61 ms |
+   | pigeonhole 4→3 | 12 | 22 | 15 | 1811 ms | 121 ms |
+   | pigeonhole 5→4 | 20 | 45 | 48 | 11 514 ms | 240 ms |
+   | pigeonhole 6→5 | 30 | 81 | 156 | 102 231 ms | 655 ms |
+
+   A 20-atom pigeonhole costs what a 60-atom chain would. So the §1 target of "20–50 atoms in well
+   under a second" is met on chains at the low end and is not the right way to state the goal: a
+   target in LRAT steps and clause-set size would actually track whether this is improving. The
+   honest present ceiling for DENSE refutations is around 20 atoms for single-digit seconds. 4→3 and
+   5→4 are now in `Reconstruct.fsx` so this class cannot silently regress; 6→5 deliberately is not —
+   it is the ceiling, not a test.
+
+   Solving is never the bottleneck: CaDiCaL refutes pigeonhole 6→5 in 27 ms and we then spend 102 s
+   replaying it.
+
+1a. ~~**RUP-only replay is complete enough.**~~ **NO — found and mitigated (2026-07-28).** This was
+   never written down as an assumption, which is precisely how it survived. `SAT.rupChain` replays
+   RUP steps and rejects RAT ones (a negative hint is satisfiability-preserving, not entailed, so it
+   has no forward reading as resolution). Every goal in the suite was a chain or tiny, and chains
+   never produce RAT — so the first genuinely dense instance pointed at the pipeline **failed
+   outright**: pigeonhole 5→4 died at step 46 with "the hints never reach a conflict", 12 of its 82
+   steps unreplayable.
+
+   The cause is upstream. CaDiCaL's default pre/inprocessing **introduces fresh variables** — on a
+   20-variable input its LRAT referenced variables 21–29 — and justifies the clauses defining them
+   with RAT steps. Running the identical instance with `--plain` gives 48 steps, no fresh variables
+   and no RAT at all. `Cadical` therefore now takes `?plain` and **defaults it to true**, so a caller
+   who intends to reconstruct gets a replayable trace without having to know any of this; pass
+   `plain = false` for verdict-only use, where preprocessing makes the solver stronger. Pinned by a
+   test. No measurable cost on anything else (24-atom chain 730 → 737 ms).
+
+   Supporting RAT properly is a real option if a future instance needs it, but nothing measured does:
+   with `--plain`, every dense goal tried reconstructs. Note this makes the earlier "no atom ceiling"
+   claim precise rather than false — it was always about `autoproof_anf`'s exponential in atoms, and
+   it was never a claim that any propositional theorem reconstructs.
 2. ~~**Merge-clause AC-dedup.**~~ **DONE (2026-07-25)** — `_chain_simp` (§4.8).
 3. ~~**Non-binary RUP steps.**~~ **DONE (2026-07-25)** — `SAT.rupChain` (§4.7). They are not rare.
 4. ~~**Clausification blowup (formula size)** — Tseitin is the top blocker.~~ **RETRACTED, and fixed

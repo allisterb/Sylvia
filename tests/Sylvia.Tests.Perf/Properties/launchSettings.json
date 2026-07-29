@@ -2,7 +2,7 @@
   "profiles": {
     "Sylvia.Tests.Perf": {
       "commandName": "Project",
-      "commandLineArgs": "reconstruct"
+      "commandLineArgs": "dense43"
     }
   }
 }
