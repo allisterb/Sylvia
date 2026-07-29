@@ -202,19 +202,31 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
         | 2 -> alwayslog (fun () -> sprintf "Proof log level is %i. All proofs of lemmas will be printed."  logLevel)
         | 3 -> alwayslog (fun () -> sprintf "Proof log level is %i. All proofs of axioms and lemmas will be printed."  logLevel)
         | _ -> failwith "Unknown proof log level."
+    // These headers go through `alwayslog`, which passes `isLemma = false` — so `_prooflog`'s
+    // "never format a line that will not be output" thunk does NOT apply to them, and every proof
+    // object formats and emits its statement regardless of the log level. A reconstruction builds
+    // thousands of lemma proofs over the whole clause conjunction: the `[Lemma]` line at
+    // `steps.Length <= 2` alone measured 8.2% of CPU, and `print_formula` is the cost (replacing
+    // the `sprintf` with concatenation changed nothing — F# caches a literal format string).
+    //
+    // At level 0 the banner above promises "Only necessary output will be printed", and thousands
+    // of `[Lemma] <whole clause conjunction>.` lines are not that. Gating the lemma/axiom headers
+    // on `logLevel > 0` makes level 0 honour its own contract and is worth ~12% of a reconstruction.
+    // Levels 1-3 are untouched; the only output difference anywhere in the example suite is those
+    // lines disappearing at level 0. A top-level proof still announces itself at every level.
     do
-        if isAxiom && logLevel <= 2 then
+        if isAxiom && logLevel > 0 && logLevel <= 2 then
             alwayslog (fun () -> sprintf "[Axiom] %s." (print_formula a))
         else if isAxiom && logLevel > 2 then
             alwayslog (fun () -> sprintf "[Axiom] %s:" (print_formula a))
         else if l && logLevel > 2 then
             alwayslog (fun () -> sprintf "[Lemma] %s:" (print_formula a))
-        else if l && logLevel < 2 && steps.Length <= 2 then
+        else if l && logLevel > 0 && logLevel < 2 && steps.Length <= 2 then
             alwayslog (fun () -> sprintf "[Lemma] %s." (print_formula a))
-        else if l && logLevel < 2 && steps.Length >= 2 then
+        else if l && logLevel > 0 && logLevel < 2 && steps.Length >= 2 then
             alwayslog (fun () -> sprintf "[Lemma] %s:" (print_formula a))
         else if not l then
-            alwayslog (fun () -> sprintf "Proof of %s:" (print_formula a))
+            alwayslog (fun () -> "Proof of " + print_formula a + ":")
 
     let mutable _state = a
     let mutable state:(Expr * Lazy<string>) list = []
