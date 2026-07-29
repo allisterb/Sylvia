@@ -77,9 +77,13 @@ let runDense (fastOnly: bool) =
         Console.SetOut IO.TextWriter.Null
         try f () finally Console.SetOut saved
     Proof.LogLevel <- 0
-    timeOnce "reconstruct pigeonhole 4->3" (quiet ReconstructionDense.reconstruct_php_4_3)
+    // Each `dotnet run` is a fresh process, so a single 1.6 s measurement is a large slice of JIT.
+    // Repeat and read the LATER rows: the first is cold, the rest are the steady state an A/B
+    // comparison actually wants.
+    for i in 1 .. 3 do
+        timeOnce (sprintf "pigeonhole 4->3  (run %d)" i) (quiet ReconstructionDense.reconstruct_php_4_3)
     if not fastOnly then
-        timeOnce "reconstruct pigeonhole 5->4" (quiet ReconstructionDense.reconstruct_php_5_4)
+        timeOnce "pigeonhole 5->4" (quiet ReconstructionDense.reconstruct_php_5_4)
     Proof.LogLevel <- 1
 
 [<EntryPoint>]

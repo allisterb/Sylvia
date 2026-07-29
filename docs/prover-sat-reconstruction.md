@@ -508,11 +508,40 @@ concern that motivates a fresh-start redesign.
 
 ## 7. Remaining work (honest boundaries)
 
-1. **Speed of the reconstruction assembly (architectural).** Leaf re-derivation is now fixed (§7.6,
-   `Tactics.Instantiate`). What is left is the **O(|A|)-per-step** kernel cost: every step traverses
-   the whole clause conjunction, so the total is O(steps × |A|). The remaining lever is kernel-layer —
-   interned/hash-consed terms giving cheap identity and cheap keys, so a step costs the size of what
-   it changed rather than the size of the goal. See the architectural-limits memory.
+1. **Speed of the reconstruction assembly.** Leaf re-derivation is fixed (§7.6,
+   `Tactics.Instantiate`). What remains was long recorded here as an **O(|A|)-per-step kernel cost**
+   calling for interned/hash-consed terms. **Profiling in 2026-07 does not support that**, and the
+   claim is withdrawn — it would have sent the next person to build term interning for a cost that
+   is at most ~15%.
+
+   Measured on `tests/Sylvia.Tests.Perf -- dense43` (pigeonhole 4→3, hermetic, canned LRAT), with
+   in-process timers and then with allocation and CPU profilers:
+
+   | | share |
+   |---|--:|
+   | rule application (the actual rewriting) | **0.4 – 0.8%** |
+   | axiom recognition (`Theory.AxEquiv`) | ~15% |
+   | `FsExpr.expand` subtree | **27.8% CPU** |
+   | `CallPattern` + `SpecificCall` + `ExprShape.loop`, self CPU | **19.1%** |
+
+   The cost is not rewriting terms; it is **asking quotations what they are**. `FSharpOption`,
+   tuples, lists and `FSharpChoice` from active-pattern probes were ~6.3M of 8.0M allocations. Two
+   experiments that did NOT work, recorded so they are not repeated: reference-keyed memoization of
+   `expand` and `AxEquiv` (60%+ hit rates, zero time effect), and routing `Term.(==)` through
+   `mk_eq_bool` (`Prop` already has its own fast overload, so the generic one is not on the hot
+   path).
+
+   What did work: `expand` matched five separate `Call(...)` rules, and F# re-invokes an active
+   pattern per match rule rather than sharing the destructuring, so every call node was probed and
+   allocated five times over. Destructuring once and dispatching on the bound `MethodInfo` gave
+   **-7.7% wall clock and -11% allocations**, with byte-identical proof logs across every example
+   script. Remaining candidates in the same vein: an allocation-free `specific_call` (5.4% self
+   CPU), `traverse` without `ExprShape` (4.8%), and whatever still calls `FSharpExpr.Deserialize40`
+   (3.7%, source not yet located — the parameterized-pattern templates are already hoisted).
+
+   Measure warm, not cold: a fresh `dotnet run` spends over a second in JIT on a 1.6 s payload,
+   which is why `runDense` repeats the payload and why single-shot numbers in this file's history
+   should be treated with suspicion.
 
    **Atom count is the wrong yardstick, and it flattered every benchmark in this document.** Cost
    tracks LRAT STEPS × CLAUSE-SET SIZE (and clause WIDTH), and an implication chain is the cheapest
