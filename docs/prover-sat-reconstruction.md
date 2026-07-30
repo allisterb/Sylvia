@@ -560,21 +560,26 @@ concern that motivates a fresh-start redesign.
    refutation shape there is: exactly one resolution per atom, over 2-literal clauses. Measured,
    Release, warm:
 
-   | goal | atoms | clauses | LRAT adds | total | per step |
-   |---|--:|--:|--:|--:|--:|
-   | chain 50 | 50 | 51 | 50 | 3075 ms | 61 ms |
-   | pigeonhole 4→3 | 12 | 22 | 15 | 1811 ms | 121 ms |
-   | pigeonhole 5→4 | 20 | 45 | 48 | 11 514 ms | 240 ms |
-   | pigeonhole 6→5 | 30 | 81 | 156 | 102 231 ms | 655 ms |
+   | goal | atoms | clauses | LRAT adds | before | after | per step, before → after |
+   |---|--:|--:|--:|--:|--:|--:|
+   | chain 50 | 50 | 51 | 50 | 3075 ms | **1055 ms** | 61 → 21 ms |
+   | pigeonhole 4→3 | 12 | 22 | 15 | 1811 ms | **741 ms** | 121 → 49 ms |
+   | pigeonhole 5→4 | 20 | 45 | 48 | 11 514 ms | **3851 ms** | 240 → 80 ms |
+   | pigeonhole 6→5 | 30 | 81 | 156 | 102 231 ms | **33 595 ms** | 655 → 215 ms |
 
-   A 20-atom pigeonhole costs what a 60-atom chain would. So the §1 target of "20–50 atoms in well
-   under a second" is met on chains at the low end and is not the right way to state the goal: a
-   target in LRAT steps and clause-set size would actually track whether this is improving. The
-   honest present ceiling for DENSE refutations is around 20 atoms for single-digit seconds. 4→3 and
-   5→4 are now in `Reconstruct.fsx` so this class cannot silently regress; 6→5 deliberately is not —
-   it is the ceiling, not a test.
+   "After" is the end of the 2026-07-29/30 optimization pass (§7.6 and the `expand` /
+   `print_formula` / `AxEquiv` / log-level work). **Per-LRAT-step cost fell ~3× uniformly across
+   shapes** — which is the useful way to read it, because the shape mix is what varies between goals.
 
-   Solving is never the bottleneck: CaDiCaL refutes pigeonhole 6→5 in 27 ms and we then spend 102 s
+   A 20-atom pigeonhole still costs what a 60-atom chain does, so **atom count remains the wrong
+   yardstick** and the §1 target should be restated in LRAT steps and clause-set size. Against the
+   target as written: on chains, 20–40 atoms are now 250–700 ms and 50 atoms is 1.05 s, so the bar is
+   met up to ~40 atoms and sits right on it at 50. On DENSE refutations it is not met — 20 atoms is
+   3.9 s — and the practical ceiling there is ~20 atoms for single-digit seconds. 4→3 and 5→4 are in
+   `Reconstruct.fsx` so this class cannot silently regress; 6→5 deliberately is not — it is the
+   ceiling, not a test.
+
+   Solving is never the bottleneck: CaDiCaL refutes pigeonhole 6→5 in 27 ms and we then spend 33 s
    replaying it.
 
 1a. ~~**RUP-only replay is complete enough.**~~ **NO — found and mitigated (2026-07-28).** This was
