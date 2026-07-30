@@ -579,8 +579,13 @@ and Prop (expr:Expr<bool>) =
 and PropVar(n: string) =
     inherit Prop(Expr.Var(Var(n, typeof<bool>)) |> expand_as<bool>)
     
-and PropConst(n: string, ?v:bool) = 
-    inherit Prop(Expr.ValueWithName(v, n) |> expand_as<bool>)
+/// A named boolean constant: displays as `n`, carries the value `v` (default `false`).
+///
+/// `Expr.ValueWithName` needs the VALUE, not the optional parameter — passing `v` through unwrapped
+/// built a quotation of type `bool option`, so `expand_as<bool>` failed its cast and every
+/// construction threw. Unwrap the same way `Val` below does.
+and PropConst(n: string, ?v:bool) =
+    inherit Prop(Expr.ValueWithName(defaultArg v false, n) |> expand_as<bool>)
     member val Name = n
     member val Val = defaultArg v false
 
