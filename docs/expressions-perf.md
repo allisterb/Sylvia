@@ -1,5 +1,13 @@
 # Sylvia.Expressions performance plan (CPU + allocations)
 
+> **Status (2026-07-30).** Phases 0-9 of this plan are done. A second, profile-driven pass then ran
+> over the prover on top of it — `expand`, the log path, `Theory.AxEquiv`, `Display.print_formula` —
+> and its results, its several NEGATIVE results, and the measurement method that produced them are in
+> [`prover-perf-handoff.md`](prover-perf-handoff.md). Read that before acting on the plan below:
+> two of its premises no longer hold. Rule application is 0.4-0.8% of CPU, so the "interned terms /
+> LCF `Thm`" framing is withdrawn; and reducing cheap allocation churn has repeatedly measured zero
+> here, so the allocation-focused phases should be re-justified against a CPU profile first.
+
 Motivation: profiling `tests/Sylvia.Tests.Perf` (a single `trans_implies p q r` call, ~1.9s on the
 big clause conjunction in the SAT-reconstruction work) shows the prover's time is dominated not by
 proof logic but by three quotation-related costs, all rooted in `Sylvia.Expressions`:
