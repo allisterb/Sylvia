@@ -1,4 +1,6 @@
 #load "Include.fsx"
+#r "../../src/lang/solvers/Sylvia.Solver.CaDiCaL/bin/Debug/net10.0/Sylvia.Solver.CaDiCaL.dll"
+#r "../../src/lang/core/Sylvia.Prover.SAT/bin/Debug/net10.0/Sylvia.Prover.SAT.dll"
 
 // A Theory of Sets (Gries & Schneider, "A Logical Approach to Discrete Math", ch. 11).
 //
@@ -26,6 +28,30 @@ let mutable failures = 0
 let ok label cond =
     if not cond then failures <- failures + 1
     printfn "  %s  %s" (if cond then "✓" else "✗") label
+
+// The metatheorem tactics in sections K-M discharge a PROPOSITIONAL body (Definition 11.24) with one
+// atom per distinct SET VARIABLE, so which propositional prover closes that body is what bounds how
+// many variables a set identity may mention. They used to call `autoproof_anf` directly, which is
+// exponential in atom count and guarded at `autoproof_max_atoms` = 5 — a ceiling the rest of the
+// prover no longer has. They now go through `PropCalculus.decide`, which routes small bodies to the
+// same in-kernel ANF prover and larger ones to the SAT-refutation backend when one is installed.
+//
+// Installing is OPTIONAL and the reroute is non-regressive: with no solver, `decide` falls back to
+// `autoproof_anf` and sections K-M prove exactly what they proved before (section N then reports
+// SKIPPED rather than failing). Nothing here widens the trusted base — `decide` re-checks that the
+// backend returned a theorem of the goal it asked about, and either route yields a real derivation.
+let cadicalPath =
+    match System.Environment.GetEnvironmentVariable "SYLVIA_CADICAL" with
+    | null | "" -> @"C:\Projects\Sylvia\bin\cadical.exe"
+    | p -> p
+let satBackend =
+    if System.IO.File.Exists cadicalPath then
+        SatProof.installWith (SAT.Cadical(exePath = cadicalPath, timeoutMs = 60000))
+        true
+    else false
+printfn "\ndecide backend: %s"
+    (if satBackend then sprintf "SAT refutation via %s (set identities have no variable ceiling)" cadicalPath
+     else sprintf "none — %s not found; bodies fall back to autoproof_anf (<= %d set variables)" cadicalPath autoproof_max_atoms)
 
 // Symbolic set variables S, T : Set<int>. Set operations are the SetTerm operators ∪ = `|+|`,
 // ∩ = `|*|`, ~ = `-`, ⊆ = `|<|` — the SAME symbols the theory keys on for both the algebra laws
@@ -189,11 +215,12 @@ printfn "\n===== (K) Metatheorem 11.25(a): a tactic that mechanizes the set-alge
 // membership proposition v∈S) is valid. Rather than adding it as a new trusted primitive, we
 // MECHANIZE the membership-route proof used by hand for 11.28 / De Morgan (sections I/J): apply
 // Extensionality; recursively unfold every membership through the operator axioms (which literally
-// implement 11.24); discharge the resulting propositional body  Ep = Fp  with the COMPLETE ANF
-// prover `autoproof_anf`; and close with `(∀v|:true) = true`. The result is a genuine, kernel-checked
-// Theorem built only from existing recognized axioms — no new trusted rule. Because `autoproof_anf`
-// is complete for (and only for) propositional tautologies, the tactic proves exactly the valid set
-// identities over {∪, ∩, ~, variables} and REJECTS invalid ones.
+// implement 11.24); discharge the resulting propositional body  Ep = Fp  with the COMPLETE decider
+// `decide`; and close with `(∀v|:true) = true`. The result is a genuine, kernel-checked
+// Theorem built only from existing recognized axioms — no new trusted rule. Because `decide`
+// is complete for (and only for) propositional tautologies on both of its routes, the tactic proves
+// exactly the valid set identities over {∪, ∩, ~, variables} and REJECTS invalid ones — an invalid
+// body is refused by the ANF prover and comes back SAT (hence raises) from the solver route.
 
 open FSharp.Quotations.Patterns
 
@@ -240,13 +267,20 @@ let metaset (lhs: SetTerm<int>) (rhs: SetTerm<int>) : Theorem =
     let ext  = id_ax st (goal == qall v T ((v |?| lhs) == (v |?| rhs)))
     let stepL = match lhs with SAtom -> [] | _ -> [ unfold lhs |> at [select_body; left_branch] ]
     let stepR = match rhs with SAtom -> [] | _ -> [ unfold rhs |> at [select_body; right_branch] ]
-    let bodyRule = autoproof_anf ((translate lhs) == (translate rhs)) |> Theorem |> Ident   // Ep = Fp (complete)
+    let bodyRule = decide ((translate lhs) == (translate rhs)) |> Ident   // Ep = Fp (complete)
     theorem st goal ([ ext ] @ stepL @ stepR @ [ Taut' bodyRule |> at [select_body]; ident_forall_true' v ])
 
 let sU = setvar<int> "U"
 let emptyT = SetTerm<int>(<@ Set.Empty @>)   // ∅ as a structured SetTerm (kept out of a value embedding)
 let uT     = SetTerm<int>(<@ Set.U @>)       // U, the universe
-let metaproven (l: SetTerm<int>) (r: SetTerm<int>) = try (metaset l r).Proof.Complete with _ -> false
+// A rejected identity and a BROKEN tactic both surface as `false` here, which is exactly what makes
+// the soundness checks below meaningful — and exactly what hides a bug in the discharge route. Set
+// SYLVIA_DEBUG=1 to see why each `false` happened.
+let private why (what: string) (e: exn) =
+    if System.Environment.GetEnvironmentVariable "SYLVIA_DEBUG" = "1" then
+        printfn "      %s refused: %s" what (e.Message.Split('\n').[0])
+    false
+let metaproven (l: SetTerm<int>) (r: SetTerm<int>) = try (metaset l r).Proof.Complete with e -> why "metaset" e
 
 // The named Gries laws 11.26–11.42 — each proved with a single `metaset` call.
 ok "11.26 Symmetry of ∪        S∪T = T∪S"              (metaproven (sS |+| sT) (sT |+| sS))
@@ -269,7 +303,7 @@ printfn "\n===== (L) Metatheorem 11.25(b): subset via implication  Es ⊆ Fs ↔
 // proposition (not an equality), so we reduce it to `true`: apply Subset (11.13) to get
 // `(∀v | v∈Es : v∈Fs)`; TRADE (9.2) to `(∀v |: v∈Es ⇒ v∈Fs)` (using the simple membership predicates,
 // so no recursion is needed for the trade); unfold each side of the implication with the section-K
-// `unfold` lemmas to reach the body `Ep ⇒ Fp`; discharge that tautology with `autoproof_anf` folded
+// `unfold` lemmas to reach the body `Ep ⇒ Fp`; discharge that tautology with `decide` folded
 // via `Taut` (a proven proposition → true); close with `(∀v|:true) = true`.
 
 let memPred (s: SetTerm<int>) : Pred<int> = Pred<int>(func = <@ fun (z:int) -> z |?| %s.Expr @>)
@@ -280,10 +314,10 @@ let metasubset (lhs: SetTerm<int>) (rhs: SetTerm<int>) : Theorem =
     let trade  = trade_forall_implies v (memPred lhs) (memPred rhs)           // Trading 9.2: (∀v|N:P)=(∀v|:N⇒P)
     let stepA  = match lhs with SAtom -> [] | _ -> [ unfold lhs |> at [select_body; left_branch] ]   // antecedent
     let stepC  = match rhs with SAtom -> [] | _ -> [ unfold rhs |> at [select_body; right_branch] ]  // consequent
-    let bodyThm = autoproof_anf ((translate lhs) ==> (translate rhs)) |> Theorem   // Ep ⇒ Fp (complete)
+    let bodyThm = decide ((translate lhs) ==> (translate rhs))   // Ep ⇒ Fp (complete)
     theorem st goal ([ subAx; trade ] @ stepA @ stepC @ [ Taut bodyThm |> at [select_body]; ident_forall_true' v ])
 
-let subproven l r = try (metasubset l r).Proof.Complete with _ -> false
+let subproven l r = try (metasubset l r).Proof.Complete with e -> why "metasubset" e
 
 ok "11.58 Reflexivity          S ⊆ S"                  (subproven sS sS)
 ok "∩ lower bound              S∩T ⊆ S"                (subproven (sS |*| sT) sS)
@@ -312,6 +346,66 @@ ok "11.25(c) via Es=U         (S∪~S)∪∅ = U"           (metaproven ((sS |+|
 // Soundness with the constants:
 ok "INVALID S∪∅ = U  rejected"                        (not (metaproven (sS |+| emptyT) uT))
 ok "INVALID S∩U = ∅  rejected"                        (not (metaproven (sS |*| uT) emptyT))
+
+printfn "\n===== (N) Past the 5-variable ceiling: metatheorem bodies discharged by SAT refutation ====="
+// Sections K-M all mention at most 3 set variables, so their propositional bodies route to the
+// in-kernel ANF prover exactly as they always did. This section is what the `decide` reroute BUYS:
+// identities over more set variables than `autoproof_max_atoms` allows. The body of a 6-variable
+// identity has 6 atoms, which `autoproof_anf` refuses outright (and would not survive if the guard
+// were raised — it is exponential in exactly that number). Routed to the SAT backend, the body is
+// refuted by CaDiCaL and the refutation is REPLAYED as kernel steps, so the resulting set-algebra
+// Theorem is checked to the same standard as the hand proofs in sections I/J.
+let sW, sX, sY = setvar<int> "W", setvar<int> "X", setvar<int> "Y"
+
+/// `ok`, reporting how long the identity took to prove (the body's SAT reconstruction dominates).
+let okt label (f: unit -> bool) =
+    let sw = System.Diagnostics.Stopwatch.StartNew()
+    let r = f ()
+    sw.Stop()
+    ok (sprintf "%-46s (%dms)" label sw.ElapsedMilliseconds) r
+
+let union6  = ((((((sS |+| sT) |+| sU) |+| sW) |+| sX) |+| sY))
+let inter6  = ((((((sS |*| sT) |*| sU) |*| sW) |*| sX) |*| sY))
+let compl6i = ((((((neg sS) |*| (neg sT)) |*| (neg sU)) |*| (neg sW)) |*| (neg sX)) |*| (neg sY))
+let compl6u = ((((((neg sS) |+| (neg sT)) |+| (neg sU)) |+| (neg sW)) |+| (neg sX)) |+| (neg sY))
+
+if not satBackend then
+    printfn "  -  SKIPPED (no solver: %s not found)" cadicalPath
+else
+    // 6 set variables — one more than `autoproof_max_atoms`.
+    okt "11.42a De Morgan, 6 vars  ~(S∪…∪Y) = ~S∩…∩~Y"
+        (fun () -> metaproven (neg union6) compl6i)
+    okt "11.42b De Morgan, 6 vars  ~(S∩…∩Y) = ~S∪…∪~Y"
+        (fun () -> metaproven (neg inter6) compl6u)
+    // An ∪/∩ shuffle: same six variables, every bracket and every order changed.
+    okt "assoc+symm shuffle, 6 vars"
+        (fun () -> metaproven union6 (sY |+| (sX |+| (sW |+| (sU |+| (sT |+| sS))))))
+    // Distributivity fanned out over five disjuncts (6 vars, and a much wider CNF).
+    okt "11.40 Distributivity ∩/∪, 6 vars"
+        (fun () -> metaproven (sS |*| ((((sT |+| sU) |+| sW) |+| sX) |+| sY))
+                              ((((((sS |*| sT) |+| (sS |*| sU)) |+| (sS |*| sW)) |+| (sS |*| sX)) |+| (sS |*| sY))))
+    // With the constants ∅ / U in the mix, so the body carries T/F as well as six atoms.
+    okt "11.30/11.35 with constants, 6 vars  (S∪…∪Y)∩U∪∅"
+        (fun () -> metaproven (((union6 |*| uT) |+| emptyT)) union6)
+    // Metatheorem 11.25(b) past the ceiling too — a 6-variable subset obligation.
+    okt "11.25(b) subset, 6 vars   S∩…∩Y ⊆ S∪…∪Y"
+        (fun () -> subproven inter6 union6)
+    // Soundness must survive the reroute: an INVALID 6-variable identity is refused, not proved.
+    // (The solver returns SAT, `SatProof` raises, and `metaproven` reports false.)
+    okt "INVALID ~(S∪…∪Y) = ~S∪…∪~Y  rejected"
+        (fun () -> not (metaproven (neg union6) compl6u))
+    okt "INVALID S∩…∩Y = S∪…∪Y  rejected"
+        (fun () -> not (metaproven inter6 union6))
+
+    // The ceiling being lifted is a fact about the ROUTE, not about the tactic: uninstall the backend
+    // and the identical call fails, because `decide` falls back to the atom-capped ANF prover. This
+    // check is what proves the section above is exercising the SAT route and not something cheaper.
+    SatProof.uninstall ()
+    ok "same identity FAILS with no backend (the old 5-variable ceiling)"
+       (not (metaproven (neg union6) compl6i))
+    SatProof.installWith (SAT.Cadical(exePath = cadicalPath, timeoutMs = 60000))
+    ok "and proves again once the backend is reinstalled"
+       (metaproven (neg union6) compl6i)
 
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1

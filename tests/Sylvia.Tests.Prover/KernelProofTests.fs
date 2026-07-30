@@ -476,6 +476,41 @@ type KernelProofTests() =
             Assert.True(PropCalculus.valid (g == cnf), "CNF not equivalent to input")
 
     [<Fact>]
+    member _.``Cnf.toCnf folds the truth constants away instead of clausifying them as atoms`` () =
+        // `T` and `F` are NAMED CONSTANTS, so the conversion's structural view classifies them as
+        // atoms and used to carry them into the output as literals. That is not cosmetic: the SAT
+        // pipeline then mints a DIMACS variable for `T`, and the solver satisfies `¬φ` by setting it
+        // false — so EVERY goal mentioning a truth constant came back "not a theorem". The
+        // solver-side clausifier `SAT.cnfOfNegatedGoal` has always folded them (its `BTrue`/`BFalse`
+        // `simp`), so this was also a silent disagreement between the two clausifiers.
+        let tt : Prop = T
+        let ff : Prop = F
+        let goals : Prop list =
+            [ !!((p * tt) == p); !!((p + ff) == p); !!((p + tt) == tt); !!((p * ff) == ff)
+              !!((- tt) == ff); !!((- ff) == tt)                        // ¬T and ¬F are not literals
+              !!((p + !!p) == tt); !!((p * !!p) == ff)
+              !!(((p ==> q) * (q ==> r) * tt) ==> (p ==> r))            // a constant inside a real goal
+              (p * tt) == q ]                                           // and on a NON-theorem
+        // No `T`/`F` may survive anywhere inside the CNF. The whole conversion collapsing TO a
+        // constant is the one legitimate outcome (`toCnf`'s two documented cases), so allow that.
+        let rec hasConst (e: Expr) =
+            match e with
+            | True | False -> true
+            | ExprShape.ShapeCombination(_, args) -> args |> List.exists hasConst
+            | ExprShape.ShapeLambda(_, b) -> hasConst b
+            | ExprShape.ShapeVar _ -> false
+        for g in goals do
+            let (cnf, pf) = Cnf.toCnf g
+            let c = expand cnf.Expr
+            Assert.Equal<Expr>(expand (g == cnf).Expr, pf.Stmt)        // still exactly `g == cnf`
+            Assert.True(PropCalculus.valid (g == cnf), sprintf "folding changed the meaning of %s" (src (expand g.Expr)))
+            match c with
+            | True | False -> ()                                        // decided outright, not a clause set
+            | _ ->
+                Assert.False(hasConst c, sprintf "a truth constant survived into the CNF of %s: %s" (src (expand g.Expr)) (src c))
+                Assert.True(Cnf.isCnf cnf, sprintf "not clean CNF: %s" (src c))
+
+    [<Fact>]
     member _.``valid recognizes propositional theorems and rejects non-theorems`` () =
         // A checker, not a closer: it answers "does a proof exist?" — complete for propositional,
         // including the (p⇒q)∧(q⇒p) = (p≡q) that auto's bounded search missed.

@@ -145,4 +145,38 @@ prop_decider <- Some(fun _ -> theorem prop_calculus (q + !!q) [ excluded_middle'
  with _ -> ok "decide rejects a decider that answers a different question" true)
 SatProof.uninstall ()
 
+// ---- the backend also covers the in-kernel prover's COMPLETENESS GAP ---------------------------
+// The atom ceiling above is a cost story: below it `autoproof_anf` is simply faster. But it is also
+// INCOMPLETE — it refuses valid goals of the shape CNF ⇒ DNF, including at 2 atoms, which is *inside*
+// the range `decide` routes to it (`decide_max_anf_atoms` = 3). So no threshold value fixes this, and
+// an ANF refusal cannot be treated as "not a theorem": `decide` asks the ANF ORACLE (`valid`), and if
+// the goal really is a theorem it gives the installed backend its turn.
+//
+// These three are valid and all three are refused by `autoproof_anf`; the driver bug is open (see
+// docs/prover-automation.md §3.2b). This lives here rather than in the unit suite because each goal
+// costs ~4 s of ANF thrashing before the refusal, which `SYLVIA_SEQUAL_CHECK=1` turns into minutes.
+printfn "\ndecide covers the ANF prover's completeness gap when a backend is installed:"
+let anfHoles =
+    [ "((¬p∨¬p) ∧ ((p∨¬q)∨¬q) ∧ (q∨¬p) ∧ q) ⇒ ((q∧¬q)∨(p∧q))",
+      ((((!!p + !!p) * ((p + !!q) + !!q)) * (q + !!p)) * q ==> ((q * !!q) + (p * q)))
+      "((p ∧ ((p∨¬q)∨¬q)) ∧ (q∨¬p) ∧ ¬p) ⇒ (¬q∧p)",
+      (((p * ((p + !!q) + !!q)) * (q + !!p)) * !!p ==> (!!q * p))
+      "((p∨q) ∧ (r∨s) ∧ (¬p∨¬r) ∧ (¬q∨¬s)) ⇒ ((p∧s)∨(q∧r))",
+      (((p + q) * (r + s) * (!!p + !!r) * (!!q + !!s)) ==> ((p * s) + (q * r))) ]
+
+for (label, g) in anfHoles do
+    ok (sprintf "valid, and autoproof_anf REFUSES it:  %s" label)
+       (valid g && not (try (autoproof_anf g).Complete with _ -> false))
+
+SatProof.installWith sat
+for (label, g) in anfHoles do
+    let sw = System.Diagnostics.Stopwatch.StartNew()
+    let proved = try sequal (decide g).Stmt (expand g.Expr) with _ -> false
+    sw.Stop()
+    ok (sprintf "decide proves it via the backend (%dms):  %s" sw.ElapsedMilliseconds label) proved
+// A genuine non-theorem must NOT reach the solver: the oracle says no, so the ANF message stands.
+(try decide (p == q) |> ignore; ok "a real non-theorem is still refused, without the solver" false
+ with e -> ok "a real non-theorem is still refused, without the solver" (e.Message.Contains "could not normalize"))
+SatProof.uninstall ()
+
 printfn "\n%s  (%d failed)" (if failures = 0 then "ALL GREEN" else "FAILURES") failures

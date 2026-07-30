@@ -192,16 +192,35 @@ kernel-checked `Theorem` built only from the already-recognized axioms. The tact
    (`id_ax`), then recurse into any *compound* operand (a bare variable is already an atom, so its
    step is skipped — avoids a no-op rewrite).
 3. **`metaset lhs rhs : Theorem`** — apply **Extensionality** to get `(∀v|: v∈Es = v∈Fs)`; rewrite
-   each side with its `unfold` lemma to reach the body `Ep = Fp`; prove `Ep = Fp` with the
-   **complete** ANF prover `autoproof_anf` and fold it in with `Taut'` (replaces the body with
-   `true`); close with `ident_forall_true'`.
+   each side with its `unfold` lemma to reach the body `Ep = Fp`; prove `Ep = Fp` with
+   `PropCalculus.decide` and fold it in with `Taut'` (replaces the body with `true`); close with
+   `ident_forall_true'`.
 
-Because `autoproof_anf` is complete for — and *only* for — propositional tautologies, `metaset`
-proves exactly the valid identities over `{∪, ∩, ~, variables}` and **rejects** invalid ones
-(`autoproof_anf` throws): section K checks both `S∪T = S∩T` and `~(S∪T) = ~S∪~T` are rejected.
+`metaset` proves exactly the valid identities over `{∪, ∩, ~, variables}` and **rejects** invalid
+ones (the discharge throws): section K checks both `S∪T = S∩T` and `~(S∪T) = ~S∪~T` are rejected.
 Named laws proved by a single `metaset` call: **11.26/11.36** symmetry, **11.27** associativity,
 **11.28** idempotency, **11.40/11.41** distributivity, **11.42a/b** De Morgan, absorption,
 **11.19** double complement. This is the object-level payoff of §11.3 — the algebra laws "for free".
+
+> **The body used to be discharged by `autoproof_anf` directly, which capped set identities at five
+> set variables (2026-07-30).** Definition 11.24 gives one propositional atom per distinct set
+> variable, so *which* propositional prover closes the body is what bounds how many variables an
+> identity may mention — and `autoproof_anf` is exponential in atom count, guarded at
+> `autoproof_max_atoms = 5`. Both tactics now go through **`PropCalculus.decide`**, which routes small
+> bodies to the same in-kernel prover and larger ones to the SAT-refutation backend when one is
+> installed (`SatProof.install()`).
+>
+> The reroute is non-regressive and needs no solver: with none installed `decide` falls back to
+> `autoproof_anf`, and every section-K/L/M check proves exactly as it did — all of them mention at most
+> 3 set variables, so they route to the in-kernel prover either way. What it buys is section **N** of
+> `examples/proofs/SetTheory.fsx`: 6-variable De Morgan, a 6-variable ∪/∩ shuffle, 6-variable
+> distributivity, a 6-variable subset obligation, and the same past the constants — with the
+> soundness checks repeated at that size, and one check that uninstalls the backend to show the old
+> ceiling is what was actually lifted.
+>
+> Rerouting is also what exposed a real bug in the SAT pipeline: `Cnf.toCnf` treated `T` and `F` as
+> atoms, so every goal mentioning a truth constant was reported a non-theorem. The ∅/U laws translate
+> to bodies containing exactly those constants. See `docs/prover-sat-reconstruction.md` §7 item 7.
 
 ### Metatheorem 11.25(b) — subset via implication (`metasubset`)
 
@@ -215,12 +234,12 @@ it. The goal `Es ⊆ Fs` is a bare proposition (not an equality), so we reduce i
    is needed here — the compound structure is untouched until the next step.
 3. The section-K **`unfold`** lemmas rewrite the antecedent `v∈Es → Ep` (`at [select_body; left_branch]`)
    and consequent `v∈Fs → Fp` (`at [select_body; right_branch]`).
-4. The body `Ep ⇒ Fp` is a tautology; **`autoproof_anf`** proves it and **`Taut`** (not `Taut'` — the
+4. The body `Ep ⇒ Fp` is a tautology; **`decide`** proves it and **`Taut`** (not `Taut'` — the
    body is an implication, a bare proposition, not an equality) replaces it with `true`.
 5. `ident_forall_true'` closes.
 
 Same completeness/soundness guarantee: valid subset relations prove, non-subsets are rejected
-(`autoproof_anf` throws on a non-tautological implication). Section L proves **11.58** reflexivity,
+(the discharge throws on a non-tautological implication). Section L proves **11.58** reflexivity,
 the ∩ lower-bound (`S∩T ⊆ S`, `S∩T ⊆ T`), the ∪ upper-bound (`S ⊆ S∪T`, `T ⊆ S∪T`), `S∩T ⊆ S∪T`,
 and rejects `S ⊆ S∩T` / `S∪T ⊆ S`.
 

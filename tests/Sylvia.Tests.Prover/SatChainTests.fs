@@ -143,6 +143,16 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
     let p, q, r, s = boolvar "p", boolvar "q", boolvar "r", boolvar "s"
     let t, u, v, w = boolvar "t", boolvar "u", boolvar "v", boolvar "w"
 
+    // Prop-typed aliases for the truth-constant tests. `T` and `F` are `boolvar`-typed, so an
+    // expression that mixes one with a `boolvar` resolves the operators on `boolvar` and will not
+    // compile; going through `Prop` on both sides does. Same NAMES as `p`/`q`/`r`, hence the same
+    // atoms — variable identity here is by name.
+    let pq : Prop = boolvar "p"
+    let pr : Prop = boolvar "q"
+    let ps : Prop = boolvar "r"
+    let tt' : Prop = T
+    let ff' : Prop = F
+
     /// The bundled solver, if this checkout has one: walk up from the test assembly for bin/cadical.exe,
     /// else fall back to whatever `Cadical()` resolves (SYLVIA_CADICAL / PATH).
     let solver : Cadical option =
@@ -299,9 +309,12 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
         // The two provers blow up on different axes, so `decide` routes by atom count instead of
         // always preferring the backend. Regression guard: with the backend installed, goals under
         // the atom limit must still go to the in-kernel prover. `∨`-over-`∧` distributivity and xor
-        // associativity are 3-atom goals that the in-kernel prover does in ~1 ms and 0 ms, while
-        // clausification for the SAT route explodes on their nesting (8.3 s, and a STACK OVERFLOW —
-        // which no try/catch can rescue, so this has to be prevented, not handled).
+        // associativity are 3-atom goals the in-kernel prover does in 1.2 ms and 0.1 ms, against
+        // 77 ms and 210 ms through the SAT route (re-measured 2026-07-30, Release, warm).
+        //
+        // This comment used to say the SAT route STACK-OVERFLOWED on xor associativity. It did, and
+        // that is fixed — `Cnf.toCnf` was building 441 clauses to keep 8, and `distribOr` now prunes
+        // them as it goes. The preference stands on the timings, not on avoiding a crash.
         match solver with
         | None -> out.WriteLine "SKIPPED (no cadical): examples/sat/Reconstruct.fsx is the end-to-end gate"
         | Some sat ->
@@ -327,3 +340,57 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
         let n = PropCalculus.prop_atom_count (expand g.Expr)
         Assert.True(n > PropCalculus.decide_max_anf_atoms && n <= PropCalculus.autoproof_max_atoms)
         Assert.True(sequal (PropCalculus.decide g).Stmt (expand g.Expr))
+
+    // `decide`'s fallback for the `autoproof_anf` COMPLETENESS GAP is deliberately NOT tested here.
+    // Every goal known to trigger it makes the ANF driver thrash for ~4 s before giving up, and under
+    // `SYLVIA_SEQUAL_CHECK=1` — which is how this suite is run — that becomes minutes, since the check
+    // costs per kernel step and the thrash is thousands of them. It is covered end to end in
+    // `examples/sat/Reconstruct.fsx` instead, which is part of the same gate and runs without the
+    // check. The reproducers and the generator that finds them are in `docs/prover-automation.md`
+    // §3.2b. (`autoproof_max_atoms` could force a cheap ANF failure instead, but it is global mutable
+    // state and xUnit runs test classes in parallel, so that would race `KernelProofTests`.)
+
+    // ===== the truth constants ==============================================================
+
+    [<Fact>]
+    member _.``clausesOf refuses to mint a variable for a truth constant`` () =
+        // The failure this guards against was silent and looked like a solver verdict: a `T` in the
+        // clause set becomes a free DIMACS variable, the solver sets it false, `¬φ` comes back
+        // SATISFIABLE, and the pipeline reports a perfectly good theorem as "NOT a theorem". Since
+        // `Cnf.toCnf` now folds constants, one reaching here means that folding regressed — so fail
+        // loudly rather than answer a different question.
+        let e = Assert.ThrowsAny<exn>(fun () -> SatProof.clausesOf (p ==> q) ((pq + tt') * !!pr) |> ignore)
+        Assert.Contains("truth constant", e.Message)
+
+    [<Fact>]
+    member _.``a goal whose negation folds to F is proved without consulting the solver`` () =
+        // Constant folding can reduce `¬φ` all the way to `F`, which is not a clause set — but it IS
+        // the refutation, already kernel-proved, so there is nothing to ask a solver. Pinned with a
+        // DELIBERATELY UNAVAILABLE solver: if this path ever starts clausifying instead, the test
+        // fails with "not found" rather than passing quietly.
+        let noSolver = Cadical(exePath = "no-such-cadical.exe")
+        for goal in [ (pq * ff') == ff'; (pq + tt') == tt'; (- tt') == ff' ] do
+            let th = SatProof.proveWith noSolver goal
+            Assert.True(sequal th.Stmt (expand goal.Expr),
+                        sprintf "proved %s, expected %s" (src th.Stmt) (src (expand goal.Expr)))
+
+    [<Fact>]
+    member _.``goals mentioning T or F decide the same way the ANF oracle does`` () =
+        // Before constant folding, every one of the theorems below was a FALSE NEGATIVE through the
+        // SAT route while `valid` (the independent ANF oracle) called them theorems. Agreement with
+        // that oracle in both directions is the property that was actually broken.
+        match solver with
+        | None -> out.WriteLine "SKIPPED (no cadical): examples/sat/Reconstruct.fsx is the end-to-end gate"
+        | Some sat ->
+            let cases : Prop list =
+                [ (pq * tt') == pq; (pq + ff') == pq; (pq + tt') == tt'; (pq * ff') == ff'
+                  (pq + !!pq) == tt'; (pq * !!pq) == ff'; (ff' ==> pq) == tt'
+                  ((pq ==> pr) * (pr ==> ps) * tt') ==> (pq ==> ps)
+                  // non-theorems, which must stay refused
+                  (pq + ff') == tt'; (pq * tt') == ff'; (pq * tt') == pr; ff' ]
+            for c in cases do
+                let proved =
+                    match SatProof.tryProveWith sat c with
+                    | Ok th -> sequal th.Stmt (expand c.Expr)
+                    | Error _ -> false
+                Assert.Equal(PropCalculus.valid c, proved)

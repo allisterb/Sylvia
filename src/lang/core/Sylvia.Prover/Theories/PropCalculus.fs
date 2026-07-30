@@ -305,15 +305,34 @@ module PropCalculus =
     /// theorem of something else. A decider is expected to raise when the goal is not a theorem.
     let mutable prop_decider : (Prop -> Theorem) option = None
 
+    /// The ANF decision ORACLE: is this goal a propositional theorem? Complete, cheap, and OUTSIDE the
+    /// trusted base — it emits no proof and never closes one. `valid` below is this function; it is
+    /// declared here because `decide` needs it to distinguish a non-theorem from a proof its own
+    /// prover failed to find.
+    let private anf_is_tautology (e: Prop) : bool = EquationalLogic.Anf.is_tautology (expand e.Expr)
+
     /// `decide`'s ROUTING threshold: goals with at most this many distinct atoms go to the in-kernel
     /// `autoproof_anf`; above it, to the installed backend (if any).
     ///
     /// Deliberately SEPARATE from `autoproof_max_atoms`, which is a safety guard on the exponential
     /// provers rather than a preference. The two want different values: the guard sits where
     /// `autoproof_anf` stops working at all (measured: 12 s at 5 atoms, fails at 6), while routing
-    /// wants to switch as soon as the backend is simply *better*, which happens earlier. Measured on
-    /// implication chains — the shape ANF handles worst — the in-kernel prover wins at 3 atoms
-    /// (95 ms vs 489 ms) and loses from 4 (1130 ms vs 340 ms, then 12389 ms vs 432 ms at 5).
+    /// wants to switch as soon as the backend is simply *better*, which happens earlier.
+    ///
+    /// **Re-measured 2026-07-30** (Release, warm) after the optimization pass that cut the SAT route
+    /// by ~6x and `distribOr` pruning that cut its clausification, since the original numbers here
+    /// predate both. On implication chains — the shape ANF handles worst:
+    ///
+    ///     atoms      3            4             5
+    ///     ANF     42.9 ms     318.6 ms     3384.4 ms
+    ///     SAT     54.0 ms      32.8 ms       40.7 ms
+    ///
+    /// so the crossover is still **between 3 and 4**, and 3 stands. What changed is the reason it
+    /// stands: it is not that ANF wins at 3 by much (on chains it now wins by only 1.3x), it is that
+    /// **3 is the last atom count at which ANF wins on EVERY shape measured**. At 4 the answer becomes
+    /// shape-dependent — chains go to SAT by ~10x, while nested implications (0.9 ms vs 80.1 ms) and
+    /// nested `≢` (0.1 ms vs 525 ms) stay overwhelmingly ANF's — and atom count cannot tell those
+    /// apart. Routing on a count therefore has to stop where the count is still a reliable proxy.
     ///
     /// (It also used to lose badly on REUSE, when the tactics in `Tactics.fs` replayed a theorem's
     /// step list on every use — 150 ms versus 0.22 ms to use the same statement. That is fixed and
@@ -327,9 +346,15 @@ module PropCalculus =
     ///
     /// - **at or below `autoproof_max_atoms`** → the in-kernel `autoproof_anf`. It is exponential in
     ///   atom count, which is precisely what the guard bounds, but it is untroubled by deep ∨/∧
-    ///   nesting and needs no external process. Measured on 3-atom goals: distributivity 1 ms and xor
-    ///   associativity 0 ms, versus 8.3 s and a *stack overflow* through the SAT route, whose
-    ///   clausification is exponential in that same nesting.
+    ///   nesting and needs no external process. Measured on 3-atom goals: distributivity 1.2 ms and
+    ///   xor associativity 0.1 ms, versus 77 ms and 210 ms through the SAT route.
+    ///
+    ///   (This used to read "8.3 s and a *stack overflow*", which is no longer true and was the
+    ///   strongest-sounding part of the case for routing small goals here. The overflow was
+    ///   `Cnf.toCnf` building 441 clauses for 3-variable xor associativity to keep 8; pruning inside
+    ///   `distribOr` fixed it, and that goal now reconstructs. The preference survives on the timings
+    ///   alone — a 2000x ratio needs no catastrophe behind it — but nothing in this module is
+    ///   protecting the SAT route from a crash any more.)
     /// - **above it** → the installed decider (`prop_decider`; in this tree the SAT-refutation replay
     ///   in `Sylvia.Prover.SAT`), which has no atom ceiling. With none installed, this is where the
     ///   guard fires, with a message naming the SAT route.
@@ -338,22 +363,43 @@ module PropCalculus =
     /// keep proving exactly as before. Both routes produce a real, replayable derivation; this is a
     /// prover, not the `valid` oracle.
     ///
-    /// Known trade: a goal just under the limit whose structure is bad for ANF (nested implications
-    /// — measured ≈22 s at 4 atoms) goes to the slow route even when the backend would be faster.
-    /// Lower `autoproof_max_atoms` to push such goals to the backend.
+    /// Known trade: a goal just under the limit whose structure is bad for ANF goes to the slow route
+    /// even when the backend would be faster — a 4-atom implication chain is 319 ms here against
+    /// 33 ms, and a 5-atom one 3.4 s against 41 ms. Lower `autoproof_max_atoms` to push such goals to
+    /// the backend.
+    ///
+    /// Sharper known trade, found while re-measuring the threshold: `autoproof_anf` is not merely
+    /// slower on some goals, it can REFUSE a valid one. `((p∨q) ∧ (r∨s) ∧ (¬p∨¬r) ∧ (¬q∨¬s)) ⇒
+    /// ((p∧s) ∨ (q∧r))` is valid (`valid` says so, and it has only two satisfying assignments, both of
+    /// which satisfy the consequent) and `autoproof_anf` fails to normalize it. A targeted sweep over
+    /// CNF⇒DNF goals found refusals at **2 atoms** as well, so this is NOT confined to the range the
+    /// backend already covers, and lowering the threshold would not close it.
+    ///
+    /// So the ANF route's failure is treated as inconclusive rather than final: when `autoproof_anf`
+    /// refuses a goal the ANF ORACLE calls a theorem, and a backend is installed, `decide` uses the
+    /// backend. That makes `decide` strictly more capable than either route alone and costs a
+    /// non-theorem nothing (the oracle says no, and ANF's own message propagates). The gap itself is a
+    /// completeness bug in the ANF driver — recorded in `docs/prover-automation.md`, not fixed here.
     let decide (e: Prop) : Theorem =
         let goal = expand e.Expr
         let anf () = theorem prop_calculus e (anf_steps "decide" goal)
-        if prop_atom_count goal <= decide_max_anf_atoms then anf ()
+        let backend (d: Prop -> Theorem) =
+            let th = d e
+            // The decider lives outside this assembly: check it answered the question we asked.
+            if not (sequal th.Stmt goal) then
+                failwithf "decide: the installed decider returned a theorem of %s, but the goal was %s"
+                    (prop_calculus.PrintFormula th.Stmt) (prop_calculus.PrintFormula goal)
+            th
+        if prop_atom_count goal <= decide_max_anf_atoms then
+            // Preferred route — but `autoproof_anf` is not complete, so its failure does not mean the
+            // goal is unprovable. When the ANF ORACLE disagrees with the ANF PROVER, the gap is ours
+            // and a backend (if installed) should have its turn. The guard keeps the ordinary
+            // non-theorem path untouched: no solver is consulted and the message is ANF's own.
+            try anf ()
+            with _ when prop_decider.IsSome && anf_is_tautology e -> backend prop_decider.Value
         else
             match prop_decider with
-            | Some d ->
-                let th = d e
-                // The decider lives outside this assembly: check it answered the question we asked.
-                if not (sequal th.Stmt goal) then
-                    failwithf "decide: the installed decider returned a theorem of %s, but the goal was %s"
-                        (prop_calculus.PrintFormula th.Stmt) (prop_calculus.PrintFormula goal)
-                th
+            | Some d -> backend d
             // No backend: fall back to the in-kernel prover, which still handles everything up to
             // `autoproof_max_atoms` — the routing preference must not cost a solver-free caller
             // goals it could otherwise prove.
@@ -363,7 +409,10 @@ module PropCalculus =
     /// Complete via algebraic normal form — use it to check that an identity is valid before
     /// investing in a hand proof or an `auto` search. It is NOT part of the trusted base and
     /// never closes a proof itself; a proof must still be a real derivation.
-    let valid (e:Prop) : bool = EquationalLogic.Anf.is_tautology (expand e.Expr)
+    ///
+    /// This is `anf_is_tautology`, which `decide` uses above to tell "the goal is not a theorem" from
+    /// "our prover could not find the proof".
+    let valid (e:Prop) : bool = anf_is_tautology e
 
     /// Decision TOOL: are two propositional formulas equivalent (does a proof of a = b exist)?
     let equiv (a:Prop) (b:Prop) : bool = EquationalLogic.Anf.equivalent (expand a.Expr) (expand b.Expr)

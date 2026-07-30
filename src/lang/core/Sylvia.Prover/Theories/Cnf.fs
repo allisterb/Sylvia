@@ -95,9 +95,43 @@ module Cnf =
             commute_or a x |> at [ left_branch; left_branch ]
             commute_or a y |> at [ left_branch; right_branch ] ]
 
-    (* ---- tautological-clause pruning ---- *)
+    (* ---- the truth constants ---- *)
+
+    // `T` and `F` are NAMED CONSTANTS, so `view` classifies them as atoms and the descent would
+    // happily carry them into the output as literals. That is wrong at the clause level and not
+    // merely inelegant: `clausesOf` would mint a DIMACS variable for `T`, and the solver would
+    // satisfy `¬φ` by setting it false. So constants are FOLDED AWAY as they are met, using the
+    // identity and zero laws. The folds live where the connectives are actually built — `collapseAnd`
+    // (∧), `distribOr` (∨) and `toCnfRec`'s `VNot` case — because every other connective is rewritten
+    // into ¬/∧/∨ by the descent, so those three are the only places a constant can survive.
+    //
+    // The `T` side of this was already here, as a consequence of tautological-clause pruning
+    // (a pruned clause becomes `T`, which then has to be collapsed out of its context). The `F` side
+    // and `¬T`/`¬F` were missing, which made every goal mentioning a truth constant report as a
+    // non-theorem through the SAT route. The solver-side clausifier `SAT.cnfOfNegatedGoal` has always
+    // folded both (its `simp` over `BTrue`/`BFalse`); this is what closes the gap between them.
 
     let private isT (x: Prop) = match expand x.Expr with True -> true | _ -> false
+
+    /// `Some true` for `T`, `Some false` for `F`, `None` for anything else. The hot paths use this
+    /// rather than an `isT`/`isF` pair so that a side is `expand`ed ONCE however many constant cases
+    /// have to be considered — `expand` is the single most expensive thing in the conversion.
+    let private constOf (x: Prop) : bool option =
+        match expand x.Expr with
+        | True -> Some true
+        | False -> Some false
+        | _ -> None
+
+    /// ¬T = F. The mirror of `not_false` (Gries 3.13), which the module has but its dual does not:
+    /// rewrite `F` by Definition of false (3.15) to `(¬T = T)`, then `(p = T) = p` (3.3) at p := ¬T.
+    /// Takes the constant from the formula rather than using the module's own `T`, so the statement's
+    /// left side is the very term being rewritten and composes under `transEq`. Valid only when
+    /// `a` IS `T`: the second step relies on `def_false a`'s right side being `(¬a = T)`.
+    let private notTEq (a: Prop) : Theorem =
+        theorem prop_calculus ((- a) == F) [ def_false a |> at_right; ident_eq (- a) |> at_right ]
+
+    /// ¬F = T  (Gries 3.13), as an equality Theorem so it composes with `transEq`.
+    let private notFEq (a: Prop) : Theorem = theorem prop_calculus ((- a) == T) [ not_false |> apply ]
 
     /// True when the clause holds a complementary literal pair, and so is `T`.
     let private isTautClause (clause: Expr) : bool =
@@ -105,14 +139,20 @@ module Cnf =
         let ls = litsOf clause
         ls |> List.exists (function Not a -> ls |> List.exists (fun m -> sequal m a) | _ -> false)
 
-    /// `(l ∧ r) == result`, with a `T` conjunct collapsed away (Gries 3.39). `None` when neither
-    /// side is `T` and the conjunction therefore stands as it is.
+    /// `(l ∧ r) == result`, with a constant conjunct collapsed away — `T` by identity (Gries 3.39),
+    /// `F` by zero (3.40), which swallows the whole conjunction. `None` when neither side is a
+    /// constant and the conjunction therefore stands as it is.
+    ///
+    /// `F` is tested on the RIGHT first so that `F ∧ F` needs no `commute_and`: commuting it would be
+    /// a no-op rewrite, which the kernel rejects.
     let private collapseAnd (l: Prop) (r: Prop) : Prop * Theorem option =
-        if isT l && isT r then T, Some(theorem prop_calculus ((l * r) == T) [ ident_and T |> at_left ])
-        elif isT l then r, Some(theorem prop_calculus ((l * r) == r) [ commute_and l r |> at_left
-                                                                       ident_and r |> at_left ])
-        elif isT r then l, Some(theorem prop_calculus ((l * r) == l) [ ident_and l |> at_left ])
-        else (l * r), None
+        match constOf l, constOf r with
+        | _, Some false -> F, Some(theorem prop_calculus ((l * r) == F) [ zero_and l |> at_left ])
+        | Some false, _ -> F, Some(theorem prop_calculus ((l * r) == F) [ commute_and l r |> at_left; zero_and r |> at_left ])
+        | Some true, Some true -> T, Some(theorem prop_calculus ((l * r) == T) [ ident_and T |> at_left ])
+        | Some true, _ -> r, Some(theorem prop_calculus ((l * r) == r) [ commute_and l r |> at_left; ident_and r |> at_left ])
+        | _, Some true -> l, Some(theorem prop_calculus ((l * r) == l) [ ident_and l |> at_left ])
+        | None, None -> (l * r), None
 
     /// Conjoin two already-converted sides, collapsing a `T` away: `(a ∧ b) == result`, given
     /// `pa : a == l` and `pb : b == r`.
@@ -131,12 +171,19 @@ module Cnf =
     // Pruning here keeps the intermediates the size of the answer. `drop` turns it off, for the one
     // caller that needs the unpruned clause set (see `toCnf`).
     let rec private distribOr (drop: bool) (ca: Prop) (cb: Prop) : Prop * Theorem =
-        // A side that has already collapsed to `T` swallows the disjunction (Gries 3.29).
-        if isT ca then
-            T, theorem prop_calculus ((ca + cb) == T) [ commute_or ca cb |> at_left; zero_or cb |> at_left ]
-        elif isT cb then
+        // A side that is `T` — pruned, or a constant from the input — swallows the disjunction
+        // (Gries 3.29); a side that is `F` drops out of it by identity (3.30). As in `collapseAnd`,
+        // the right side is tested first for each constant so that `T ∨ T` / `F ∨ F` need no commute.
+        match constOf ca, constOf cb with
+        | _, Some true ->
             T, theorem prop_calculus ((ca + cb) == T) [ zero_or ca |> at_left ]
-        else
+        | Some true, _ ->
+            T, theorem prop_calculus ((ca + cb) == T) [ commute_or ca cb |> at_left; zero_or cb |> at_left ]
+        | _, Some false ->
+            ca, theorem prop_calculus ((ca + cb) == ca) [ ident_or ca |> at_left ]
+        | Some false, _ ->
+            cb, theorem prop_calculus ((ca + cb) == cb) [ commute_or ca cb |> at_left; ident_or cb |> at_left ]
+        | None, None ->
         match view ca with
         | VAnd(x, y) ->
             let (l, pl) = distribOr drop x cb
@@ -174,7 +221,13 @@ module Cnf =
         | VXor(x, y) -> let (c, pc) = recur (-(x == y)) in c, transEq (xorEq x y) pc
         | VNot a ->
             match view a with
-            | VAtom -> p, refl p                                                       // ¬atom is a literal
+            // A negated CONSTANT is not a literal — fold it, or `clausesOf` mints a DIMACS variable
+            // for `T`/`F` and the solver satisfies `¬φ` by choosing its value (see the notes above).
+            | VAtom ->
+                match constOf a with
+                | Some true -> F, notTEq a                                             // ¬T = F
+                | Some false -> T, notFEq a                                            // ¬F = T
+                | None -> p, refl p                                                    // ¬atom is a literal
             | VNot b -> let (c, pc) = recur b in c, transEq (dnegEq b) pc                  // ¬¬b = b
             | VAnd(x, y) -> let (c, pc) = recur ((-x) + (-y)) in c, transEq (dmAndEq x y) pc
             | VOr(x, y) -> let (c, pc) = recur ((-x) * (-y)) in c, transEq (dmOrEq x y) pc
@@ -205,10 +258,17 @@ module Cnf =
     /// unreliable anyway — it fails on `∨`-over-`∧` distributivity, where `simp` also dedups
     /// literals and absorbs, and the two sides do not converge. Locally, each obligation is just
     /// `clause == T` on a single clause, which `simp` discharges from the complementary pair.
+    /// Two results are NOT clause sets, and a caller that hands the output to a solver has to treat
+    /// them as decided rather than clausify them (`SatProof` does):
+    ///
+    /// - `T` — `p` is valid. Either every clause was pruned as a tautology, or constant folding
+    ///   reduced the whole formula. Only the first is recoverable, so pruning is turned off and the
+    ///   conversion retried; if that still yields `T`, the formula really is `T`.
+    /// - `F` — `p` is unsatisfiable, by constant folding alone. There is nothing to clausify and
+    ///   nothing to ask a solver: for the reconstruction pipeline, where `p` is `¬φ`, this proof IS
+    ///   the refutation.
     let toCnf (p: Prop) : Prop * Theorem =
         match toCnfRec true p with
-        // Every clause a tautology means the conjunction is `T` — not a clause set at all. Convert
-        // again without pruning, so the caller still has something to clausify.
         | c, _ when isT c -> toCnfRec false p
         | r -> r
 

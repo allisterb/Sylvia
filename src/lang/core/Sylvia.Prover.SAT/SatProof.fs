@@ -156,6 +156,14 @@ module SatProof =
     let clausesOf (goal: Prop) (cnfProp: Prop) : CnfProblem =
         let atoms = List<Expr>()
         let varOf (e: Expr) =
+            // A truth constant is not an atom. Minting a variable for one silently hands the solver a
+            // free choice — it satisfies `¬φ` by setting `T` false — so any goal mentioning `T`/`F`
+            // comes back "not a theorem". `Cnf.toCnf` folds constants away; fail loudly if one ever
+            // reaches here again rather than answering the wrong question.
+            match e with
+            | True | False ->
+                failwithf "SatProof.clausesOf: the CNF still contains the truth constant %s as a literal — Cnf.toCnf is expected to have folded it away" (src e)
+            | _ -> ()
             let mutable f = -1
             for i in 0 .. atoms.Count - 1 do if f < 0 && sequal atoms.[i] e then f <- i
             if f < 0 then atoms.Add e; atoms.Count else f + 1
@@ -259,6 +267,21 @@ module SatProof =
             if not verbose then Proof.LogLevel <- 0
             let neg = !!goal
             let (cnfProp, cnfPf) = Cnf.toCnf neg                    // ¬φ == cnfProp, kernel-proved
+            match expand cnfProp.Expr with
+            // `¬φ == F` is already the refutation, so the solver has nothing to decide: close it
+            // against `F ⇒ F` exactly as the replayed case closes against `A ⇒ F`. Reachable for goals
+            // whose negation folds away entirely on the truth constants — e.g. `(p ∧ F) = F`, which is
+            // what the set-theory zero laws translate to.
+            | False ->
+                let negImpF =
+                    theorem prop_calculus (neg ==> F) [ Ident cnfPf |> apply_left; Taut (reflex_implies F) |> apply ]
+                Contradiction negImpF
+            // `¬φ == T`: the negation is valid, so the goal is refuted rather than undecided. Say so
+            // in the same words the solver's `Sat` verdict uses, since it means the same thing.
+            | True ->
+                failwithf "SatProof: %s is NOT a theorem (its negation reduces to T)"
+                    (prop_calculus.PrintFormula (expand goal.Expr))
+            | _ ->
             let cnf = clausesOf goal cnfProp
             let res = sat.Solve cnf
             // Distinguish "this is not a theorem" from "the solver could not tell us": a caller

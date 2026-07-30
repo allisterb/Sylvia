@@ -125,9 +125,38 @@ Boolean-ring (ANF) normal form using four **admitted, oracle-verified, local rew
 A **deterministic** driver (`Auto.normalize_trace`) applies these greedily to a fixpoint —
 *not* best-first search, because the rules grow the term before it collapses, so a size
 heuristic would avoid them. A tautology collapses to `T`; `autoproof_anf` returns the
-replayable proof, or throws on a non-theorem. It is **complete and sound**: it closes a goal
-iff `valid` says it is a theorem (cross-checked in `KernelProofTests`), with proofs ≤ ~28
-steps, and it closes the `(p⇒q)∧(q⇒p) = (p≡q)` that `auto` missed.
+replayable proof, or throws on a non-theorem. Proofs are ≤ ~28 steps, and it closes the
+`(p⇒q)∧(q⇒p) = (p≡q)` that `auto` missed.
+
+> **NOT complete — corrected 2026-07-30.** This section claimed `autoproof_anf` "closes a goal
+> iff `valid` says it is a theorem". That is **false**, and the cross-check in `KernelProofTests`
+> only ever compared a hand-picked list of nine goals. Sweeping goals of the shape
+> **CNF ⇒ DNF** — which random formula generation almost never produces, and which no example
+> script contained — found refusals of goals `valid` accepts, at **2, 3 and 4 atoms**. Smallest
+> found so far, all valid and all refused:
+>
+> ```
+> ((¬p∨¬p) ∧ ((p∨¬q)∨¬q) ∧ (q∨¬p) ∧ q) ⇒ ((q∧¬q) ∨ (p∧q))
+> ((p ∧ ((p∨¬q)∨¬q)) ∧ (q∨¬p) ∧ ¬p) ⇒ (¬q ∧ p)
+> ((¬p∨¬p) ∧ ((p∨¬p)∨¬p) ∧ q ∧ (p∨p)) ⇒ q
+> ((p∨q) ∧ (r∨s) ∧ (¬p∨¬r) ∧ (¬q∨¬s)) ⇒ ((p∧s) ∨ (q∧r))          -- 4 atoms
+> ```
+>
+> A random-formula sweep (212 valid goals, 1–4 atoms) found **zero** failures, so the shape is
+> what matters, not the size: every one of these has repeated literals inside a clause and/or a
+> contradictory antecedent, and neither ingredient reproduces the failure on its own (`(p∨p) ⇒ p`,
+> `((p∨p) ∧ ¬p) ⇒ q`, `(p ∧ ¬p) ⇒ q` all close fine). This smells like the SAME class as the
+> confluence gap noted below, which was also `∧`-monomial handling — not the same instance, since
+> that one is fixed.
+>
+> Being a completeness gap it is **safe**: the driver fails loudly, never fabricates a proof.
+> `PropCalculus.decide` no longer treats an ANF refusal as final — when `valid` disagrees with the
+> prover and a backend is installed, it uses the backend, which closes all four goals above. That
+> makes `decide` complete in practice wherever a solver is available, and costs a genuine
+> non-theorem nothing (the oracle says no and ANF's own message propagates). **The underlying
+> driver bug is open**; the fix belongs in `and_normalize`/`normalize_trace`, and the CNF⇒DNF
+> sweep is the way to test it (`Assert` on `valid g = closes` over a few hundred generated goals,
+> not a fixed list).
 
 This is admitted rules, not a black-box oracle: each is a *local rewrite* producing one
 visible step of a normalization — the same character as `distrib`/`golden_rule`/`normalize`/

@@ -365,6 +365,38 @@ try-the-backend-then-fall-back option — the routing has to prevent it. With th
 installing a backend **extends** `decide` rather than altering it: goals under the limit prove exactly
 as they did before. A regression test pins this.
 
+> **Re-measured 2026-07-30 — the threshold holds, two of the reasons above do not.** The numbers in
+> this section and in §4.11 predate both `distribOr` pruning and the optimization pass, so they were
+> re-taken (Release, warm; `decide_max_anf_atoms` is unchanged at 3).
+>
+> **The stack overflow is gone.** It was `Cnf.toCnf` building 441 clauses for 3-variable xor
+> associativity to keep 8; pruning inside `distribOr` fixed it, and that goal now reconstructs
+> through the SAT route in **210 ms**. So "the routing has to prevent it" is no longer true, and
+> nothing in `decide` is standing between the SAT route and a crash. The rest of the table also
+> moved a long way: distributivity 8328 → **77 ms**, `p ∨ ¬p` 224 → **25 ms**.
+>
+> On implication chains, the §4.11 crossover is unchanged — but both sides are much faster and the
+> margin at 3 atoms is now thin:
+>
+> | atoms | ANF | SAT | was (ANF / SAT) |
+> |---:|--:|--:|---|
+> | 3 | **42.9 ms** | 54.0 ms | 95 / 489 |
+> | 4 | 318.6 ms | **32.8 ms** | 1130 / 340 |
+> | 5 | 3384.4 ms | **40.7 ms** | 12389 / 432 |
+>
+> So the *reason* 3 is right has changed. It is not that ANF wins comfortably at 3 (on chains it wins
+> by 1.3×); it is that **3 is the last atom count at which ANF wins on every shape measured**. At 4
+> the answer is shape-dependent — chains go to SAT by ~10×, while nested implications (0.9 vs 80 ms)
+> and nested `≢` (0.1 vs 525 ms) stay overwhelmingly ANF's — and an atom count cannot tell those
+> apart. Routing on a count has to stop where the count is still a usable proxy for shape.
+>
+> **And `decide` no longer treats an ANF refusal as final.** The same session found that
+> `autoproof_anf` is not complete: it refuses valid goals of the shape CNF ⇒ DNF, including at **2
+> atoms**, which is *inside* the range routed to it — so no threshold value fixes that. `decide` now
+> consults the ANF oracle when its prover fails and, if the goal really is a theorem, gives the
+> installed backend its turn. See `docs/prover-automation.md` §3.2b for the reproducers; the driver
+> bug is open.
+
 ### 4.11 Where the routing threshold came from, and why reuse dominates
 
 The two routes produce *very different proof objects* of the same statement, and the difference is
@@ -751,6 +783,51 @@ concern that motivates a fresh-start redesign.
    `PropCalculus` itself, so no existing proof changes shape. The only proof-log difference across
    the whole example suite is that `trans_implies`'s derivation now prints once at metavariables
    instead of at each caller's arguments; every conclusion is byte-identical.
+7. ~~**Truth constants in the goal.**~~ **FOUND AND FIXED (2026-07-30).** Never written down as an
+   assumption, which is again how it survived: **`Cnf.toCnf` treated `T` and `F` as atoms.** They are
+   named constants, so the conversion's structural `view` classified them as `VAtom` and carried them
+   into the CNF as literals — and `clausesOf` then minted a DIMACS variable for `T`, whereupon the
+   solver satisfied `¬φ` by setting it **false**. Every goal mentioning a truth constant therefore
+   came back "NOT a theorem":
+
+   ```
+   goal              (p ∧ T) = p           valid (ANF oracle): true
+   CNF of ¬goal      (p ∨ p) ∧ (¬p ∨ (¬p ∨ ¬T))
+   clauses           1:[1] 2:[-1,-2]   with var 1 = p, var 2 = T
+   SatProof          "(p ∧ T) = p is NOT a theorem (¬goal is satisfiable)"
+   ```
+
+   This was a **false negative, never an unsound theorem** — nothing wrong can be proved this way,
+   and `decide` verifies what a backend returns regardless. But it silently disagreed with the
+   solver-side clausifier `SAT.cnfOfNegatedGoal`, which has folded constants since it was written
+   (`BTrue`/`BFalse` plus its own `simp`), so the two clausifiers were answering different questions
+   on any goal with a constant in it. §4.9's "one CNF" discipline is exactly what should have caught
+   that and did not.
+
+   The fix is symmetric with the `T` handling that tautological-clause pruning had already brought
+   in: `collapseAnd` folds a constant conjunct (`p ∧ T = p` 3.39, `p ∧ F = F` 3.40), `distribOr` folds
+   a constant disjunct (`p ∨ T = T` 3.29, `p ∨ F = p` 3.30), and `toCnfRec`'s `VNot` case folds `¬T`
+   and `¬F` — which is where the leak actually was, since `¬(p ∧ T)` goes through De Morgan to
+   `¬p ∨ ¬T` and `¬T` is not a literal. `¬F = T` is Gries 3.13; its dual `¬T = F` was missing from
+   `PropCalculus` and is derived locally from Definition of false (3.15) plus `(p = T) = p` (3.3).
+   All eight one-step obligations were checked in isolation before being wired in.
+
+   Both routes test the RIGHT operand first, so `F ∧ F` and `T ∨ T` need no `commute`: commuting them
+   is a no-op rewrite, which the kernel rejects — and `T ∨ T` used to take exactly that path, so it
+   was a latent crash. The hot paths ask `constOf` once per side rather than `isT` then `isF`, which
+   is *fewer* `expand` calls than before, and `dense43` measured unchanged (warm 4→3: 297/341/312 ms
+   baseline vs 329/309/309 ms, same allocations).
+
+   Two results are now possible that are not clause sets, and `SatProof` handles both instead of
+   clausifying them: `¬φ == F` **is** the refutation, already kernel-proved, so it closes against
+   `F ⇒ F` with no solver call at all (pinned with a deliberately unavailable solver); `¬φ == T` means
+   the negation is valid, reported in the same words as the solver's `Sat` verdict. `clausesOf` now
+   fails loudly if a constant ever reaches it again rather than answering a different question.
+
+   Found by rerouting the set-theory metatheorem tactics through `decide` (§4.10) — the ∅/U laws
+   translate to propositional bodies containing `T`/`F`, and `(S∪…∪Y)∩U∪∅ = S∪…∪Y` was the first goal
+   ever pointed at the SAT route with a constant in it. 21 goals now agree with the ANF oracle in
+   both directions, four tests pin it, and `examples/proofs/SetTheory.fsx` covers it end to end.
 
 ## 8. File index
 

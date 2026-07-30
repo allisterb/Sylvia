@@ -5,6 +5,24 @@ Entry point for the next session on prover/reconstruction speed. Read this, then
 
 Everything below is committed through `6a6dbf4`.
 
+> **Since this handoff was written (same day, uncommitted at the time of writing).** Two things
+> happened that a reader of §5 should know about, both found by *using* the now-faster pipeline rather
+> than by optimizing it further:
+>
+> - **The set-theory metatheorem tactics were rerouted from `autoproof_anf` to `PropCalculus.decide`**,
+>   lifting their 5-set-variable ceiling. That immediately exposed a real bug: **`Cnf.toCnf` treated
+>   the truth constants `T`/`F` as atoms**, so the SAT route reported *every* goal mentioning one as a
+>   non-theorem. Fixed, with tests; see `prover-sat-reconstruction.md` §7 item 7. `dense43` measured
+>   unchanged (warm 4→3: 297/341/312 ms before vs 329/309/309 ms after).
+> - **`decide`'s routing threshold was re-measured** and stands at 3 — but two of its documented
+>   reasons did not survive. The cited **stack overflow on 3-atom xor associativity is gone** (fixed by
+>   `distribOr` pruning; that goal now reconstructs in 210 ms), and **`autoproof_anf` turns out not to
+>   be complete** — it refuses valid CNF⇒DNF goals at 2, 3 and 4 atoms, i.e. inside the range routed to
+>   it. `decide` now falls back to the backend when its own prover refuses a goal the ANF oracle calls
+>   a theorem. The driver bug is open: `prover-automation.md` §3.2b.
+>
+> Neither is a perf finding, but both change what the numbers below are numbers *of*.
+
 ---
 
 ## 1. Where it stands
