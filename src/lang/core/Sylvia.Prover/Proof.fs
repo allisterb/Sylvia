@@ -181,26 +181,36 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
     // formatted: formatting goes through print_formula, which decompiles the
     // expression — a measurable cost on suppressed log paths (see
     // docs/expressions-perf.md). Printed output is identical to the eager version.
-    let _prooflog (steps:RuleApplication list) (level:int) (isLemma:bool) (fx:unit -> string) =
-        let output (x:string) (s:string) =
-            logBuilder.AppendLine(x) |> ignore
-            printfn "%s" s
-        do
-            let isShortLemmaProof = isLemma && steps.Length <= 2
-            if not isLemma then
-                let x = fx() in output x x
-            else if isLemma && level > 2 then
-                let x = fx() in output x ("        " + x)
-            else if not isShortLemmaProof && level >= 1 then
-                    let x = fx() in output x ("        " + x)
-    let prooflog = _prooflog steps logLevel l
-    let alwayslog = _prooflog steps 3 false
+    let output (x:string) (s:string) =
+        logBuilder.AppendLine(x) |> ignore
+        printfn "%s" s
+
+    // Whether a `prooflog` line is written, and whether it is indented, is FIXED for the life of
+    // the proof: both depend only on `steps.Length`, the log level, and whether this is a lemma.
+    //
+    // These used to be decided inside a `_prooflog` that took a `unit -> string` thunk. The thunk
+    // was there so a suppressed line never paid for its formatting (which goes through
+    // `print_formula`, a decompilation) — but it also meant every logging call allocated a closure
+    // even when the level guaranteed nothing would be written, and a reconstruction makes several
+    // per step across thousands of proof objects. Deciding once and testing `prooflog_on` AT THE
+    // CALL SITE keeps the laziness exactly and drops the closure.
+    let prooflog_on =
+        let is_short_lemma_proof = l && steps.Length <= 2
+        (not l) || (l && logLevel > 2) || (not is_short_lemma_proof && logLevel >= 1)
+    /// The two lemma branches indent by 8 spaces; the non-lemma branch does not.
+    let prooflog_indent = l
+    /// Emit a `prooflog` line. Callers MUST guard with `prooflog_on` — this does not re-check, so
+    /// that the message is never built when it would be discarded.
+    let prooflog_s (x:string) = output x (if prooflog_indent then "        " + x else x)
+    /// `alwayslog` was `_prooflog steps 3 false`, and `isLemma = false` takes the unconditional
+    /// branch — so it emits for every proof at every level. There is no predicate to test.
+    let alwayslog_s (x:string) = output x x
     do if not l then
         match logLevel with
-        | 0 -> alwayslog (fun () -> sprintf "Proof log level is %i. Only necessary output will be printed."  logLevel)
-        | 1 -> alwayslog (fun () -> sprintf "Proof log level is %i. Short proofs of lemmas won't be printed."  logLevel)
-        | 2 -> alwayslog (fun () -> sprintf "Proof log level is %i. All proofs of lemmas will be printed."  logLevel)
-        | 3 -> alwayslog (fun () -> sprintf "Proof log level is %i. All proofs of axioms and lemmas will be printed."  logLevel)
+        | 0 -> alwayslog_s (sprintf "Proof log level is %i. Only necessary output will be printed."  logLevel)
+        | 1 -> alwayslog_s (sprintf "Proof log level is %i. Short proofs of lemmas won't be printed."  logLevel)
+        | 2 -> alwayslog_s (sprintf "Proof log level is %i. All proofs of lemmas will be printed."  logLevel)
+        | 3 -> alwayslog_s (sprintf "Proof log level is %i. All proofs of axioms and lemmas will be printed."  logLevel)
         | _ -> failwith "Unknown proof log level."
     // These headers go through `alwayslog`, which passes `isLemma = false` — so `_prooflog`'s
     // "never format a line that will not be output" thunk does NOT apply to them, and every proof
@@ -216,35 +226,35 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
     // lines disappearing at level 0. A top-level proof still announces itself at every level.
     do
         if isAxiom && logLevel > 0 && logLevel <= 2 then
-            alwayslog (fun () -> sprintf "[Axiom] %s." (print_formula a))
+            alwayslog_s (sprintf "[Axiom] %s." (print_formula a))
         else if isAxiom && logLevel > 2 then
-            alwayslog (fun () -> sprintf "[Axiom] %s:" (print_formula a))
+            alwayslog_s (sprintf "[Axiom] %s:" (print_formula a))
         else if l && logLevel > 2 then
-            alwayslog (fun () -> sprintf "[Lemma] %s:" (print_formula a))
+            alwayslog_s (sprintf "[Lemma] %s:" (print_formula a))
         else if l && logLevel > 0 && logLevel < 2 && steps.Length <= 2 then
-            alwayslog (fun () -> sprintf "[Lemma] %s." (print_formula a))
+            alwayslog_s (sprintf "[Lemma] %s." (print_formula a))
         else if l && logLevel > 0 && logLevel < 2 && steps.Length >= 2 then
-            alwayslog (fun () -> sprintf "[Lemma] %s:" (print_formula a))
+            alwayslog_s (sprintf "[Lemma] %s:" (print_formula a))
         else if not l then
-            alwayslog (fun () -> "Proof of " + print_formula a + ":")
+            alwayslog_s (sprintf "Proof of %s:" (print_formula a))
 
     let mutable _state = a
     let mutable state:(Expr * Lazy<string>) list = []
     let mutable stepCount = 0
     do if theory |- a  then
-            prooflog (fun () ->
+            if prooflog_on then
                 let axeq = theory.Axioms a
-                sprintf "|- %s. [%s]" (print_formula a) (if axeq.Value.Name.StartsWith "Definition" then axeq.Value.Name else sprintf "Axiom of %s" axeq.Value.Name))
-            prooflog (fun () -> "Proof complete." + proof_sep)
+                prooflog_s (sprintf "|- %s. [%s]" (print_formula a) (if axeq.Value.Name.StartsWith "Definition" then axeq.Value.Name else sprintf "Axiom of %s" axeq.Value.Name))
+                prooflog_s ("Proof complete." + proof_sep)
             stepCount <- steps.Length
        else if logic |- a   then
-            prooflog (fun () ->
+            if prooflog_on then
                 let axeq = logic.Axioms a
-                sprintf "|- %s. [%s]" (print_formula a) (if axeq.Value.Name.StartsWith "Definition" then axeq.Value.Name else sprintf "Logical Axiom of %s" axeq.Value.Name))
-            prooflog (fun () -> "Proof complete." + proof_sep)
+                prooflog_s (sprintf "|- %s. [%s]" (print_formula a) (if axeq.Value.Name.StartsWith "Definition" then axeq.Value.Name else sprintf "Logical Axiom of %s" axeq.Value.Name))
+                prooflog_s ("Proof complete." + proof_sep)
             stepCount <- steps.Length
        else if steps.Length = 0 && not(theory |- a || logic |- a ) then
-        prooflog (fun () -> sprintf "Proof incomplete. Current state: %s." (print_formula _state))
+        if prooflog_on then prooflog_s (sprintf "Proof incomplete. Current state: %s." (print_formula _state))
 
     // Iterate through proof steps
     do while stepCount < steps.Length do
@@ -313,23 +323,23 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
                     sprintf "%i. %s: %s \u2192 %s." (stepId) (stepName.Replace("(expression)", step.Pos)) (print_formula prevState) (print_formula _a)
                 else
                     sprintf "%i. %s: No change." (stepId) (stepName.Replace("(expression)", step.Pos)))
-        do prooflog (fun () -> msg.Value)
+        do if prooflog_on then prooflog_s msg.Value
         _state <- _a
         state <- state @ [(_state, msg)]
         if theory |- _state then
-            prooflog (fun () ->
+            if prooflog_on then
                 let axeq = theory.Axioms _a
-                sprintf "|- %s. [%s]" (print_formula _a) (if axeq.Value.Name.StartsWith "Definition" then axeq.Value.Name else sprintf "Axiom of %s" axeq.Value.Name))
-            prooflog (fun () -> "Proof complete." + proof_sep)
+                prooflog_s (sprintf "|- %s. [%s]" (print_formula _a) (if axeq.Value.Name.StartsWith "Definition" then axeq.Value.Name else sprintf "Axiom of %s" axeq.Value.Name))
+                prooflog_s ("Proof complete." + proof_sep)
             stepCount <- steps.Length
         else if logic |- _state then
-            prooflog (fun () ->
+            if prooflog_on then
                 let axeq = logic.Axioms _a
-                sprintf "|- %s. [%s]" (print_formula _a) (if axeq.Value.Name.StartsWith "Definition" then axeq.Value.Name else sprintf "Logical Axiom of %s" axeq.Value.Name))
-            prooflog (fun () -> "Proof complete." + proof_sep)
+                prooflog_s (sprintf "|- %s. [%s]" (print_formula _a) (if axeq.Value.Name.StartsWith "Definition" then axeq.Value.Name else sprintf "Logical Axiom of %s" axeq.Value.Name))
+                prooflog_s ("Proof complete." + proof_sep)
             stepCount <- steps.Length
         else
-            prooflog (fun () -> sprintf "Proof incomplete. Current state: %s." (print_formula _a))
+            if prooflog_on then prooflog_s (sprintf "Proof incomplete. Current state: %s." (print_formula _a))
             stepCount <- stepCount + 1
     let last_ant, last_conseq, last_conjuncts = 
         match _state with 
@@ -357,7 +367,7 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
     /// materialized on access so unread messages never pay for formatting.
     member x.State = state |> List.map (fun (e, m) -> e, m.Value)
     member val Subst = steps |> List.map (fun s  -> s.ApplyRule) |> List.fold(fun e r -> e >> r) id
-    member val Msg = fun (s:string) -> prooflog (fun () -> s)
+    member val Msg = fun (s:string) -> if prooflog_on then prooflog_s s
     member x.Log with get() = logBuilder.ToString() and set(_:string) = logBuilder.Clear() |> ignore
 
     /// Proof log level.
