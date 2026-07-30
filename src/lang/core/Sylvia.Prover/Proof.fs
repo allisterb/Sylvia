@@ -10,10 +10,26 @@ open Formula
 
 /// A theory is a set of axioms and a set of rules that transform one formula into another
 type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =
+    // `AxEquiv` is a pure function of the term for a given theory, and the `Proof` constructor calls
+    // it on the whole statement after EVERY step — so a reconstruction re-answers it for the same
+    // expression object thousands of times. Keyed on the INPUT, by reference, so a hit skips the
+    // `expand` as well as the recognition: profiled, `expand` is 2.49% of total under `AxEquiv`
+    // while `equational_logic_axioms` is 0.11%, so the expand IS the cost. (An earlier attempt at
+    // this keyed on `expand a` — caching the cheap half after paying for the expensive one, which
+    // is why it showed a 60% hit rate and no benefit.) Per-instance: different theories recognize
+    // different axioms. Weak keys, so nothing is retained.
+    let axCache = System.Runtime.CompilerServices.ConditionalWeakTable<Expr, obj>()
+
     member val Axioms = axioms
     member val Rules = rules
     member val PrintFormula = defaultArg formula_printer Display.print_formula
-    member x.AxEquiv a  = a |> expand |> x.Axioms |> Option.isSome  
+    member x.AxEquiv a =
+        match axCache.TryGetValue a with
+        | true, cached -> unbox<bool> cached
+        | _ ->
+            let r = a |> expand |> x.Axioms |> Option.isSome
+            axCache.GetValue(a, System.Runtime.CompilerServices.ConditionalWeakTable<Expr, obj>.CreateValueCallback(fun _ -> box r)) |> ignore
+            r
     static member (|-) ((c:Theory), a) = c.AxEquiv a
     static member (|-) ((c:Theory), a:Term<_>) = c.AxEquiv a.Expr
     /// The default logical theory used in Sylvia proofs.
