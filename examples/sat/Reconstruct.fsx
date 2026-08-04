@@ -145,38 +145,55 @@ prop_decider <- Some(fun _ -> theorem prop_calculus (q + !!q) [ excluded_middle'
  with _ -> ok "decide rejects a decider that answers a different question" true)
 SatProof.uninstall ()
 
-// ---- the backend also covers the in-kernel prover's COMPLETENESS GAP ---------------------------
-// The atom ceiling above is a cost story: below it `autoproof_anf` is simply faster. But it is also
-// INCOMPLETE — it refuses valid goals of the shape CNF ⇒ DNF, including at 2 atoms, which is *inside*
-// the range `decide` routes to it (`decide_max_anf_atoms` = 3). So no threshold value fixes this, and
-// an ANF refusal cannot be treated as "not a theorem": `decide` asks the ANF ORACLE (`valid`), and if
-// the goal really is a theorem it gives the installed backend its turn.
+// ---- the goals that exposed the ANF prover's COMPLETENESS GAP (now closed) ---------------------
+// `autoproof_anf` used to REFUSE these — all valid, all of the shape CNF ⇒ DNF, and the smallest at
+// only 2 atoms, which is *inside* the range `decide` routes to it. The cause was the driver's move
+// ORDER: `distrib_and_xor` (the one size-increasing rule) outranked the normalizers, so the term was
+// fully expanded before anything could be cancelled and the search burned its step budget on
+// monomials like `(p ∧ p)` that would have collapsed. Distributing last fixes all of them; see
+// `PropCalculus.anf_steps` and docs/prover-automation.md §3.2b.
 //
-// These three are valid and all three are refused by `autoproof_anf`; the driver bug is open (see
-// docs/prover-automation.md §3.2b). This lives here rather than in the unit suite because each goal
-// costs ~4 s of ANF thrashing before the refusal, which `SYLVIA_SEQUAL_CHECK=1` turns into minutes.
-printfn "\ndecide covers the ANF prover's completeness gap when a backend is installed:"
+// They stay here as the standing regression guard on that order, because a fixed list of "nice"
+// goals is exactly what hid the gap for months: every one of these closes in-kernel now, and if the
+// ordering ever regresses they are what says so.
+printfn "\nthe goals that used to defeat autoproof_anf (in-kernel, no solver):"
 let anfHoles =
     [ "((¬p∨¬p) ∧ ((p∨¬q)∨¬q) ∧ (q∨¬p) ∧ q) ⇒ ((q∧¬q)∨(p∧q))",
       ((((!!p + !!p) * ((p + !!q) + !!q)) * (q + !!p)) * q ==> ((q * !!q) + (p * q)))
       "((p ∧ ((p∨¬q)∨¬q)) ∧ (q∨¬p) ∧ ¬p) ⇒ (¬q∧p)",
       (((p * ((p + !!q) + !!q)) * (q + !!p)) * !!p ==> (!!q * p))
+      "((¬p∨¬p) ∧ ((p∨¬p)∨¬p) ∧ q ∧ (p∨p)) ⇒ q",
+      ((((!!p + !!p) * ((p + !!p) + !!p)) * q) * (p + p) ==> q)
       "((p∨q) ∧ (r∨s) ∧ (¬p∨¬r) ∧ (¬q∨¬s)) ⇒ ((p∧s)∨(q∧r))",
       (((p + q) * (r + s) * (!!p + !!r) * (!!q + !!s)) ==> ((p * s) + (q * r))) ]
 
-for (label, g) in anfHoles do
-    ok (sprintf "valid, and autoproof_anf REFUSES it:  %s" label)
-       (valid g && not (try (autoproof_anf g).Complete with _ -> false))
-
-SatProof.install_with sat
+SatProof.uninstall ()          // no backend: these must close on the in-kernel prover alone
 for (label, g) in anfHoles do
     let sw = System.Diagnostics.Stopwatch.StartNew()
-    let proved = try sequal (decide g).Stmt (expand g.Expr) with _ -> false
+    let closed = try (autoproof_anf g).Complete with _ -> false
     sw.Stop()
-    ok (sprintf "decide proves it via the backend (%dms):  %s" sw.ElapsedMilliseconds label) proved
-// A genuine non-theorem must NOT reach the solver: the oracle says no, so the ANF message stands.
-(try decide (p == q) |> ignore; ok "a real non-theorem is still refused, without the solver" false
- with e -> ok "a real non-theorem is still refused, without the solver" (e.Message.Contains "could not normalize"))
-SatProof.uninstall ()
+    ok (sprintf "autoproof_anf closes it (%dms):  %s" sw.ElapsedMilliseconds label) (valid g && closed)
+
+// ---- and `decide` still recovers if the ANF route fails for any other reason -------------------
+// The fallback (ask the ANF ORACLE; if the goal really is a theorem, give the backend its turn) is
+// defence in depth now that the known gap is closed. Exercised by shrinking the step budget so the
+// in-kernel route fails on a goal it would otherwise prove easily — cheaper and more deterministic
+// than hunting for a goal that defeats it.
+printfn "\ndecide recovers when the in-kernel route fails (step budget shrunk to force it):"
+let easy = ((p ==> q) * p) ==> q
+let savedSteps = autoproof_max_steps
+try
+    autoproof_max_steps <- 3
+    SatProof.uninstall ()
+    (try decide easy |> ignore; ok "with no backend, a budget failure is final" false
+     with _ -> ok "with no backend, a budget failure is final" true)
+    SatProof.install_with sat
+    ok "with a backend, decide proves it anyway" (try sequal (decide easy).Stmt (expand easy.Expr) with _ -> false)
+    // A genuine non-theorem must NOT reach the solver: the oracle says no, so the ANF message stands.
+    (try decide (p == q) |> ignore; ok "a real non-theorem is still refused, without the solver" false
+     with e -> ok "a real non-theorem is still refused, without the solver" (e.Message.Contains "could not normalize"))
+finally
+    autoproof_max_steps <- savedSteps
+    SatProof.uninstall ()
 
 printfn "\n%s  (%d failed)" (if failures = 0 then "ALL GREEN" else "FAILURES") failures

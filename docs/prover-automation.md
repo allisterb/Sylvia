@@ -128,12 +128,11 @@ heuristic would avoid them. A tautology collapses to `T`; `autoproof_anf` return
 replayable proof, or throws on a non-theorem. Proofs are ≤ ~28 steps, and it closes the
 `(p⇒q)∧(q⇒p) = (p≡q)` that `auto` missed.
 
-> **NOT complete — corrected 2026-07-30.** This section claimed `autoproof_anf` "closes a goal
-> iff `valid` says it is a theorem". That is **false**, and the cross-check in `KernelProofTests`
-> only ever compared a hand-picked list of nine goals. Sweeping goals of the shape
-> **CNF ⇒ DNF** — which random formula generation almost never produces, and which no example
-> script contained — found refusals of goals `valid` accepts, at **2, 3 and 4 atoms**. Smallest
-> found so far, all valid and all refused:
+> **Was NOT complete — found and FIXED 2026-07-30.** This section claimed `autoproof_anf` "closes a
+> goal iff `valid` says it is a theorem". That was **false**, and the cross-check in
+> `KernelProofTests` only ever compared a hand-picked list of nine goals. Sweeping goals of the
+> shape **CNF ⇒ DNF** — which random formula generation almost never produces, and which no example
+> script contained — found refusals of goals `valid` accepts, at **2, 3 and 4 atoms**:
 >
 > ```
 > ((¬p∨¬p) ∧ ((p∨¬q)∨¬q) ∧ (q∨¬p) ∧ q) ⇒ ((q∧¬q) ∨ (p∧q))
@@ -142,21 +141,39 @@ replayable proof, or throws on a non-theorem. Proofs are ≤ ~28 steps, and it c
 > ((p∨q) ∧ (r∨s) ∧ (¬p∨¬r) ∧ (¬q∨¬s)) ⇒ ((p∧s) ∨ (q∧r))          -- 4 atoms
 > ```
 >
-> A random-formula sweep (212 valid goals, 1–4 atoms) found **zero** failures, so the shape is
-> what matters, not the size: every one of these has repeated literals inside a clause and/or a
-> contradictory antecedent, and neither ingredient reproduces the failure on its own (`(p∨p) ⇒ p`,
-> `((p∨p) ∧ ¬p) ⇒ q`, `(p ∧ ¬p) ⇒ q` all close fine). This smells like the SAME class as the
-> confluence gap noted below, which was also `∧`-monomial handling — not the same instance, since
-> that one is fixed.
+> **It was not a confluence bug — it was the driver's MOVE ORDER, and the diagnosis is the reusable
+> part.** The tell was in the stuck state: it was not a fixpoint at all, it was budget exhaustion,
+> and the term was full of `(p ∧ p)`, `(p ∧ T)`, `(T ∧ p)` monomials that `and_normalize` collapses
+> in one step. `normalize_trace` is greedy first-firing, so a rule listed higher runs to exhaustion
+> before a lower one is tried — and `distrib_and_xor` was listed second, above all three
+> normalizers. `distrib_and_xor` is the ONLY size-increasing rule here, and the normalizers are what
+> make monomials syntactically canonical, which is the precondition for `xor_normalize` to cancel
+> `x ⊕ x` at all. So the driver expanded the whole term before anything could be cancelled, and
+> cancellation — the only thing that keeps ANF tractable — never got a chance.
 >
-> Being a completeness gap it is **safe**: the driver fails loudly, never fabricates a proof.
-> `PropCalculus.decide` no longer treats an ANF refusal as final — when `valid` disagrees with the
-> prover and a backend is installed, it uses the backend, which closes all four goals above. That
-> makes `decide` complete in practice wherever a solver is available, and costs a genuine
-> non-theorem nothing (the oracle says no and ANF's own message propagates). **The underlying
-> driver bug is open**; the fix belongs in `and_normalize`/`normalize_trace`, and the CNF⇒DNF
-> sweep is the way to test it (`Assert` on `valid g = closes` over a few hundred generated goals,
-> not a fixed list).
+> **Distributing LAST fixes all four**, and is faster on most goals too (4-atom chain 396 → 265
+> steps, prover test suite 1 m 43 s → 1 m 08 s). This is the same shape of bug as the one fixed in
+> `Cnf.distribOr`, where tautological clauses had to be pruned *inside* distribution rather than
+> after it. **Simplify before you expand** — twice now in this codebase.
+>
+> A second, smaller cause sat behind it: with the order fixed, one 3-atom goal still needed **3346
+> steps**, over the hard-coded 2000-step budget. That budget is now the documented knob
+> `PropCalculus.autoproof_max_steps` (default 5000). Note it costs a NON-theorem nothing — a
+> non-theorem normalizes to its own ANF and then no rule fires, so the driver stops at a fixpoint
+> (`p = q` gives up after 2 steps) and never approaches the cap. Only a goal still making progress
+> can exhaust it, which is exactly why a cap set too low presents as "refuses a valid goal".
+>
+> **Verified** on 168 generated goals (58 valid, 110 not) across CNF⇒DNF and random shapes at 1–3
+> atoms — the range `decide` routes here — plus the four goals above: **zero disagreements with the
+> oracle**, worst case 3346 steps. The four goals are pinned in `examples/sat/Reconstruct.fsx` as
+> the standing regression guard on the move order. Test any future change the same way: generate,
+> and assert `valid g = closes`. A fixed list is what hid this for months.
+>
+> Cost is the honest caveat. Proof CONSTRUCTION replays every step through the kernel at ~27 ms/step
+> on these large intermediate terms, so the 3346-step goal takes ~116 s to prove and the 4-atom one
+> ~40 s. `PropCalculus.decide` with the SAT backend does the same goals in 50–300 ms, and it still
+> treats an ANF refusal as inconclusive and hands over to the backend — so a low cap plus a backend
+> remains both faster and more complete than a high cap alone.
 
 This is admitted rules, not a black-box oracle: each is a *local rewrite* producing one
 visible step of a normalization — the same character as `distrib`/`golden_rule`/`normalize`/

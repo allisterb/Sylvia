@@ -16,10 +16,17 @@ Everything below is committed through `6a6dbf4`.
 >   unchanged (warm 4→3: 297/341/312 ms before vs 329/309/309 ms after).
 > - **`decide`'s routing threshold was re-measured** and stands at 3 — but two of its documented
 >   reasons did not survive. The cited **stack overflow on 3-atom xor associativity is gone** (fixed by
->   `distribOr` pruning; that goal now reconstructs in 210 ms), and **`autoproof_anf` turns out not to
->   be complete** — it refuses valid CNF⇒DNF goals at 2, 3 and 4 atoms, i.e. inside the range routed to
+>   `distribOr` pruning; that goal now reconstructs in 210 ms), and **`autoproof_anf` turned out not to
+>   be complete** — it refused valid CNF⇒DNF goals at 2, 3 and 4 atoms, i.e. inside the range routed to
 >   it. `decide` now falls back to the backend when its own prover refuses a goal the ANF oracle calls
->   a theorem. The driver bug is open: `prover-automation.md` §3.2b.
+>   a theorem.
+> - **That completeness bug is fixed** (`prover-automation.md` §3.2b), and the diagnosis is a perf
+>   lesson as much as a correctness one: it was never a confluence gap, it was the driver's **move
+>   order**. `distrib_and_xor` — the only size-increasing rule — outranked the normalizers in a greedy
+>   first-firing driver, so terms were fully expanded before cancellation could shrink them, and the
+>   search burned its step budget. Distributing last fixes it and is FASTER: 4-atom chain 396 → 265
+>   steps, prover test suite 1 m 43 s → 1 m 08 s. Exactly the mistake §7 item 4 fixed in `distribOr` by
+>   pruning inside distribution rather than after. **Simplify before you expand** — twice now.
 >
 > Neither is a perf finding, but both change what the numbers below are numbers *of*.
 

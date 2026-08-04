@@ -239,6 +239,26 @@ module PropCalculus =
     /// provers scale; it just lets them run longer before they hang.
     let mutable autoproof_max_atoms = 5
 
+    /// The second bound on `autoproof_anf`: how many rewrite steps its normalization driver may take
+    /// before giving up. Distinct from `autoproof_max_atoms`, and it bounds a different thing — atoms
+    /// bound the SIZE of the normal form, steps bound the WORK to reach it.
+    ///
+    /// It costs a non-theorem nothing. A non-theorem normalizes to its own ANF and then no rule fires,
+    /// so the driver stops at a FIXPOINT — `p = q` gives up after 2 steps — and never approaches this
+    /// number. Only a goal still making progress can exhaust it, which is why a value set too low
+    /// presents exactly as **refusing a valid goal**: at 2000 (the old hard-coded value) that was still
+    /// happening after the move-order fix below, on a 3-atom goal needing 3346 steps.
+    ///
+    /// 5000 covers every goal measured in the 2–3 atom range that `decide` routes to this prover (worst
+    /// observed: 3346 steps over a 168-goal generated sweep). Raising it buys completeness on harder
+    /// goals at a steep price — proof CONSTRUCTION replays every step through the kernel at roughly
+    /// 27 ms/step on the large intermediate terms these goals produce, so 3346 steps is ~116 s and the
+    /// cap is a 2–3 minute ceiling, not a cheap safety net. Before raising it, consider that
+    /// `PropCalculus.decide` with the SAT backend installed proves that same 3-atom goal in ~50 ms, and
+    /// that `decide` already treats an ANF refusal as inconclusive and hands over to the backend — so a
+    /// LOW cap plus a backend is usually both faster and more complete than a high cap alone.
+    let mutable autoproof_max_steps = 5000
+
     let private guard_atoms (name: string) (goal: Expr) =
         let n = prop_atom_count goal
         if n > autoproof_max_atoms then
@@ -279,15 +299,30 @@ module PropCalculus =
     let private anf_steps (name: string) (goal: Expr) =
         do guard_atoms name goal
         let isComplete x = prop_calculus.AxEquiv x || Proof.Logic.AxEquiv x
+        // THE ORDER IS LOAD-BEARING — it decides completeness, not just speed. `normalize_trace` is
+        // greedy first-firing, so a rule placed higher runs to exhaustion before a lower one is ever
+        // tried. `distrib_and_xor` is the ONLY size-increasing rule here (`a ∧ (b⊕c)` duplicates `a`);
+        // the other three are size-reducing, and they are also what makes monomials SYNTACTICALLY
+        // canonical, which is the precondition for `xor_normalize` to cancel `x ⊕ x` at all.
+        //
+        // With distribution on top, the term is fully expanded before anything is cleaned up, so
+        // cancellation — the only thing that keeps ANF tractable — never gets a chance, and the driver
+        // burns its budget on a term full of `(p ∧ p)` and `(p ∧ T)` monomials that would have
+        // collapsed. That is not slowness: it made the prover REFUSE VALID GOALS (CNF ⇒ DNF shapes at
+        // 2, 3 and 4 atoms; see docs/prover-automation.md §3.2b). Distributing last fixes all of them
+        // and is faster on most goals too (4-atom chain 396 → 265 steps).
+        //
+        // Same shape of bug as the one fixed in `Cnf.distribOr`, where tautological clauses had to be
+        // pruned INSIDE distribution rather than after it. Simplify before you expand.
         let moves =
             [ applyfirst elim_to_xor
-              applyfirst distrib_and_xor
               applyfirst and_normalize
               applyfirst xor_normalize
-              applyfirst reduce ]
-        match normalize_trace isComplete moves 2000 goal with
+              applyfirst reduce
+              applyfirst distrib_and_xor ]
+        match normalize_trace isComplete moves autoproof_max_steps goal with
         | Some steps -> steps
-        | None -> failwithf "%s could not normalize %s to a proof (is it a propositional theorem?)." name (prop_calculus.PrintFormula goal)
+        | None -> failwithf "%s could not normalize %s to a proof within %d steps (is it a propositional theorem? if it is, see PropCalculus.autoproof_max_steps — or use decide with the SAT backend installed)." name (prop_calculus.PrintFormula goal) autoproof_max_steps
 
     let autoproof_anf (e: Prop) : Proof = proof prop_calculus e (anf_steps "autoproof_anf" (expand e.Expr))
 
@@ -368,18 +403,18 @@ module PropCalculus =
     /// 33 ms, and a 5-atom one 3.4 s against 41 ms. Lower `autoproof_max_atoms` to push such goals to
     /// the backend.
     ///
-    /// Sharper known trade, found while re-measuring the threshold: `autoproof_anf` is not merely
-    /// slower on some goals, it can REFUSE a valid one. `((p∨q) ∧ (r∨s) ∧ (¬p∨¬r) ∧ (¬q∨¬s)) ⇒
-    /// ((p∧s) ∨ (q∧r))` is valid (`valid` says so, and it has only two satisfying assignments, both of
-    /// which satisfy the consequent) and `autoproof_anf` fails to normalize it. A targeted sweep over
-    /// CNF⇒DNF goals found refusals at **2 atoms** as well, so this is NOT confined to the range the
-    /// backend already covers, and lowering the threshold would not close it.
+    /// An ANF refusal is treated as INCONCLUSIVE rather than final: when `autoproof_anf` refuses a
+    /// goal the ANF ORACLE calls a theorem, and a backend is installed, `decide` uses the backend.
+    /// That costs a non-theorem nothing — the oracle says no, and ANF's own message propagates.
     ///
-    /// So the ANF route's failure is treated as inconclusive rather than final: when `autoproof_anf`
-    /// refuses a goal the ANF ORACLE calls a theorem, and a backend is installed, `decide` uses the
-    /// backend. That makes `decide` strictly more capable than either route alone and costs a
-    /// non-theorem nothing (the oracle says no, and ANF's own message propagates). The gap itself is a
-    /// completeness bug in the ANF driver — recorded in `docs/prover-automation.md`, not fixed here.
+    /// This was added for a real completeness bug (the driver refused valid CNF⇒DNF goals at 2–4
+    /// atoms, i.e. INSIDE the range routed here, so no threshold value could have covered it). That
+    /// bug is now FIXED — it was `anf_steps`'s move order, see there — and the four goals that
+    /// exposed it are pinned in `examples/sat/Reconstruct.fsx`. The fallback stays as defence in
+    /// depth, and still earns its place: `autoproof_max_steps` bounds the in-kernel route, so a goal
+    /// that needs more work than the budget allows is refused here and proved by the backend instead
+    /// — usually far faster anyway (a 3-atom goal needing 3346 ANF steps is ~116 s in-kernel and
+    /// ~50 ms through the solver).
     let decide (e: Prop) : Theorem =
         let goal = expand e.Expr
         let anf () = theorem prop_calculus e (anf_steps "decide" goal)
@@ -391,9 +426,9 @@ module PropCalculus =
                     (prop_calculus.PrintFormula th.Stmt) (prop_calculus.PrintFormula goal)
             th
         if prop_atom_count goal <= decide_max_anf_atoms then
-            // Preferred route — but `autoproof_anf` is not complete, so its failure does not mean the
-            // goal is unprovable. When the ANF ORACLE disagrees with the ANF PROVER, the gap is ours
-            // and a backend (if installed) should have its turn. The guard keeps the ordinary
+            // Preferred route — but it is bounded (`autoproof_max_steps`), so its failure does not
+            // mean the goal is unprovable. When the ANF ORACLE disagrees with the ANF PROVER, the gap
+            // is ours and a backend (if installed) should have its turn. The guard keeps the ordinary
             // non-theorem path untouched: no solver is consulted and the message is ANF's own.
             try anf ()
             with _ when prop_decider.IsSome && anfIsTautology e -> backend prop_decider.Value

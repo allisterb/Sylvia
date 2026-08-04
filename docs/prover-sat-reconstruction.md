@@ -391,11 +391,18 @@ as they did before. A regression test pins this.
 > apart. Routing on a count has to stop where the count is still a usable proxy for shape.
 >
 > **And `decide` no longer treats an ANF refusal as final.** The same session found that
-> `autoproof_anf` is not complete: it refuses valid goals of the shape CNF ⇒ DNF, including at **2
-> atoms**, which is *inside* the range routed to it — so no threshold value fixes that. `decide` now
-> consults the ANF oracle when its prover fails and, if the goal really is a theorem, gives the
-> installed backend its turn. See `docs/prover-automation.md` §3.2b for the reproducers; the driver
-> bug is open.
+> `autoproof_anf` was not complete: it refused valid goals of the shape CNF ⇒ DNF, including at **2
+> atoms**, which is *inside* the range routed to it — so no threshold value could have fixed that.
+> `decide` now consults the ANF oracle when its prover fails and, if the goal really is a theorem,
+> gives the installed backend its turn.
+>
+> **That driver bug is since FIXED** (`docs/prover-automation.md` §3.2b): it was the move ORDER in
+> `anf_steps` — the one size-increasing rule outranked the normalizers, so terms were expanded before
+> anything could cancel and the search burned its budget. Distributing last closes all four goals and
+> is faster besides. The same "simplify before you expand" mistake as §7 item 4's `distribOr` pruning.
+> The fallback stays as defence in depth, and still earns its place: the in-kernel route is bounded by
+> `autoproof_max_steps`, and a goal that exceeds it is far better served by the solver anyway (a
+> 3-atom goal needing 3346 ANF steps is ~116 s in-kernel against ~50 ms through the backend).
 
 ### 4.11 Where the routing threshold came from, and why reuse dominates
 
