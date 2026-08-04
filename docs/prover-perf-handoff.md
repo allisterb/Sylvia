@@ -10,7 +10,7 @@ Everything below is committed through `6a6dbf4`.
 > than by optimizing it further:
 >
 > - **The set-theory metatheorem tactics were rerouted from `autoproof_anf` to `PropCalculus.decide`**,
->   lifting their 5-set-variable ceiling. That immediately exposed a real bug: **`Cnf.toCnf` treated
+>   lifting their 5-set-variable ceiling. That immediately exposed a real bug: **`Cnf.to_cnf` treated
 >   the truth constants `T`/`F` as atoms**, so the SAT route reported *every* goal mentioning one as a
 >   non-theorem. Fixed, with tests; see `prover-sat-reconstruction.md` §7 item 7. `dense43` measured
 >   unchanged (warm 4→3: 297/341/312 ms before vs 329/309/309 ms after).

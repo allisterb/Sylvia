@@ -16,7 +16,7 @@
 // patterns the derivations search for. On 2026-07-25 it found 15 schemas failing, collapsing to
 // seven root derivations (absorb_or, absorb_and, ident_and_implies, ident_or_conseq, ident_and_eq,
 // ident_eq_and_or_not, shunt', distrib_implies_eq_implies); the rest inherited, including
-// trans_implies — which Calc.chainImp instantiates at whatever the caller is composing.
+// trans_implies — which Calc.chain_imp instantiates at whatever the caller is composing.
 //
 // RE-RUN THIS after adding or editing any derivation. It takes several minutes; the fast subset is
 // pinned as a unit test (`derived schemas prove at arguments that contain their own rewrite

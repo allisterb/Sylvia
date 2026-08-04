@@ -18,11 +18,11 @@ namespace Sylvia
 ///            ─rewrite ¬φ to A, then Contradiction→ ⊢ φ                     (STEP 2)
 ///
 /// Nothing here is a new trusted primitive: every step is `PropCalculus.resolve`,
-/// `combine_implies`, `weaken_or`, `strengthen_and`, `Cnf.toCnf` or `Calc.chainImp`. See
+/// `combine_implies`, `weaken_or`, `strengthen_and`, `Cnf.to_cnf` or `Calc.chain_imp`. See
 /// `docs/prover-sat-reconstruction.md` for the design, and `examples/sat/Reconstruct.fsx` for a
 /// runnable demonstration.
 ///
-/// Requires the `cadical` executable: pass one via `proveWith`, or let `Cadical()` resolve the
+/// Requires the `cadical` executable: pass one via `prove_with`, or let `Cadical()` resolve the
 /// `SYLVIA_CADICAL` environment variable / `cadical.exe` on PATH.
 module SatProof =
 
@@ -87,8 +87,8 @@ module SatProof =
 
     /// `A ⇒ Cᵢ` for every conjunct of `A = C₀ ∧ … ∧ Cₙ₋₁`, in ONE O(n) pass that shares the
     /// peel-chain `A ⇒ restⱼ` (a naive per-clause elimination is O(n²) in the expensive
-    /// `Calc.chainImp`).
-    let conjElimAll (inputs: Prop list) : Theorem[] =
+    /// `Calc.chain_imp`).
+    let conj_elim_all (inputs: Prop list) : Theorem[] =
         let arr = Array.ofList inputs
         let n = arr.Length
         let rest j = arr.[j..] |> Array.reduceBack (fun a b -> a * b)
@@ -96,11 +96,11 @@ module SatProof =
         else
             let aToRest = Array.zeroCreate n
             aToRest.[1] <- elimR arr.[0] (rest 1)
-            for j in 2 .. n - 1 do aToRest.[j] <- Calc.chainImp aToRest.[j - 1] (elimR arr.[j - 1] (rest j))
+            for j in 2 .. n - 1 do aToRest.[j] <- Calc.chain_imp aToRest.[j - 1] (elimR arr.[j - 1] (rest j))
             Array.init n (fun i ->
                 if i = 0 then strengthen_and arr.[0] (rest 1)
                 elif i = n - 1 then aToRest.[n - 1]
-                else Calc.chainImp aToRest.[i] (strengthen_and arr.[i] (rest (i + 1))))
+                else Calc.chain_imp aToRest.[i] (strengthen_and arr.[i] (rest (i + 1))))
 
     (* ---------------------------------------------------------------------- *)
     (* Clause shaping                                                          *)
@@ -116,15 +116,15 @@ module SatProof =
     /// (Gries 3.76a), then AC-match. Covers both the plain reorder case and the LRAT case where a
     /// step declares a weaker clause than its hint chain actually derives.
     let private clauseImp (cnf: CnfProblem) (srcLits: int list) (dstLits: int list) : Theorem =
-        let cp lits = clauseProp cnf lits
+        let cp lits = clause_prop cnf lits
         let eqImp (a: Prop) (b: Prop) =
             if sequal (expand a.Expr) (expand b.Expr) then reflex_implies a
             else theorem prop_calculus (a ==> b) [ acEq b a |> at [ right_branch ]
                                                    reflex_implies a |> Taut |> apply ]
         match dstLits |> List.filter (fun l -> not (List.contains l srcLits)) |> List.distinct with
         | [] -> eqImp (cp srcLits) (cp dstLits)
-        | extras -> Calc.chainImp (weaken_or (cp srcLits) (cp extras))
-                                  (eqImp (cp srcLits + cp extras) (cp dstLits))
+        | extras -> Calc.chain_imp (weaken_or (cp srcLits) (cp extras))
+                                   (eqImp (cp srcLits + cp extras) (cp dstLits))
 
     /// One binary resolution: `cp(apos) ∧ cp(aneg) ⇒ cp(out)`, where the two clauses clash on
     /// variable `pv`. Each clause is AC-matched to `resolve`'s `(C ∨ x)` / `(¬x ∨ D)` shape, so the
@@ -133,7 +133,7 @@ module SatProof =
     let private resolveStep (cnf: CnfProblem) (apos: int list) (aneg: int list) (pv: int) (out: int list) : Theorem =
         let cL = apos |> List.filter (fun l -> l <> pv)
         let dL = aneg |> List.filter (fun l -> l <> -pv)
-        let cp lits = clauseProp cnf lits
+        let cp lits = clause_prop cnf lits
         let C, D, v = cp cL, cp dL, cnf.AtomOfVar.[pv]
         theorem prop_calculus (cp apos * cp aneg ==> cp out) [
             acEq (cp apos) (C + v) |> at [ left_branch; left_branch ]
@@ -146,23 +146,23 @@ module SatProof =
     (* ---------------------------------------------------------------------- *)
 
     /// Read a `CnfProblem` directly off a clean CNF `Prop`, so the clauses handed to the solver are
-    /// EXACTLY the ones `Cnf.toCnf` proved `¬φ` equal to. (Clausifying twice — once for the proof,
+    /// EXACTLY the ones `Cnf.to_cnf` proved `¬φ` equal to. (Clausifying twice — once for the proof,
     /// once for the solver — leaves the LRAT clause ids and variable indices meaningless against
     /// each other; they agree on implication chains and diverge elsewhere.)
     ///
     /// Repeated literals within a clause are dropped. That is an OPTIMIZATION, not a correctness
     /// requirement: every kernel step in the replay costs O(|A|), so smaller clauses are cheaper.
-    /// `dedupCnf` pays for it by proving `cnfProp == A` in two exact moves instead of one.
-    let clausesOf (goal: Prop) (cnfProp: Prop) : CnfProblem =
+    /// `dedup_cnf` pays for it by proving `cnfProp == A` in two exact moves instead of one.
+    let clauses_of (goal: Prop) (cnfProp: Prop) : CnfProblem =
         let atoms = List<Expr>()
         let varOf (e: Expr) =
             // A truth constant is not an atom. Minting a variable for one silently hands the solver a
             // free choice — it satisfies `¬φ` by setting `T` false — so any goal mentioning `T`/`F`
-            // comes back "not a theorem". `Cnf.toCnf` folds constants away; fail loudly if one ever
+            // comes back "not a theorem". `Cnf.to_cnf` folds constants away; fail loudly if one ever
             // reaches here again rather than answering the wrong question.
             match e with
             | True | False ->
-                failwithf "SatProof.clausesOf: the CNF still contains the truth constant %s as a literal — Cnf.toCnf is expected to have folded it away" (src e)
+                failwithf "SatProof.clauses_of: the CNF still contains the truth constant %s as a literal — Cnf.to_cnf is expected to have folded it away" (src e)
             | _ -> ()
             let mutable f = -1
             for i in 0 .. atoms.Count - 1 do if f < 0 && sequal atoms.[i] e then f <- i
@@ -182,11 +182,11 @@ module SatProof =
     /// clause equality is a small local `simp` (idempotence collapses the repeat), lifted through
     /// the ∧ tree at an EXACT position, so nothing searches and nothing can mis-target. `None` when
     /// no clause had a repeated literal.
-    let rec dedupCnf (p: Prop) : Prop * Theorem option =
+    let rec dedup_cnf (p: Prop) : Prop * Theorem option =
         match expand p.Expr with
         | And(x, y) ->
-            let dx, tx = dedupCnf (pOf x)
-            let dy, ty = dedupCnf (pOf y)
+            let dx, tx = dedup_cnf (pOf x)
+            let dy, ty = dedup_cnf (pOf y)
             match tx, ty with
             | None, None -> p, None
             | _ ->
@@ -213,32 +213,32 @@ module SatProof =
     /// Replay an LRAT refutation as kernel steps, giving the input conjunction `A` and (when the
     /// trace reaches the empty clause) a checked `R : A ⇒ F`.
     ///
-    /// EVERY `Add` step is replayed, binary or not: `SAT.rupChain` unfolds a step's hints into an
+    /// EVERY `Add` step is replayed, binary or not: `SAT.rup_chain` unfolds a step's hints into an
     /// explicit chain of binary resolutions (a 2-hint step is simply a one-link chain, so the
     /// ordinary binary case is subsumed rather than special-cased), and the chain's clause is
     /// weakened to the one the step declares. Nothing in the trace is skipped.
     let refute (cnf: CnfProblem) (steps: LratStep list) : Prop * Theorem option =
-        let inputs = cnf.Clauses |> List.map (clauseProp cnf)
+        let inputs = cnf.Clauses |> List.map (clause_prop cnf)
         let A = inputs |> List.reduceBack (*)
         let lits = Dictionary<int, int list>()
         let imp = Dictionary<int, Theorem>()                        // id ⟼ A ⇒ cp(lits[id])
-        let elims = conjElimAll inputs
+        let elims = conj_elim_all inputs
         cnf.Clauses |> List.iteri (fun i c -> lits.[i + 1] <- c; imp.[i + 1] <- elims.[i])
         let clauseOf id = match lits.TryGetValue id with | true, c -> Some c | _ -> None
         // A ⇒ cp xs  and  A ⇒ cp ys  ⟼  A ⇒ cp out   (one resolution, under the antecedent A)
         let resolveUnder (impX: Theorem) (impY: Theorem) xs ys pv out =
             let apos, aneg = if List.contains pv xs then xs, ys else ys, xs
             let impPos, impNeg = if apos = xs then impX, impY else impY, impX
-            let cPos, cNeg = clauseProp cnf apos, clauseProp cnf aneg
+            let cPos, cNeg = clause_prop cnf apos, clause_prop cnf aneg
             let both = conj impPos impNeg (A ==> cPos) (A ==> cNeg)
             let aToBoth = mp both (combine_implies A cPos cNeg) ((A ==> cPos) * (A ==> cNeg)) (A ==> (cPos * cNeg))
-            Calc.chainImp aToBoth (resolveStep cnf apos aneg pv out)
+            Calc.chain_imp aToBoth (resolveStep cnf apos aneg pv out)
         let mutable r = None
         for step in steps do
             match step with
             | Delete _ -> ()
             | Add(id, cl, hints) ->
-                match rupChain clauseOf cl hints with
+                match rup_chain clauseOf cl hints with
                 | Error e -> failwithf "SatProof: LRAT step %d: %s" id e
                 | Ok chain ->
                     let mutable cur = lits.[chain.Start]
@@ -247,7 +247,7 @@ module SatProof =
                         curImp <- resolveUnder curImp imp.[link.Antecedent] cur lits.[link.Antecedent] link.Pivot link.Result
                         cur <- link.Result
                     lits.[id] <- cl
-                    imp.[id] <- if cur = cl then curImp else Calc.chainImp curImp (clauseImp cnf cur cl)
+                    imp.[id] <- if cur = cl then curImp else Calc.chain_imp curImp (clauseImp cnf cur cl)
                     if List.isEmpty cl then r <- Some imp.[id]
         A, r
 
@@ -261,12 +261,12 @@ module SatProof =
     /// the solver is unavailable or times out, or if the trace cannot be replayed. Unless `verbose`
     /// is set, proof logging is silenced for the duration and restored afterwards — a reconstruction
     /// emits thousands of kernel steps, which is noise at any call site.
-    let proveWithLog (sat: Cadical) (verbose: bool) (goal: Prop) : Theorem =
+    let prove_with_log (sat: Cadical) (verbose: bool) (goal: Prop) : Theorem =
         let saved = Proof.LogLevel
         try
             if not verbose then Proof.LogLevel <- 0
             let neg = !!goal
-            let (cnfProp, cnfPf) = Cnf.toCnf neg                    // ¬φ == cnfProp, kernel-proved
+            let (cnfProp, cnfPf) = Cnf.to_cnf neg                    // ¬φ == cnfProp, kernel-proved
             match expand cnfProp.Expr with
             // `¬φ == F` is already the refutation, so the solver has nothing to decide: close it
             // against `F ⇒ F` exactly as the replayed case closes against `A ⇒ F`. Reachable for goals
@@ -282,7 +282,7 @@ module SatProof =
                 failwithf "SatProof: %s is NOT a theorem (its negation reduces to T)"
                     (prop_calculus.PrintFormula (expand goal.Expr))
             | _ ->
-            let cnf = clausesOf goal cnfProp
+            let cnf = clauses_of goal cnfProp
             let res = sat.Solve cnf
             // Distinguish "this is not a theorem" from "the solver could not tell us": a caller
             // deciding whether to fall back to another tactic needs to know which happened.
@@ -292,47 +292,47 @@ module SatProof =
                 failwithf "SatProof: %s is NOT a theorem (¬goal is satisfiable)"
                     (prop_calculus.PrintFormula (expand goal.Expr))
             | NotAvailable ->
-                failwithf "SatProof: the cadical executable was not found at '%s' — set the SYLVIA_CADICAL environment variable, put cadical.exe on PATH, or pass a configured Cadical to proveWith" sat.ExePath
+                failwithf "SatProof: the cadical executable was not found at '%s' — set the SYLVIA_CADICAL environment variable, put cadical.exe on PATH, or pass a configured Cadical to prove_with" sat.ExePath
             | Timeout -> failwithf "SatProof: the solver hit the %dms budget without deciding the goal" sat.TimeoutMs
             | Unknown -> failwith "SatProof: the solver exited without a verdict"
-            let A, rOpt = refute cnf (parseLrat res.Lrat)
+            let A, rOpt = refute cnf (parse_lrat res.Lrat)
             let rTh =
                 match rOpt with
                 | Some t -> t
                 | None -> failwith "SatProof: the LRAT trace never derives the empty clause"
             // ¬φ == A in two exact moves: clause-wise literal dedup (congruence), then pure-AC
             // reassociation of the same clause multiset into the right-associated `A`.
-            let (cnfDedup, dedupPf) = dedupCnf cnfProp
+            let (cnfDedup, dedupPf) = dedup_cnf cnfProp
             let bridge = theorem prop_calculus (cnfDedup == A) [ normalize ]
             let ceq = transEq cnfPf (match dedupPf with Some d -> transEq d bridge | None -> bridge)
             let negImpF = theorem prop_calculus (neg ==> F) [ Ident ceq |> apply_left; Taut rTh |> apply ]
             Contradiction negImpF
         finally Proof.LogLevel <- saved
 
-    /// `proveWithLog`, quiet.
-    let proveWith (sat: Cadical) (goal: Prop) : Theorem = proveWithLog sat false goal
+    /// `prove_with_log`, quiet.
+    let prove_with (sat: Cadical) (goal: Prop) : Theorem = prove_with_log sat false goal
 
     /// Prove `goal`, resolving the solver from the `SYLVIA_CADICAL` environment variable or
-    /// `cadical.exe` on PATH. Use `proveWith` to point at a specific executable or set a timeout.
-    let prove (goal: Prop) : Theorem = proveWith (Cadical()) goal
+    /// `cadical.exe` on PATH. Use `prove_with` to point at a specific executable or set a timeout.
+    let prove (goal: Prop) : Theorem = prove_with (Cadical()) goal
 
-    /// `proveWith`, reporting failure as a message instead of raising — for callers deciding
+    /// `prove_with`, reporting failure as a message instead of raising — for callers deciding
     /// whether the SAT route applies. The message distinguishes a non-theorem from an unavailable
     /// or undecided solver.
-    let tryProveWith (sat: Cadical) (goal: Prop) : Result<Theorem, string> =
-        try Ok(proveWith sat goal) with e -> Error(e.Message.Split('\n').[0])
+    let try_prove_with (sat: Cadical) (goal: Prop) : Result<Theorem, string> =
+        try Ok(prove_with sat goal) with e -> Error(e.Message.Split('\n').[0])
 
-    /// `tryProveWith` with the solver resolved from `SYLVIA_CADICAL` / PATH.
-    let tryProve (goal: Prop) : Result<Theorem, string> = tryProveWith (Cadical()) goal
+    /// `try_prove_with` with the solver resolved from `SYLVIA_CADICAL` / PATH.
+    let try_prove (goal: Prop) : Result<Theorem, string> = try_prove_with (Cadical()) goal
 
     /// The proof as a REWRITE, for use as a step inside a larger proof: replaces `goal` with `T`.
     ///
-    ///     theorem prop_calculus (… subgoal …) [ … ; SatProof.SatWith sat subgoal |> apply_left ; … ]
+    ///     theorem prop_calculus (… subgoal …) [ … ; SatProof.Sat_with sat subgoal |> apply_left ; … ]
     ///
-    /// (`SatProof.proveWith sat goal |> Taut |> apply` is the same thing spelled out.)
-    let SatWith (sat: Cadical) (goal: Prop) : Rule = Taut (proveWith sat goal)
+    /// (`SatProof.prove_with sat goal |> Taut |> apply` is the same thing spelled out.)
+    let Sat_with (sat: Cadical) (goal: Prop) : Rule = Taut (prove_with sat goal)
 
-    /// `SatWith` with the solver resolved from `SYLVIA_CADICAL` / PATH.
+    /// `Sat_with` with the solver resolved from `SYLVIA_CADICAL` / PATH.
     let Sat (goal: Prop) : Rule = Taut (prove goal)
 
     (* ---------------------------------------------------------------------- *)
@@ -350,10 +350,10 @@ module SatProof =
     /// Installing is explicit rather than automatic (no module initializer): a caller that has not
     /// asked for the SAT route keeps the previous, solver-free behaviour, and `uninstall` restores
     /// it. Idempotent.
-    let installWith (sat: Cadical) : unit = PropCalculus.prop_decider <- Some(proveWith sat)
+    let install_with (sat: Cadical) : unit = PropCalculus.prop_decider <- Some(prove_with sat)
 
-    /// `installWith`, resolving the solver from `SYLVIA_CADICAL` / PATH.
-    let install () : unit = installWith (Cadical())
+    /// `install_with`, resolving the solver from `SYLVIA_CADICAL` / PATH.
+    let install () : unit = install_with (Cadical())
 
     /// Restore `PropCalculus.decide`'s solver-free fallback (`autoproof_anf`, atom-capped).
     let uninstall () : unit = PropCalculus.prop_decider <- None

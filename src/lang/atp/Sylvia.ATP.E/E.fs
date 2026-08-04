@@ -72,7 +72,7 @@ module ATP =
     /// Quantifier-bound base-sort variables become upper-case TPTP variables; any base-sort variable
     /// left free is universally closed with a leading `![…]`. Function-typed variables (predicate /
     /// function symbols) become lower-case functors.
-    let tptpOfProp (p: Prop) : string =
+    let tptp_of_prop (p: Prop) : string =
         let freeVars = System.Collections.Generic.HashSet<string>()
 
         let rec term (bound: string list) (e: Expr) : string =
@@ -95,7 +95,7 @@ module ATP =
                 sprintf "%s(%s)" (term bound head) (String.Join(",", args))
             | Call(None, mi, args) -> sprintf "%s(%s)" (lo mi.Name) (String.Join(",", args |> List.map (term bound)))
             | Value(v, _) -> lo (string v)
-            | _ -> failwithf "E.tptpOfProp: cannot translate term %A" e
+            | _ -> failwithf "E.tptp_of_prop: cannot translate term %A" e
 
         let rec form (bound: string list) (e: Expr) : string =
             match e with
@@ -129,12 +129,12 @@ module ATP =
         else sprintf "![%s]: (%s)" (String.Join(",", freeVars)) body
 
     /// A single `fof(...)` clause line.
-    let fofLine (role: string) (name: string) (p: Prop) =
-        sprintf "fof(%s, %s, ( %s ))." name role (tptpOfProp p)
+    let fof_line (role: string) (name: string) (p: Prop) =
+        sprintf "fof(%s, %s, ( %s ))." name role (tptp_of_prop p)
 
     /// Assemble a complete TPTP problem: named axioms plus a single conjecture.
-    let tptpProblem (axioms: (string * Prop) list) (goalName: string) (goal: Prop) : string =
-        let ls = (axioms |> List.map (fun (n, p) -> fofLine "axiom" n p)) @ [ fofLine "conjecture" goalName goal ]
+    let tptp_problem (axioms: (string * Prop) list) (goalName: string) (goal: Prop) : string =
+        let ls = (axioms |> List.map (fun (n, p) -> fof_line "axiom" n p)) @ [ fof_line "conjecture" goalName goal ]
         String.Join("\n", ls) + "\n"
 
     (* ---------------------------------------------------------------------- *)
@@ -192,7 +192,7 @@ module ATP =
         member _.IsAvailable = IO.File.Exists exe
 
         /// The exact TPTP problem that `Prove` would send for these axioms and goal.
-        member _.Problem(axioms, goalName, goal) = tptpProblem axioms goalName goal
+        member _.Problem(axioms, goalName, goal) = tptp_problem axioms goalName goal
 
         // Run eprover with `args` on `tptp`. `Choice1Of2 raw` on a clean exit, `Choice2Of2 status`
         // for a terminal wrapper outcome (NotAvailable / Timeout). The timeout is wrapper-enforced.
@@ -226,7 +226,7 @@ module ATP =
         /// verdict is NOT a Sylvia proof and does not enter the trusted base.
         member this.Prove(axioms: (string * Prop) list, goal: Prop, ?goalName: string) : EResult =
             let gname = defaultArg goalName "goal"
-            let tptp = tptpProblem axioms gname goal
+            let tptp = tptp_problem axioms gname goal
             match this.RunRaw("--auto --proof-object", tptp) with
             | Choice2Of2 st -> { Status = st; UsedFacts = []; Tptp = tptp; Raw = "" }
             | Choice1Of2 raw ->
@@ -239,8 +239,8 @@ module ATP =
         member this.AnswerFor(axioms: (string * Prop) list, goal: Prop, ?goalName: string) : EStatus * string list =
             let gname = defaultArg goalName "goal"
             let ls =
-                (axioms |> List.map (fun (n, p) -> fofLine "axiom" n p))
-                @ [ sprintf "fof(%s, question, ( %s ))." gname (tptpOfProp goal) ]
+                (axioms |> List.map (fun (n, p) -> fof_line "axiom" n p))
+                @ [ sprintf "fof(%s, question, ( %s ))." gname (tptp_of_prop goal) ]
             let tptp = String.Join("\n", ls) + "\n"
             match this.RunRaw("-s --answers --auto", tptp) with
             | Choice2Of2 st -> st, []

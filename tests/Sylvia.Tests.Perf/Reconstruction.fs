@@ -13,14 +13,14 @@ open Sylvia.SAT
 /// refutation — the implication-chain CNFs are unit-propagatable, so the binary
 /// resolution trace can be generated directly. That makes the payload hermetic
 /// (no external solver, no I/O) and the profile shows only Sylvia-side cost:
-/// Cnf.toCnf, conjElimAll/Calc.chainImp, resolve folding, normalize, Contradiction.
+/// Cnf.to_cnf, conj_elim_all/Calc.chain_imp, resolve folding, normalize, Contradiction.
 module Reconstruction =
     let private pnot (x: Prop) : Prop = Prop <@ not %x.Expr @>
 
     // ---- plumbing copied from examples/sat/Reconstruct.fsx --------------------------------------
 
-    // Extract a CnfProblem directly from a clean CNF Prop (so it matches `Cnf.toCnf`'s equivalence proof).
-    let private clausesOf (goal:Prop) (cnfProp:Prop) : CnfProblem =
+    // Extract a CnfProblem directly from a clean CNF Prop (so it matches `Cnf.to_cnf`'s equivalence proof).
+    let private clauses_of (goal:Prop) (cnfProp:Prop) : CnfProblem =
         let atoms = System.Collections.Generic.List<Expr>()
         let varOf (e:Expr) =
             let mutable f = -1
@@ -53,7 +53,7 @@ module Reconstruction =
     let private elimR = Memo.p2 elimR_impl
 
     /// `A ⇒ Cᵢ` for every input clause, in ONE O(n) pass sharing the peel-chain `A ⇒ rest_j`.
-    /// This is the Calc.chainImp hot spot — O(n) chainImp calls over the big conjunction A.
+    /// This is the Calc.chain_imp hot spot — O(n) chain_imp calls over the big conjunction A.
     let conjElimAll (inputs:Prop list) : Theorem[] =
         let arr = Array.ofList inputs
         let n = arr.Length
@@ -62,11 +62,11 @@ module Reconstruction =
         else
             let aToRest = Array.zeroCreate n                                       // aToRest.[j] : A ⇒ rest_j
             aToRest.[1] <- elimR arr.[0] (rest 1)
-            for j in 2 .. n-1 do aToRest.[j] <- Calc.chainImp aToRest.[j-1] (elimR arr.[j-1] (rest j))
+            for j in 2 .. n-1 do aToRest.[j] <- Calc.chain_imp aToRest.[j-1] (elimR arr.[j-1] (rest j))
             Array.init n (fun i ->
                 if i = 0 then strengthen_and arr.[0] (rest 1)                      // A ⇒ C0
                 elif i = n-1 then aToRest.[n-1]                                    // A ⇒ rest_{n-1} = A ⇒ C_{n-1}
-                else Calc.chainImp aToRest.[i] (strengthen_and arr.[i] (rest (i+1))))
+                else Calc.chain_imp aToRest.[i] (strengthen_and arr.[i] (rest (i+1))))
 
     // ---- one binary resolution → cp(apos) ∧ cp(aneg) ⇒ cp(resolvent) ----------------------------
     let private acEq (l:Prop) (r:Prop) : Rule = ident prop_calculus (l == r) [ simp ]   // AC clause equality (no merge)
@@ -76,7 +76,7 @@ module Reconstruction =
         let cL = apos |> List.filter (fun l -> l <> pivot)
         let dL = aneg |> List.filter (fun l -> l <> -pivot)
         let resolvent = (cL @ dL) |> List.distinct
-        let cp lits = clauseProp cnf lits
+        let cp lits = clause_prop cnf lits
         let C, D, v = cp cL, cp dL, cnf.AtomOfVar.[pivot]
         resolvent, apos, aneg,
         theorem prop_calculus (cp apos * cp aneg ==> cp resolvent) [
@@ -87,7 +87,7 @@ module Reconstruction =
 
     // ---- STEP 1: assemble R : (∧ inputs) ⇒ F from the (synthesized) trace ------------------------
     let private refute (cnf:CnfProblem) (steps:LratStep list) : Prop * Theorem option =
-        let inputs = cnf.Clauses |> List.map (clauseProp cnf)
+        let inputs = cnf.Clauses |> List.map (clause_prop cnf)
         let A = inputs |> List.reduceBack (*)
         let lits = System.Collections.Generic.Dictionary<int,int list>()
         let imp = System.Collections.Generic.Dictionary<int,Theorem>()
@@ -101,10 +101,10 @@ module Reconstruction =
                 lits.[id] <- cl
                 let impPos = if apos = lits.[h1] then imp.[h1] else imp.[h2]
                 let impNeg = if aneg = lits.[h1] then imp.[h1] else imp.[h2]
-                let cPos, cNeg = clauseProp cnf apos, clauseProp cnf aneg
+                let cPos, cNeg = clause_prop cnf apos, clause_prop cnf aneg
                 let both = conj impPos impNeg (A ==> cPos) (A ==> cNeg)
                 let aToBoth = mp both (combine_implies A cPos cNeg) ((A ==> cPos) * (A ==> cNeg)) (A ==> (cPos * cNeg))
-                imp.[id] <- Calc.chainImp aToBoth sTh
+                imp.[id] <- Calc.chain_imp aToBoth sTh
                 if List.isEmpty cl then r <- Some imp.[id]
             | Add(id, cl, _) -> lits.[id] <- cl
             | Delete _ -> ()
@@ -130,11 +130,11 @@ module Reconstruction =
             nextId <- nextId + 1
         List.ofSeq steps
 
-    // ---- STEP 2 + driver: ¬φ = A via Cnf.toCnf, then ¬φ ⇒ F, then Contradiction ⟹ ⊢ φ -----------
+    // ---- STEP 2 + driver: ¬φ = A via Cnf.to_cnf, then ¬φ ⇒ F, then Contradiction ⟹ ⊢ φ -----------
     let reconstruct (goal:Prop) : Theorem =
         let neg = !!goal
-        let (cnfProp, cnfPf) = Cnf.toCnf neg                        // ¬φ == cnfProp (kernel proof)
-        let cnf = clausesOf goal cnfProp
+        let (cnfProp, cnfPf) = Cnf.to_cnf neg                        // ¬φ == cnfProp (kernel proof)
+        let cnf = clauses_of goal cnfProp
         let steps = synth_unit_refutation cnf.Clauses
         let A, rOpt = refute cnf steps
         let rTh = match rOpt with Some t -> t | None -> failwith "no empty-clause derivation"
@@ -156,7 +156,7 @@ module Reconstruction =
         if not (sequal th.Stmt (expand goal.Expr)) then failwith "reconstruction produced the wrong statement"
         th
 
-    /// Isolated Calc.chainImp hot spot: just the conjElimAll peel over n chain clauses.
+    /// Isolated Calc.chain_imp hot spot: just the conj_elim_all peel over n chain clauses.
     let conj_elim_all (n: int) : Theorem[] =
         let clauses = List.init n (fun i -> (boolvar (sprintf "c%d" (i + 1)) :> Prop) + pnot (boolvar (sprintf "d%d" (i + 1))))
         conjElimAll clauses
@@ -170,7 +170,7 @@ module Reconstruction =
 /// plumbing, which handles only binary `Add(id, cl, [h1; h2])` steps and synthesizes a
 /// unit-propagation refutation. Pigeonhole's refutation is neither binary nor unit-propagatable,
 /// and profiling a copy profiles the wrong code anyway, so this module calls `Sylvia.Prover.SAT`
-/// (`SatProof.clausesOf` / `refute` / `dedupCnf`) — the same path `examples/sat/Reconstruct.fsx`
+/// (`SatProof.clauses_of` / `refute` / `dedup_cnf`) — the same path `examples/sat/Reconstruct.fsx`
 /// and `PropCalculus.decide` take.
 ///
 /// **The LRAT trace is canned.** CaDiCaL is not invoked: the traces below were emitted by
@@ -181,10 +181,10 @@ module Reconstruction =
 /// against 100 s of kernel replay, so the replay is the only interesting part.
 ///
 /// `--plain` matters. CaDiCaL's default preprocessing introduces fresh variables and justifies
-/// them with RAT steps, which `rupChain` cannot replay; see the `Cadical` doc comment.
+/// them with RAT steps, which `rup_chain` cannot replay; see the `Cadical` doc comment.
 ///
-/// If the clause list ever stops matching the canned trace — a change to `Cnf.toCnf`'s output
-/// order, or to `clausesOf`'s variable numbering — the guard below fails with a clear message
+/// If the clause list ever stops matching the canned trace — a change to `Cnf.to_cnf`'s output
+/// order, or to `clauses_of`'s variable numbering — the guard below fails with a clear message
 /// rather than letting the replay fail obscurely deep inside `refute`. Regenerate by dumping
 /// `(sat.Solve cnf).Dimacs` and re-running the cadical command above.
 module ReconstructionDense =
@@ -278,21 +278,21 @@ module ReconstructionDense =
 92 -1 0 90 6 0\n\
 93 0 90 91 10 0\n"
 
-    /// Reconstruct a pigeonhole goal from its canned trace: the whole `SatProof.proveWith`
+    /// Reconstruct a pigeonhole goal from its canned trace: the whole `SatProof.prove_with`
     /// pipeline minus the solver call. `expectVars`/`expectClauses` pin the shape the trace was
     /// generated against.
     let private reconstruct_canned (goal: Prop) (lrat: string) (expectVars: int) (expectClauses: int) : Theorem =
         let neg = !!goal
-        let (cnfProp, cnfPf) = Cnf.toCnf neg                              // ¬φ == cnfProp, kernel-proved
-        let cnf = SatProof.clausesOf goal cnfProp
+        let (cnfProp, cnfPf) = Cnf.to_cnf neg                              // ¬φ == cnfProp, kernel-proved
+        let cnf = SatProof.clauses_of goal cnfProp
         if cnf.NumVars <> expectVars || List.length cnf.Clauses <> expectClauses then
             failwithf "canned LRAT is stale: clausification now gives %d vars / %d clauses, trace was generated against %d / %d — regenerate it (see the module comment)"
                       cnf.NumVars (List.length cnf.Clauses) expectVars expectClauses
-        let A, rOpt = SatProof.refute cnf (parseLrat lrat)                // STEP 1: R : A ⇒ F
+        let A, rOpt = SatProof.refute cnf (parse_lrat lrat)                // STEP 1: R : A ⇒ F
         let rTh = match rOpt with
                   | Some t -> t
                   | None -> failwith "canned LRAT never derives the empty clause"
-        let (cnfDedup, dedupPf) = SatProof.dedupCnf cnfProp               // STEP 2: ¬φ == A
+        let (cnfDedup, dedupPf) = SatProof.dedup_cnf cnfProp               // STEP 2: ¬φ == A
         let bridge = theorem prop_calculus (cnfDedup == A) [ normalize ]
         let ceq = transEq cnfPf (match dedupPf with Some d -> transEq d bridge | None -> bridge)
         let negImpF = theorem prop_calculus (neg ==> F) [ Ident ceq |> apply_left; Taut rTh |> apply ]

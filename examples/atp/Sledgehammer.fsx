@@ -42,7 +42,7 @@ let e = EProver(exePath = eExe, timeoutMs = 20000)
 // is exponential in atom count — that, not E, is what blocked ∀-instantiation here. `decide` routes
 // past it: `SatProof` replays a CaDiCaL refutation as kernel steps, with no atom ceiling. The proof is
 // kernel-checked either way; only the search is delegated.
-SatProof.installWith (Sylvia.SAT.Cadical(exePath = @"C:\Projects\Sylvia\bin\cadical.exe", timeoutMs = 20000))
+SatProof.install_with (Sylvia.SAT.Cadical(exePath = @"C:\Projects\Sylvia\bin\cadical.exe", timeoutMs = 20000))
 
 let mutable failures = 0
 let ok label cond =

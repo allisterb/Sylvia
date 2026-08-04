@@ -5,7 +5,7 @@ namespace Sylvia
 /// Conjunctive-normal-form conversion for propositional `Prop`s, emitting a **kernel-checked**
 /// equivalence proof.
 ///
-/// `Cnf.toCnf p` returns `(cnf, proof)` where `cnf` is `p` in CNF (a conjunction of clauses, each a
+/// `Cnf.to_cnf p` returns `(cnf, proof)` where `cnf` is `p` in CNF (a conjunction of clauses, each a
 /// disjunction of literals; negations only on atoms; no `⇒`/`=`) and `proof : Theorem` establishes
 /// `p == cnf` in `PropCalculus.prop_calculus`.
 ///
@@ -99,7 +99,7 @@ module Cnf =
 
     // `T` and `F` are NAMED CONSTANTS, so `view` classifies them as atoms and the descent would
     // happily carry them into the output as literals. That is wrong at the clause level and not
-    // merely inelegant: `clausesOf` would mint a DIMACS variable for `T`, and the solver would
+    // merely inelegant: `clauses_of` would mint a DIMACS variable for `T`, and the solver would
     // satisfy `¬φ` by setting it false. So constants are FOLDED AWAY as they are met, using the
     // identity and zero laws. The folds live where the connectives are actually built — `collapseAnd`
     // (∧), `distribOr` (∨) and `toCnfRec`'s `VNot` case — because every other connective is rewritten
@@ -108,7 +108,7 @@ module Cnf =
     // The `T` side of this was already here, as a consequence of tautological-clause pruning
     // (a pruned clause becomes `T`, which then has to be collapsed out of its context). The `F` side
     // and `¬T`/`¬F` were missing, which made every goal mentioning a truth constant report as a
-    // non-theorem through the SAT route. The solver-side clausifier `SAT.cnfOfNegatedGoal` has always
+    // non-theorem through the SAT route. The solver-side clausifier `SAT.cnf_of_negated_goal` has always
     // folded both (its `simp` over `BTrue`/`BFalse`); this is what closes the gap between them.
 
     let private isT (x: Prop) = match expand x.Expr with True -> true | _ -> false
@@ -169,7 +169,7 @@ module Cnf =
     // against every clause of every enclosing `∨` — that, not any genuine size blowup, is what made
     // nested `≢` explode: 4-variable xor associativity built tens of thousands of clauses to keep 16.
     // Pruning here keeps the intermediates the size of the answer. `drop` turns it off, for the one
-    // caller that needs the unpruned clause set (see `toCnf`).
+    // caller that needs the unpruned clause set (see `to_cnf`).
     let rec private distribOr (drop: bool) (ca: Prop) (cb: Prop) : Prop * Theorem =
         // A side that is `T` — pruned, or a constant from the input — swallows the disjunction
         // (Gries 3.29); a side that is `F` drops out of it by identity (3.30). As in `collapseAnd`,
@@ -221,7 +221,7 @@ module Cnf =
         | VXor(x, y) -> let (c, pc) = recur (-(x == y)) in c, transEq (xorEq x y) pc
         | VNot a ->
             match view a with
-            // A negated CONSTANT is not a literal — fold it, or `clausesOf` mints a DIMACS variable
+            // A negated CONSTANT is not a literal — fold it, or `clauses_of` mints a DIMACS variable
             // for `T`/`F` and the solver satisfies `¬φ` by choosing its value (see the notes above).
             | VAtom ->
                 match constOf a with
@@ -240,7 +240,7 @@ module Cnf =
     /// Distribution emits a great many clauses that are **tautological** — holding both `v` and
     /// `¬v`. Nested `≢` is the extreme case: xor associativity over three variables yields 441
     /// clauses of which **433 are tautologies**, and the 8 that remain are exactly what the
-    /// solver-side clausifier `SAT.cnfOfNegatedGoal` produces (it drops them in `normClause`).
+    /// solver-side clausifier `SAT.cnf_of_negated_goal` produces (it drops them in `normClause`).
     /// Carrying the other 433 into the kernel replay is what used to overflow its stack.
     ///
     /// So they are dropped, with a proof — a clause holding a complementary pair is `T`, and
@@ -267,13 +267,13 @@ module Cnf =
     /// - `F` — `p` is unsatisfiable, by constant folding alone. There is nothing to clausify and
     ///   nothing to ask a solver: for the reconstruction pipeline, where `p` is `¬φ`, this proof IS
     ///   the refutation.
-    let toCnf (p: Prop) : Prop * Theorem =
+    let to_cnf (p: Prop) : Prop * Theorem =
         match toCnfRec true p with
         | c, _ when isT c -> toCnfRec false p
         | r -> r
 
     /// True if `p` is in CNF (∧ of clauses; each a ∨ of literals; negation only on atoms).
-    let rec isCnf (p: Prop) : bool =
+    let rec is_cnf (p: Prop) : bool =
         let rec isClause q =
             match view q with
             | VOr(x, y) -> isClause x && isClause y
@@ -281,5 +281,5 @@ module Cnf =
             | VAtom -> true
             | _ -> false
         match view p with
-        | VAnd(x, y) -> isCnf x && isCnf y
+        | VAnd(x, y) -> is_cnf x && is_cnf y
         | _ -> isClause p

@@ -218,7 +218,7 @@ Named laws proved by a single `metaset` call: **11.26/11.36** symmetry, **11.27*
 > soundness checks repeated at that size, and one check that uninstalls the backend to show the old
 > ceiling is what was actually lifted.
 >
-> Rerouting is also what exposed a real bug in the SAT pipeline: `Cnf.toCnf` treated `T` and `F` as
+> Rerouting is also what exposed a real bug in the SAT pipeline: `Cnf.to_cnf` treated `T` and `F` as
 > atoms, so every goal mentioning a truth constant was reported a non-theorem. The ∅/U laws translate
 > to bodies containing exactly those constants. See `docs/prover-sat-reconstruction.md` §7 item 7.
 

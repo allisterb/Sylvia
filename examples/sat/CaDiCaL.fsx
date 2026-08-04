@@ -77,19 +77,19 @@ decide "wide 8-atom tautology" wide true
 printfn "\nB. Proof trace for Peirce's law"
 
 let goal = ((p ==> q) ==> p) ==> p
-let cnf = cnfOfNegatedGoal goal
+let cnf = cnf_of_negated_goal goal
 printfn "   atoms: %s"
     (cnf.AtomOfVar |> Seq.map (fun kv -> sprintf "%d=%s" kv.Key (pf kv.Value)) |> String.concat "  ")
 printfn "   DIMACS CNF(¬goal):\n%s"
-    (dimacsOf cnf |> fun s -> s.Split('\n') |> Array.map (fun l -> "     " + l) |> String.concat "\n")
+    (dimacs_of cnf |> fun s -> s.Split('\n') |> Array.map (fun l -> "     " + l) |> String.concat "\n")
 
 let res = sat.Prove goal
 ok "Peirce is UNSAT" (res.Status = Unsat)
 printfn "   raw LRAT:\n%s"
     (res.Lrat.Split('\n') |> Array.filter (fun l -> l.Trim() <> "") |> Array.map (fun l -> "     " + l) |> String.concat "\n")
 
-let steps = parseLrat res.Lrat
-let plan = reconstructionPlan cnf steps
+let steps = parse_lrat res.Lrat
+let plan = reconstruction_plan cnf steps
 printfn "\n   reconstruction plan (each step: clause ⇐ antecedents, by resolution):"
 for s in plan do
     let concl = if s.IsEmpty then "⊥  (empty clause)" else pf s.Conclusion
@@ -127,7 +127,7 @@ ok "reductio identity constructed (checked)" (reductio.Name <> "")
 //  (1) AC clause-matching: fold `resolve` over each step's hint chain, matching each premise clause
 //      (a ∨-tree) to the `(C ∨ x)` / `(¬x ∨ D)` shape up to associativity/commutativity.
 //  (2) the CNF-equivalence link  ¬goal ≡ (∧ input clauses)  so the chain's `(∧ inputs) ⇒ F` becomes
-//      `¬goal ⇒ F` — the one obligation `cnfOfNegatedGoal` does not yet emit as a proof.
+//      `¬goal ⇒ F` — the one obligation `cnf_of_negated_goal` does not yet emit as a proof.
 //  (3) perf: DONE — `resolve` and its sub-lemmas are memoized (`Memo` in Proof.fs), so the same
 //      resolution / clause recurring across steps is O(1); a 256-step warm replay is ~9 ms total.
 printfn "   next: AC clause-matching + CNF-equivalence proof (resolve perf now memoized, see Memo)"

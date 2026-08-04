@@ -39,11 +39,11 @@ module Calc =
     /// The connecting relation of a calc step / of the whole chain.
     type Rel = REq | RImp | RConseq
 
-    let relSym = function REq -> "=" | RImp -> "⇒" | RConseq -> "⇐"
+    let rel_sym = function REq -> "=" | RImp -> "⇒" | RConseq -> "⇐"
 
     /// Compose the running relation with a step's relation (transitivity). `= ` is the
     /// identity; `⇒`/`⇐` absorb `= `; `⇒` and `⇐` cannot be mixed.
-    let composeRel a b =
+    let compose_rel a b =
         match a, b with
         | REq, x | x, REq -> x
         | RImp, RImp -> RImp
@@ -56,7 +56,7 @@ module Calc =
 
     /// `trans_implies` (Gries 3.82a) derived ONCE at metavariables, then instantiated per call.
     ///
-    /// `chainImp` is the fold every `⇒`-chain and every SAT-refutation replay runs through, and
+    /// `chain_imp` is the fold every `⇒`-chain and every SAT-refutation replay runs through, and
     /// `trans_implies` is an F# function, so calling it at the caller's actual propositions replays
     /// its whole 10-step derivation — 45 nested proofs, each step traversing arguments that in a
     /// reconstruction are entire clause conjunctions. Measured at 24-atom chain scale: 77 ms and 45
@@ -66,18 +66,18 @@ module Calc =
     /// Instantiating the schema is also STRICTER than replaying it. A derived rule's substitution
     /// steps rewrite the leftmost-outermost match inside the subterm they address, so replaying at
     /// compound arguments can target the wrong occurrence — the class `examples/proofs/AdversarialSweep.fsx`
-    /// exists to catch, and which named `trans_implies` reached through `chainImp` as live risk.
+    /// exists to catch, and which named `trans_implies` reached through `chain_imp` as live risk.
     /// The derivation here only ever runs at metavariables, which contain no competing subterm.
     let private transImplies = Tactics.Schema.p3 "trans_implies" trans_implies
 
     /// A = B  ⟼  A ⇒ B  (weakening: rewrite the antecedent A into B, leaving the axiom B ⇒ B).
-    let eqToImp (t: Theorem) : Theorem =
+    let eq_to_imp (t: Theorem) : Theorem =
         match t.Stmt with
         | Equals(a, b) -> theorem prop_calculus ((pOf a) ==> (pOf b)) [ Ident t |> apply_left ]
         | _ -> failwithf "calc: %s is not an equation" (src t.Stmt)
 
     /// A ⇒ B and B ⇒ C  ⟼  A ⇒ C  (transitivity, discharged through trans_implies, Gries 3.82a).
-    let chainImp (t1: Theorem) (t2: Theorem) : Theorem =
+    let chain_imp (t1: Theorem) (t2: Theorem) : Theorem =
         match t1.Stmt, t2.Stmt with
         | Implies(a, b), Implies(b2, c) ->
             if not (sequal b b2) then failwithf "calc: %s and %s do not compose" (src t1.Stmt) (src t2.Stmt)
@@ -102,14 +102,14 @@ module Calc =
 
     /// End ⇒ Start  ⟼  Start <=== End  (rewrite the consequence into its implication via the
     /// Consequence axiom, then discharge with the supplied proof).
-    let impToConseq (t: Theorem) : Theorem =
+    let imp_to_conseq (t: Theorem) : Theorem =
         match t.Stmt with
         | Implies(endE, startE) ->
             let ps, pe = pOf startE, pOf endE
             theorem prop_calculus (conseqP ps pe) [
                 id_ax prop_calculus ((conseqP ps pe) == (pe ==> ps)) |> apply
                 Taut t |> apply ]
-        | _ -> failwithf "calc: impToConseq expected an implication, got %s" (src t.Stmt)
+        | _ -> failwithf "calc: imp_to_conseq expected an implication, got %s" (src t.Stmt)
 
     // --- threaded state --------------------------------------------------------
 
@@ -147,7 +147,7 @@ module Calc =
         static member InitGoal (goal: Expr) = let (a, b, rel) = parseGoal goal in CalcState.mk a (Some(b, rel))
 
         member private s.Push rel next fact line =
-            { s with Fresh = false; Current = next; Relation = composeRel s.Relation rel; Facts = s.Facts @ [ fact ]; Log = s.Log @ [ line ] }
+            { s with Fresh = false; Current = next; Relation = compose_rel s.Relation rel; Facts = s.Facts @ [ fact ]; Log = s.Log @ [ line ] }
 
         /// Restate (and check) the starting formula — must be the FIRST step, and match the
         /// seeded start / goal LHS.
@@ -195,18 +195,18 @@ module Calc =
                     | REq, REq -> REq
                     | RImp, (REq | RImp) -> RImp
                     | RConseq, (REq | RConseq) -> RConseq
-                    | _ -> failwithf "calc: the goal is %s but the chain established %s" (relSym goalRel) (relSym s.Relation)
+                    | _ -> failwithf "calc: the goal is %s but the chain established %s" (rel_sym goalRel) (rel_sym s.Relation)
                 | None -> s.Relation
             let saved = Proof.LogLevel
             // Each fact as a forward `from ⇒ to` implication (for a `⇒` conclusion)...
             let impFwd =
                 function
-                | FEq(ra, a, b) -> eqToImp (theorem prop_calculus ((pOf a) == (pOf b)) [ left_branch ra ])
+                | FEq(ra, a, b) -> eq_to_imp (theorem prop_calculus ((pOf a) == (pOf b)) [ left_branch ra ])
                 | FImp t | FConseq t -> t
             // ...and as a backward `to ⇒ from` implication (for a `⇐` conclusion).
             let impBwd =
                 function
-                | FEq(ra, a, b) -> eqToImp (theorem prop_calculus ((pOf b) == (pOf a)) [ right_branch ra ])
+                | FEq(ra, a, b) -> eq_to_imp (theorem prop_calculus ((pOf b) == (pOf a)) [ right_branch ra ])
                 | FImp t | FConseq t -> t
             let thm =
                 try
@@ -218,14 +218,14 @@ module Calc =
                     | RImp ->
                         match s.Facts |> List.map impFwd with
                         | [] -> theorem prop_calculus ((pOf s.Start) ==> (pOf s.Current)) []   // reflexive: Start = Current
-                        | h :: rest -> List.fold chainImp h rest
+                        | h :: rest -> List.fold chain_imp h rest
                     | RConseq ->
                         // Fold the backward `to ⇒ from` facts in reverse to get End ⇒ Start, then wrap as Start <=== End.
                         match s.Facts |> List.map impBwd |> List.rev with
-                        | [] -> impToConseq (theorem prop_calculus ((pOf s.Current) ==> (pOf s.Start)) [])   // reflexive
-                        | h :: rest -> impToConseq (List.fold chainImp h rest)
+                        | [] -> imp_to_conseq (theorem prop_calculus ((pOf s.Current) ==> (pOf s.Start)) [])   // reflexive
+                        | h :: rest -> imp_to_conseq (List.fold chain_imp h rest)
                 finally Proof.LogLevel <- saved
-            if saved >= 1 then printfn "%s   [%s]" (String.concat "\n" s.Log) (relSym target)
+            if saved >= 1 then printfn "%s   [%s]" (String.concat "\n" s.Log) (rel_sym target)
             thm
 
     // --- the computation expression -------------------------------------------

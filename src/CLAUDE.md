@@ -27,3 +27,6 @@ dotnet fsi .\docs\examples\proofs\PropCalculus.fsx # Run the Propositional Calcu
 ## Guardails
 **Do not** commit any changes automatically, always prompt the user to commit manually.
 **Do not** install any NuGet packages automatically, always prompt the user to install packages manually.
+
+## Project coding conventions
+F# functions that are part of public user-facing APIs in modules that represent logical and mathematical and scientific domains should use lower-case names with words separated by underscores, or start with a single capital letter and the remainder lower-case to avoid ambiguity.

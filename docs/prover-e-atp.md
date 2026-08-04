@@ -55,7 +55,7 @@ SMT *solver* (theory decision procedures, model finding, not FOL-refutation-comp
 
 ```
    Sylvia goal + named lemmas (Prop)
-              │  tptpProblem  (§4)
+              │  tptp_problem  (§4)
               ▼
         TPTP FOF problem  ──►  eprover  ──►  stdout
                                                │  parse (§5)
@@ -77,7 +77,7 @@ use the prover's automation, lives one layer up (in the example, for now).
 
 - `EStatus` — `Theorem | CounterSatisfiable | Unsatisfiable | Satisfiable | GaveUp | ResourceOut | Timeout | NotAvailable | Other of string`
 - `EResult = { Status; UsedFacts: string list; Tptp: string; Raw: string }`
-- `tptpOfProp : Prop -> string`, `fofLine`, `tptpProblem`
+- `tptp_of_prop : Prop -> string`, `fof_line`, `tptp_problem`
 - `EProver(?exePath, ?timeoutMs)` with `.Prove(axioms, goal, ?goalName)`, `.Problem`, `.IsAvailable`, `.ExePath`, `.TimeoutMs`
 
 `exePath` defaults to the `SYLVIA_EPROVER` env var, else `eprover.exe` (PATH). No path is hardcoded in
@@ -85,7 +85,7 @@ the library.
 
 ## 4. Translation: Sylvia `Prop` → TPTP FOF
 
-`tptpOfProp` recurses over the raw quotation using Sylvia's existing active patterns
+`tptp_of_prop` recurses over the raw quotation using Sylvia's existing active patterns
 (`Formula.(|Not|Equals|Implies|ForAll|Exists|True|False|)`, `FsExpr.(|And|Or|)`).
 
 | Sylvia | TPTP FOF |

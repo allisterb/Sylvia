@@ -46,7 +46,7 @@ let cadicalPath =
     | p -> p
 let satBackend =
     if System.IO.File.Exists cadicalPath then
-        SatProof.installWith (SAT.Cadical(exePath = cadicalPath, timeoutMs = 60000))
+        SatProof.install_with (SAT.Cadical(exePath = cadicalPath, timeoutMs = 60000))
         true
     else false
 printfn "\ndecide backend: %s"
@@ -403,7 +403,7 @@ else
     SatProof.uninstall ()
     ok "same identity FAILS with no backend (the old 5-variable ceiling)"
        (not (metaproven (neg union6) compl6i))
-    SatProof.installWith (SAT.Cadical(exePath = cadicalPath, timeoutMs = 60000))
+    SatProof.install_with (SAT.Cadical(exePath = cadicalPath, timeoutMs = 60000))
     ok "and proves again once the backend is reinstalled"
        (metaproven (neg union6) compl6i)
 

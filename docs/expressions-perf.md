@@ -338,7 +338,7 @@ dependencies rebuilt — ALL GREEN, goals matched structurally:
 
 The growth is now mildly polynomial (~1.2x per added atom: 5→8 atoms 2.3x, 8→12 atoms
 2.1x) with no wall in sight — extrapolating, ~16 atoms ≈ 20-25 s and ~20 atoms fits a
-minute-scale budget, where the old code needed 142 s for 8. The `Calc.chainImp` /
+minute-scale budget, where the old code needed 142 s for 8. The `Calc.chain_imp` /
 O(|expression|)-per-kernel-step architectural cost remains the asymptotic ceiling, but
 its constant factor is ~20x smaller, which moves the practical ceiling well past where
 the fresh-start decision previously sat. (The 8- and 12-atom checks are now permanent
@@ -350,14 +350,14 @@ in-process, since the chain CNFs are unit-propagatable) so a profiler sees only
 Sylvia-side reconstruction work. Run the perf exe with the `reconstruct` argument to
 profile reconstruction alone (`micro` runs only the Phase 0 micro-payloads; no argument
 runs both). Current shape (Release, LogLevel 0): chain-12 ≈ 9.9 s / **15.7 GB
-allocated**, and `conjElimAll` over just 12 clauses — the isolated O(n)-`Calc.chainImp`
-peel — is ≈ 5.4 s / 8.7 GB, confirming chainImp as the dominant remaining cost and the
+allocated**, and `conj_elim_all` over just 12 clauses — the isolated O(n)-`Calc.chain_imp`
+peel — is ≈ 5.4 s / 8.7 GB, confirming chain_imp as the dominant remaining cost and the
 first thing to look at in the profile.
 
 ## Phase 5 results (2026-07-25, profiler-driven: print_formula without the decompiler)
 
 Profiling the reconstruction payload showed **76.6% of CPU in Unquote's `decompile`**,
-reached via `Calc.chainImp` → `LogicalRules.Subst` → `Display.print_src`: rule NAMES
+reached via `Calc.chain_imp` → `LogicalRules.Subst` → `Display.print_src`: rule NAMES
 (`"Substitute %s ≡ %s …"`) are formatted eagerly on every rule construction — at every
 log level — and `print_formula` routed every quantifier-free (i.e. every propositional)
 formula through the decompiler.
@@ -380,7 +380,7 @@ new form. Both example scripts pass (ALL PASS) with only this class of diff.
 |---|---:|---:|---:|
 | reconstruct chain 8 | 4.5-4.8 s / 7.3 GB | **2.0-2.4 s / 3.0 GB** | 142 s → **~65x** |
 | reconstruct chain 12 | 9.9 s / 15.7 GB | **2.2-2.8 s / 6.1 GB** | — |
-| conjElimAll 12 clauses | 5.4 s / 8.7 GB | 1.2-1.5 s / 3.3 GB | — |
+| conj_elim_all 12 clauses | 5.4 s / 8.7 GB | 1.2-1.5 s / 3.3 GB | — |
 | trans_implies (cold) | 217 ms / 55 MB | 183 ms / 27 MB | 681 ms → 3.7x |
 | trans_implies (warm, default log) | 55-59 ms / 53 MB | **23.7 ms / 25 MB** | 575 ms → **24x** |
 | trans_implies (warm, LogLevel=0) | 35 ms / 35 MB | **20.2 ms / 22 MB** | **28x** |
@@ -415,7 +415,7 @@ module — but laziness sidesteps the ordering problem entirely.
 |---|---:|---:|
 | reconstruct chain 8 | 2.0-2.4 s / 3.0 GB | **1.5 s / 2.9 GB** |
 | reconstruct chain 12 | 2.2-2.8 s / 6.1 GB | **2.0 s / 5.8 GB** |
-| conjElimAll 12 clauses | 1.2-1.5 s / 3.3 GB | 1.05 s / 3.2 GB |
+| conj_elim_all 12 clauses | 1.2-1.5 s / 3.3 GB | 1.05 s / 3.2 GB |
 
 **Phase 6b — fully-lazy descriptions.** The leftovers above were then closed too:
 `PatternDescription` is now lazy in BOTH fields (the name is only read when a completed
@@ -431,7 +431,7 @@ theories etc.), unchanged.
 |---|---:|---:|---:|
 | reconstruct chain 8 | 2.0-2.4 s | 1.5 s | **1.3 s** |
 | reconstruct chain 12 | 2.2-2.8 s | 2.0 s | **1.98 s** |
-| conjElimAll 12 clauses | 1.2-1.5 s | 1.05 s | 1.05 s |
+| conj_elim_all 12 clauses | 1.2-1.5 s | 1.05 s | 1.05 s |
 
 The 8-atom reconstruction is now ~**109x** faster than the original 142 s. Validation
 (both phases): prover suite 97/97 with `SYLVIA_SEQUAL_CHECK=1`, both example scripts
@@ -469,7 +469,7 @@ Implementation:
 | trans_implies (cold) | 183 ms / 27 MB | 136 ms / 17 MB | 681 ms → 5x |
 | reconstruct chain 8 | 1.3 s / 2.9 GB | 1.35 s / 2.6 GB | 142 s → **~105x** |
 | reconstruct chain 12 | 1.98 s / 5.8 GB | **1.68 s / 5.3 GB** | — |
-| conjElimAll 12 clauses | 1.05 s / 3.2 GB | 0.94 s / 3.0 GB | — |
+| conj_elim_all 12 clauses | 1.05 s / 3.2 GB | 0.94 s / 3.0 GB | — |
 
 Validation: prover suite 97/97 + Expressions 25/26 (pre-existing) with
 `SYLVIA_SEQUAL_CHECK=1`, both example scripts ALL PASS with **byte-identical** logs —
@@ -505,7 +505,7 @@ Fix (FsExpr + Formula):
 | trans_implies (warm, LogLevel=0) | 11.2 ms / 14 MB | **8.8 ms / 10 MB** | **65x** |
 | reconstruct chain 8 | 1.35 s / 2.6 GB | 1.32 s / 2.1 GB | 142 s → **~108x** |
 | reconstruct chain 12 | 1.68 s / 5.3 GB | **1.34 s / 4.4 GB** | — |
-| conjElimAll 12 clauses | 0.94 s / 3.0 GB | **0.72 s / 2.5 GB** | — |
+| conj_elim_all 12 clauses | 0.94 s / 3.0 GB | **0.72 s / 2.5 GB** | — |
 
 chain-12 now costs barely more than chain-8 — the atom-scaling curve is approaching
 linear. Validation: prover suite 97/97 with `SYLVIA_SEQUAL_CHECK=1`, both examples ALL

@@ -309,7 +309,7 @@ module PropCalculus =
     /// trusted base — it emits no proof and never closes one. `valid` below is this function; it is
     /// declared here because `decide` needs it to distinguish a non-theorem from a proof its own
     /// prover failed to find.
-    let private anf_is_tautology (e: Prop) : bool = EquationalLogic.Anf.is_tautology (expand e.Expr)
+    let private anfIsTautology (e: Prop) : bool = EquationalLogic.Anf.is_tautology (expand e.Expr)
 
     /// `decide`'s ROUTING threshold: goals with at most this many distinct atoms go to the in-kernel
     /// `autoproof_anf`; above it, to the installed backend (if any).
@@ -351,7 +351,7 @@ module PropCalculus =
     ///
     ///   (This used to read "8.3 s and a *stack overflow*", which is no longer true and was the
     ///   strongest-sounding part of the case for routing small goals here. The overflow was
-    ///   `Cnf.toCnf` building 441 clauses for 3-variable xor associativity to keep 8; pruning inside
+    ///   `Cnf.to_cnf` building 441 clauses for 3-variable xor associativity to keep 8; pruning inside
     ///   `distribOr` fixed it, and that goal now reconstructs. The preference survives on the timings
     ///   alone — a 2000x ratio needs no catastrophe behind it — but nothing in this module is
     ///   protecting the SAT route from a crash any more.)
@@ -396,7 +396,7 @@ module PropCalculus =
             // and a backend (if installed) should have its turn. The guard keeps the ordinary
             // non-theorem path untouched: no solver is consulted and the message is ANF's own.
             try anf ()
-            with _ when prop_decider.IsSome && anf_is_tautology e -> backend prop_decider.Value
+            with _ when prop_decider.IsSome && anfIsTautology e -> backend prop_decider.Value
         else
             match prop_decider with
             | Some d -> backend d
@@ -410,9 +410,9 @@ module PropCalculus =
     /// investing in a hand proof or an `auto` search. It is NOT part of the trusted base and
     /// never closes a proof itself; a proof must still be a real derivation.
     ///
-    /// This is `anf_is_tautology`, which `decide` uses above to tell "the goal is not a theorem" from
+    /// This is `anfIsTautology`, which `decide` uses above to tell "the goal is not a theorem" from
     /// "our prover could not find the proof".
-    let valid (e:Prop) : bool = anf_is_tautology e
+    let valid (e:Prop) : bool = anfIsTautology e
 
     /// Decision TOOL: are two propositional formulas equivalent (does a proof of a = b exist)?
     let equiv (a:Prop) (b:Prop) : bool = EquationalLogic.Anf.equivalent (expand a.Expr) (expand b.Expr)
@@ -670,7 +670,7 @@ module PropCalculus =
     // the leftmost-outermost match inside whatever subterm it is pointed at, so a searching address
     // such as `at_left` picks the wrong occurrence as soon as an ARGUMENT contains a competing one
     // — `absorb_or p ((p ∨ p) ∧ q)` used to fail here, and `q` is arbitrary in every caller
-    // (`strengthen_and` → `conjElimAll` instantiates it at a whole clause set). Admissible rules
+    // (`strengthen_and` → `conj_elim_all` instantiates it at a whole clause set). Admissible rules
     // (`golden_rule`, `distrib`, `commute`, …) fire only at the addressed node and are already exact.
     /// (p ∨ (p ∧ q)) = p  (Gries 3.43b)
     [<DerivedRule "(p ∨ (p ∧ q)) = p">]

@@ -75,7 +75,7 @@ module SAT =
     /// replay depends on). The scalable upgrade is a Tseitin/Plaisted-Greenbaum encoding with auxiliary
     /// variables — at the cost of teaching the reconstruction how to discharge the definitional
     /// clauses. See the module doc / design notes.
-    let cnfOfNegatedGoal (goal: Prop) : CnfProblem =
+    let cnf_of_negated_goal (goal: Prop) : CnfProblem =
         let atoms = ResizeArray<Expr>()      // index i (0-based) -> atom; DIMACS var = i+1
 
         let varOf (e: Expr) : int =
@@ -139,7 +139,7 @@ module SAT =
             | BNot(BAtom i) -> [ [ -i ] ]
             | BTrue -> []            // empty conjunction — no constraints
             | BFalse -> [ [] ]       // empty clause — immediately UNSAT
-            | BNot _ -> failwith "cnfOfNegatedGoal: formula not in NNF (bug)"
+            | BNot _ -> failwith "cnf_of_negated_goal: formula not in NNF (bug)"
 
         // Drop duplicate literals and tautological clauses (containing v and ¬v).
         let normClause (c: int list) : int list option =
@@ -166,7 +166,7 @@ module SAT =
           Goal = goal }
 
     /// Render a `CnfProblem` as DIMACS CNF text.
-    let dimacsOf (p: CnfProblem) : string =
+    let dimacs_of (p: CnfProblem) : string =
         let sb = StringBuilder()
         sb.AppendLine(sprintf "p cnf %d %d" p.NumVars (List.length p.Clauses)) |> ignore
         for c in p.Clauses do
@@ -213,7 +213,7 @@ module SAT =
     /// PROOF, not the verdict. CaDiCaL's default preprocessing introduces FRESH VARIABLES — on a
     /// 20-variable pigeonhole instance its LRAT referenced variables 21-29 — and justifies the
     /// clauses defining them with RAT steps, which are satisfiability-preserving rather than
-    /// entailed and so have no reading as resolution. `SAT.rupChain` is RUP-only by design, so those
+    /// entailed and so have no reading as resolution. `SAT.rup_chain` is RUP-only by design, so those
     /// steps cannot be replayed: 12 of 82 steps failed on that instance, and reconstruction failed
     /// outright. With `--plain` the same instance produced 48 steps and no RAT at all.
     ///
@@ -247,7 +247,7 @@ module SAT =
         /// reconstruction; on SAT a countermodel is returned. The solver is advisory: an `Unsat`
         /// verdict is NOT a Sylvia proof until the LRAT trace is replayed through the kernel.
         member this.Solve(cnf: CnfProblem) : SatResult =
-            let dimacs = dimacsOf cnf
+            let dimacs = dimacs_of cnf
             if not (File.Exists exe) then
                 { Status = NotAvailable; Lrat = ""; Model = []; Raw = ""; Dimacs = dimacs }
             else
@@ -299,7 +299,7 @@ module SAT =
                     try File.Delete lratFile with _ -> ()
 
         /// Convenience: solve directly from a goal `Prop`.
-        member this.Prove(goal: Prop) : SatResult = this.Solve(cnfOfNegatedGoal goal)
+        member this.Prove(goal: Prop) : SatResult = this.Solve(cnf_of_negated_goal goal)
 
     (* ---------------------------------------------------------------------- *)
     (* LRAT proof parsing                                                       *)
@@ -317,7 +317,7 @@ module SAT =
 
     /// Parse text LRAT (as emitted by `cadical --lrat --no-binary`). Ignores blank lines and `c`
     /// comments. Each addition line is  `id  lit* 0  hint* 0`;  each deletion line is  `id d  cid* 0`.
-    let parseLrat (text: string) : LratStep list =
+    let parse_lrat (text: string) : LratStep list =
         [ for raw in text.Split('\n') do
             let line = raw.Trim()
             if line <> "" && not (line.StartsWith "c") then
@@ -375,7 +375,7 @@ module SAT =
     /// The ordinary binary step (2 hints) comes out as a single link, so this subsumes — and
     /// replaces — a special-cased binary resolution. `clauseOf` resolves a clause id to its
     /// literals (input clauses and previously derived ones alike).
-    let rupChain (clauseOf: int -> Clause option) (derived: Clause) (hints: int list) : Result<RupChain, string> =
+    let rup_chain (clauseOf: int -> Clause option) (derived: Clause) (hints: int list) : Result<RupChain, string> =
         if hints |> List.exists (fun h -> h <= 0) then
             // A negative hint marks a RAT candidate: satisfiability-preserving, not entailed, so it
             // has no forward reading as resolution. Keep the solver on RUP-only proofs.
@@ -441,29 +441,29 @@ module SAT =
           IsEmpty: bool }
 
     /// The `Prop` for a single DIMACS literal: the atom, or its negation.
-    let litProp (cnf: CnfProblem) (l: Lit) : Prop =
+    let lit_prop (cnf: CnfProblem) (l: Lit) : Prop =
         let atom = cnf.AtomOfVar.[abs l]
         if l > 0 then atom else !!atom
 
     /// The `Prop` for a clause: the disjunction of its literals, or `F` when empty (the ⊥ clause).
-    let clauseProp (cnf: CnfProblem) (lits: Lit list) : Prop =
+    let clause_prop (cnf: CnfProblem) (lits: Lit list) : Prop =
         match lits with
         | [] -> F
-        | x :: xs -> xs |> List.fold (fun acc l -> acc + litProp cnf l) (litProp cnf x)
+        | x :: xs -> xs |> List.fold (fun acc l -> acc + lit_prop cnf l) (lit_prop cnf x)
 
     /// Build the ordered reconstruction plan from a CNF and its LRAT proof. Input clauses are seeded as
     /// ids `1..m` (their DIMACS order — the ids CaDiCaL references). Each `Add` step becomes a
     /// `ResolutionStep` whose premises are looked up from the clauses derived so far; `Delete` steps are
     /// bookkeeping and produce no step. This layer is pure Sylvia data — no kernel calls — so it always
     /// runs; turning it into a `Theorem` is the caller's kernel-replay step.
-    let reconstructionPlan (cnf: CnfProblem) (steps: LratStep list) : ResolutionStep list =
+    let reconstruction_plan (cnf: CnfProblem) (steps: LratStep list) : ResolutionStep list =
         let env = Dictionary<int, Prop>()
-        cnf.Clauses |> List.iteri (fun i c -> env.[i + 1] <- clauseProp cnf c)
+        cnf.Clauses |> List.iteri (fun i c -> env.[i + 1] <- clause_prop cnf c)
         [ for s in steps do
             match s with
             | Delete _ -> ()
             | Add(id, lits, hints) ->
-                let concl = clauseProp cnf lits
+                let concl = clause_prop cnf lits
                 env.[id] <- concl
                 let premises =
                     hints

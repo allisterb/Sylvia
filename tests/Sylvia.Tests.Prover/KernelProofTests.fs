@@ -223,7 +223,7 @@ type KernelProofTests() =
               "distrib_implies_eq_implies p (p=p) r",
                                              fun () -> PropCalculus.distrib_implies_eq_implies p ref' r |> ignore
               // and the theorems that inherit from them — trans_implies is the one that matters
-              // most, since Calc.chainImp instantiates it at whatever the caller is composing
+              // most, since Calc.chain_imp instantiates it at whatever the caller is composing
               "trans_implies p (p∧p) r",     fun () -> PropCalculus.trans_implies p anp r |> ignore
               "trans_implies_eq p (p∧p) r",  fun () -> PropCalculus.trans_implies_eq p anp r |> ignore
               "trans_implies_eq_conseq …",   fun () -> PropCalculus.trans_implies_eq_conseq p anp r |> ignore
@@ -456,7 +456,7 @@ type KernelProofTests() =
     // ===== valid/equiv: ANF decision TOOL (checks a proof exists; not a proof rule) =====
 
     [<Fact>]
-    member _.``Cnf.toCnf emits a checked equivalence to clean CNF, past the ANF atom ceiling`` () =
+    member _.``Cnf.to_cnf emits a checked equivalence to clean CNF, past the ANF atom ceiling`` () =
         // Each goal: the proof is literally `¬φ == cnf`, the result IS clean CNF, and it is equivalent
         // to the input — for goals with 6-8 atoms, where `autoproof_anf` is guarded / would blow up.
         let s2, t2, u2 = boolvar "s", boolvar "t", boolvar "u"
@@ -470,18 +470,18 @@ type KernelProofTests() =
               !!((p != q) == (q != p))
               (p != q) * !!(p != r) ]
         for g in goals do
-            let (cnf, pf) = Cnf.toCnf g
+            let (cnf, pf) = Cnf.to_cnf g
             Assert.Equal<Expr>(expand (g == cnf).Expr, pf.Stmt)   // the theorem is exactly `g == cnf`
-            Assert.True(Cnf.isCnf cnf, sprintf "not clean CNF: %s" (src (expand cnf.Expr)))
+            Assert.True(Cnf.is_cnf cnf, sprintf "not clean CNF: %s" (src (expand cnf.Expr)))
             Assert.True(PropCalculus.valid (g == cnf), "CNF not equivalent to input")
 
     [<Fact>]
-    member _.``Cnf.toCnf folds the truth constants away instead of clausifying them as atoms`` () =
+    member _.``Cnf.to_cnf folds the truth constants away instead of clausifying them as atoms`` () =
         // `T` and `F` are NAMED CONSTANTS, so the conversion's structural view classifies them as
         // atoms and used to carry them into the output as literals. That is not cosmetic: the SAT
         // pipeline then mints a DIMACS variable for `T`, and the solver satisfies `¬φ` by setting it
         // false — so EVERY goal mentioning a truth constant came back "not a theorem". The
-        // solver-side clausifier `SAT.cnfOfNegatedGoal` has always folded them (its `BTrue`/`BFalse`
+        // solver-side clausifier `SAT.cnf_of_negated_goal` has always folded them (its `BTrue`/`BFalse`
         // `simp`), so this was also a silent disagreement between the two clausifiers.
         let tt : Prop = T
         let ff : Prop = F
@@ -492,7 +492,7 @@ type KernelProofTests() =
               !!(((p ==> q) * (q ==> r) * tt) ==> (p ==> r))            // a constant inside a real goal
               (p * tt) == q ]                                           // and on a NON-theorem
         // No `T`/`F` may survive anywhere inside the CNF. The whole conversion collapsing TO a
-        // constant is the one legitimate outcome (`toCnf`'s two documented cases), so allow that.
+        // constant is the one legitimate outcome (`to_cnf`'s two documented cases), so allow that.
         let rec hasConst (e: Expr) =
             match e with
             | True | False -> true
@@ -500,7 +500,7 @@ type KernelProofTests() =
             | ExprShape.ShapeLambda(_, b) -> hasConst b
             | ExprShape.ShapeVar _ -> false
         for g in goals do
-            let (cnf, pf) = Cnf.toCnf g
+            let (cnf, pf) = Cnf.to_cnf g
             let c = expand cnf.Expr
             Assert.Equal<Expr>(expand (g == cnf).Expr, pf.Stmt)        // still exactly `g == cnf`
             Assert.True(PropCalculus.valid (g == cnf), sprintf "folding changed the meaning of %s" (src (expand g.Expr)))
@@ -508,7 +508,7 @@ type KernelProofTests() =
             | True | False -> ()                                        // decided outright, not a clause set
             | _ ->
                 Assert.False(hasConst c, sprintf "a truth constant survived into the CNF of %s: %s" (src (expand g.Expr)) (src c))
-                Assert.True(Cnf.isCnf cnf, sprintf "not clean CNF: %s" (src c))
+                Assert.True(Cnf.is_cnf cnf, sprintf "not clean CNF: %s" (src c))
 
     [<Fact>]
     member _.``valid recognizes propositional theorems and rejects non-theorems`` () =
@@ -730,7 +730,7 @@ type KernelProofTests() =
 
     [<Fact>]
     member _.``calc: composing => with <= is rejected`` () =
-        let msg = try Calc.composeRel Calc.RImp Calc.RConseq |> ignore; "" with e -> e.Message
+        let msg = try Calc.compose_rel Calc.RImp Calc.RConseq |> ignore; "" with e -> e.Message
         Assert.Contains("cannot mix", msg)
 
     [<Fact>]
@@ -879,6 +879,6 @@ type InstantiateTests() =
         // The point of the rule: what comes out is usable wherever a Theorem is, with no trace of
         // how it was built. Fold two instances through the ordinary calc machinery.
         let t1 = Tactics.Instantiate (PropCalculus.strengthen_and p q) []
-        let step = Calc.chainImp (PropCalculus.reflex_implies (p * q)) (PropCalculus.strengthen_and p q)
+        let step = Calc.chain_imp (PropCalculus.reflex_implies (p * q)) (PropCalculus.strengthen_and p q)
         Assert.True(sequal step.Stmt (expand ((p * q) ==> p).Expr))
         Assert.True(sequal t1.Stmt (PropCalculus.strengthen_and p q).Stmt)

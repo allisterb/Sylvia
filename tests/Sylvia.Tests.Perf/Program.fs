@@ -43,14 +43,14 @@ let runMicro () =
     time "replace_expr large" 50 Payloads.replace_expr_large
 
 /// SAT-reconstruction payloads (hermetic, no solver): run with `-- reconstruct` to get a
-/// process profile dominated by reconstruction cost alone (Cnf.toCnf, conjElimAll /
-/// Calc.chainImp, resolve folding, normalize). LogLevel 0 keeps console I/O out of the profile.
+/// process profile dominated by reconstruction cost alone (Cnf.to_cnf, conj_elim_all /
+/// Calc.chain_imp, resolve folding, normalize). LogLevel 0 keeps console I/O out of the profile.
 let runReconstruction () =
     Proof.LogLevel <- 0
     timeOnce "reconstruct chain 5 (cold)" (fun () -> Reconstruction.reconstruct_chain 5)
     timeOnce "reconstruct chain 8" (fun () -> Reconstruction.reconstruct_chain 8)
     timeOnce "reconstruct chain 12" (fun () -> Reconstruction.reconstruct_chain 12)
-    timeOnce "conjElimAll 12 clauses" (fun () -> Reconstruction.conj_elim_all 12)
+    timeOnce "conj_elim_all 12 clauses" (fun () -> Reconstruction.conj_elim_all 12)
     Proof.LogLevel <- 1
 
 /// DENSE reconstruction: run with `-- dense` to get a process profile dominated by pigeonhole

@@ -4,15 +4,15 @@
 
 // SAT-backed propositional proof: a CaDiCaL LRAT refutation of ¬φ, replayed as kernel steps into a
 // checked `⊢ φ`. The pipeline itself now lives in the `Sylvia.Prover.SAT` library
-// (`SatProof.prove` / `proveWith`); this script is the demonstration and the end-to-end gate.
+// (`SatProof.prove` / `prove_with`); this script is the demonstration and the end-to-end gate.
 //
 //   goal φ ─Cnf.toCnf→ (¬φ == A, kernel proof) ─clausesOf→ DIMACS ─CaDiCaL→ UNSAT + LRAT
 //          ─resolve-fold→ R : A ⇒ F                                     (STEP 1)
 //          ─rewrite ¬φ to A, then Contradiction→ ⊢ φ                     (STEP 2)
 //
 // Neither step has an atom-count ceiling: STEP 1 replays every LRAT step through
-// `PropCalculus.resolve` (`SAT.rupChain` unfolds non-binary steps into binary chains), and STEP 2's
-// CNF equivalence comes from `Cnf.toCnf`, whose cost is bounded by the CNF's SIZE rather than by an
+// `PropCalculus.resolve` (`SAT.rup_chain` unfolds non-binary steps into binary chains), and STEP 2's
+// CNF equivalence comes from `Cnf.to_cnf`, whose cost is bounded by the CNF's SIZE rather than by an
 // exponential in the atom count. The solver never enters the trusted base — the kernel replay is
 // what certifies. See docs/prover-sat-reconstruction.md.
 //
@@ -36,7 +36,7 @@ let x, y, z, a = boolvar "x", boolvar "y", boolvar "z", boolvar "a"
 let check label (goal:Prop) =
     try
         let sw = System.Diagnostics.Stopwatch.StartNew()
-        let th = SatProof.proveWith sat goal
+        let th = SatProof.prove_with sat goal
         sw.Stop()
         printfn "  %s :  ⊢ %s   (%dms)" label (prop_calculus.PrintFormula th.Stmt) sw.ElapsedMilliseconds
         // The result must be a theorem OF THE GOAL, not merely some theorem.
@@ -64,9 +64,9 @@ check "merge  (p∨q)∧(¬p∨q) ⇒ q"           (((p + q) * (!!p + q)) ==> q)
 check "3-var all-8-clause refutation"     (!!((p+q+r) * (!!p+q+r) * (p+ !!q+r) * (!!p+ !!q+r) * (p+q+ !!r) * (!!p+q+ !!r) * (p+ !!q+ !!r) * (!!p+ !!q+ !!r)))
 check "resolution chain to s"             (((p + q) * (!!q + r) * (!!r + s) * (!!p + s)) ==> s)
 check "∨ distributes over ∧"              ((p * (q + r)) == ((p * q) + (p * r)))
-// `≢` is handled by Cnf.toCnf (via Gries 3.10). Nested xor is the worst case for the recursive
+// `≢` is handled by Cnf.to_cnf (via Gries 3.10). Nested xor is the worst case for the recursive
 // descent — associativity distributes out to 441 clauses — but 433 of those are TAUTOLOGIES, which
-// `Cnf.toCnf` now prunes clause-by-clause with a kernel proof, leaving the same 8 clauses the
+// `Cnf.to_cnf` now prunes clause-by-clause with a kernel proof, leaving the same 8 clauses the
 // solver-side clausifier produces. Before that pruning this goal overflowed the replay's stack.
 check "xor commutes  (p≢q) ≡ (q≢p)"       ((p != q) == (q != p))
 check "xor assoc  ((p≢q)≢r) ≡ (p≢(q≢r))"  ((((p != q) != r) == (p != (q != r))))
@@ -79,7 +79,7 @@ check "≡ chain  (p≡q)∧(q≡r)∧(r≡s) ⇒ p≡s"  (((p == q) * (q == r) 
 // benchmark set blind to two things at once.
 //
 // The first was a COMPLETENESS cliff. CaDiCaL's default preprocessing introduces fresh variables and
-// justifies them with RAT steps, which `rupChain` cannot replay — pigeonhole 5→4 failed outright on
+// justifies them with RAT steps, which `rup_chain` cannot replay — pigeonhole 5→4 failed outright on
 // 12 of its 82 steps while every chain sailed through. `Cadical` now defaults to `--plain` for
 // exactly this reason (see its doc comment); these goals are what would catch a regression.
 //
@@ -102,15 +102,15 @@ check "pigeonhole 5→4"                    (pigeonhole 4)
 // The library's other entry points.
 printfn "\nAPI surface:"
 // A non-theorem is reported, not raised — and is distinguishable from "the solver could not tell".
-match SatProof.tryProveWith sat (p ==> q) with
-| Ok _ -> ok "tryProve rejects a non-theorem" false
-| Error e -> ok "tryProve rejects a non-theorem" true; printfn "      %s" e
+match SatProof.try_prove_with sat (p ==> q) with
+| Ok _ -> ok "try_prove rejects a non-theorem" false
+| Error e -> ok "try_prove rejects a non-theorem" true; printfn "      %s" e
 // As a proof STEP: discharge a subgoal of a larger hand-written proof.
 try
     let sub = ((p ==> q) * p) ==> q                                   // modus ponens, by SAT
-    let th = theorem prop_calculus (sub + r) [ SatProof.SatWith sat sub |> apply_left; simp |> apply ]
-    ok "SatProof.SatWith closes a subgoal inside a hand proof" (sequal th.Stmt (expand (sub + r).Expr))
-with e -> ok "SatProof.SatWith closes a subgoal inside a hand proof" false; printfn "      %s" (e.Message.Split('\n').[0])
+    let th = theorem prop_calculus (sub + r) [ SatProof.Sat_with sat sub |> apply_left; simp |> apply ]
+    ok "SatProof.Sat_with closes a subgoal inside a hand proof" (sequal th.Stmt (expand (sub + r).Expr))
+with e -> ok "SatProof.Sat_with closes a subgoal inside a hand proof" false; printfn "      %s" (e.Message.Split('\n').[0])
 
 // ---- lifting the atom ceiling ------------------------------------------------------------------
 // `PropCalculus.decide` is the theory-level entry point. On its own it falls back to `autoproof_anf`,
@@ -129,7 +129,7 @@ SatProof.uninstall ()
 (try ok "decide still proves a small goal from the fallback" (sequal (decide (p + !!p)).Stmt (expand (p + !!p).Expr))
  with _ -> ok "decide still proves a small goal from the fallback" false)
 
-SatProof.installWith sat
+SatProof.install_with sat
 (try
     let sw = System.Diagnostics.Stopwatch.StartNew()
     let th = decide eightAtom
@@ -168,7 +168,7 @@ for (label, g) in anfHoles do
     ok (sprintf "valid, and autoproof_anf REFUSES it:  %s" label)
        (valid g && not (try (autoproof_anf g).Complete with _ -> false))
 
-SatProof.installWith sat
+SatProof.install_with sat
 for (label, g) in anfHoles do
     let sw = System.Diagnostics.Stopwatch.StartNew()
     let proved = try sequal (decide g).Stmt (expand g.Expr) with _ -> false

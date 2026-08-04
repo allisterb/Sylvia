@@ -6,7 +6,7 @@
 **Status at a glance.** The pipeline **CaDiCaL → LRAT → kernel-checked `⊢ φ`** works
 end-to-end for propositional goals with NO atom-count ceiling (verified through 12 atoms — Peirce,
 implication chains, biconditionals). New trusted theorems `resolve` and `combine_implies`, a recursive CNF converter
-`Cnf.toCnf`, a general `Memo` combinator, and the `Sylvia.Solver.CaDiCaL` project are all in the tree;
+`Cnf.to_cnf`, a general `Memo` combinator, and the `Sylvia.Solver.CaDiCaL` project are all in the tree;
 suite is **113/113**. The pipeline is a library — **`Sylvia.Prover.SAT` / `SatProof.prove`** (§4.6) —
 not a script.
 Both step 1 (the resolution replay) and step 2 (the CNF-equivalence link) now scale.
@@ -14,7 +14,7 @@ Both step 1 (the resolution replay) and step 2 (the CNF-equivalence link) now sc
 As of **2026-07-25** the replay is also *complete over the trace*: every LRAT step is replayed, not
 just the binary ones, and merge resolvents are discharged (§4.7–4.9). That is what took the pipeline
 from "implication chains" to arbitrary refutations — pigeonhole, distributivity, `≡`-chains, the
-full 8-clause refutation over 3 variables. As of **2026-07-28** `Cnf.toCnf` also prunes tautological
+full 8-clause refutation over 3 variables. As of **2026-07-28** `Cnf.to_cnf` also prunes tautological
 clauses, which matched its clause counts to the solver-side clausifier's on every goal measured and
 let nested xor reconstruct; the clausification-blowup item in §7 is retracted with it. The remaining
 limitation is **speed**.
@@ -82,16 +82,16 @@ no forward reading.
 
 ```
    goal φ
-     │  cnfOfNegatedGoal                          (F#, Sylvia.Solver.CaDiCaL)
+     │  cnf_of_negated_goal                          (F#, Sylvia.Solver.CaDiCaL)
      ▼
    CNF(¬φ)  ──dimacsOf──▶ DIMACS ──cadical──▶ UNSAT + LRAT proof
-     │                                              │  parseLrat
+     │                                              │  parse_lrat
      │                                              ▼
      │                                        LratStep list
      │   ┌──────────────────────────  STEP 1  ──────────────────────────┐
      │   │  fold each binary step through PropCalculus.resolve,          │
      │   │  AC-matched to canonical clauses, threaded through the input   │
-     │   │  conjunction A with combine_implies + Calc.chainImp            │
+     │   │  conjunction A with combine_implies + Calc.chain_imp            │
      │   └───────────────────────────────┬───────────────────────────────┘
      ▼                                    ▼
    A = ∧ Cᵢ                    R : (∧ Cᵢ) ⇒ F       (kernel-checked refutation)
@@ -116,13 +116,13 @@ Depends only on `Sylvia.Expressions`. Public surface:
 
 | Value | Type | Role |
 |-------|------|------|
-| `cnfOfNegatedGoal` | `Prop -> CnfProblem` | Clausify **¬goal** (direct NNF+distribute). Atoms stay 1‑1 with Sylvia `Prop`s — the key property the replay depends on. |
-| `dimacsOf` | `CnfProblem -> string` | Render DIMACS CNF text. |
+| `cnf_of_negated_goal` | `Prop -> CnfProblem` | Clausify **¬goal** (direct NNF+distribute). Atoms stay 1‑1 with Sylvia `Prop`s — the key property the replay depends on. |
+| `dimacs_of` | `CnfProblem -> string` | Render DIMACS CNF text. |
 | `Cadical(?exePath,?timeoutMs)` | class | `.Solve(cnf)` / `.Prove(goal)` — runs CaDiCaL with a wrapper-enforced timeout (like `EProver`), parses the `v`-line countermodel on SAT. |
-| `parseLrat` | `string -> LratStep list` | `Add(id, literals, hints) \| Delete(afterId, ids)`. |
-| `reconstructionPlan` | `CnfProblem -> LratStep list -> ResolutionStep list` | The integer proof lifted to Sylvia `Prop` obligations (`clause ⇐ antecedents`, empty clause = `F`). |
-| `rupChain` | `(int -> Clause option) -> Clause -> int list -> Result<RupChain,string>` | Unfold ONE LRAT step's hints into an explicit chain of binary resolutions (see §4.7). |
-| `litProp` / `clauseProp` | | Build a `Prop` from a DIMACS literal / clause. |
+| `parse_lrat` | `string -> LratStep list` | `Add(id, literals, hints) \| Delete(afterId, ids)`. |
+| `reconstruction_plan` | `CnfProblem -> LratStep list -> ResolutionStep list` | The integer proof lifted to Sylvia `Prop` obligations (`clause ⇐ antecedents`, empty clause = `F`). |
+| `rup_chain` | `(int -> Clause option) -> Clause -> int list -> Result<RupChain,string>` | Unfold ONE LRAT step's hints into an explicit chain of binary resolutions (see §4.7). |
+| `lit_prop` / `clause_prop` | | Build a `Prop` from a DIMACS literal / clause. |
 
 Design note: clausification is **direct NNF+distribute** (worst-case exponential in formula size, but
 keeps atoms in 1‑1 correspondence with `Prop`s). Tseitin is the scalable upgrade but complicates the
@@ -171,14 +171,14 @@ The ⇒-half of `⇒` distributing over `∧`. Needed to thread `resolve` steps 
 `(∧ inputs) ⇒ …`. Proved the same robust way as `resolve` (material form `p ⇒ q = ¬p ∨ q`, then
 `distrib_or_and`), so it too replays cheaply at compound clauses.
 
-### 4.4 `Cnf.toCnf` — recursive CNF conversion with a kernel proof (new tactic)
+### 4.4 `Cnf.to_cnf` — recursive CNF conversion with a kernel proof (new tactic)
 
 `src/lang/core/Sylvia.Prover/Theories/Cnf.fs` — `module Cnf`. This is the scalable step‑2. It solves
 the problem that `autoproof_anf` (used for the `¬φ = A` equivalence before) is exponential in atom
 count:
 
 ```fsharp
-Cnf.toCnf (p:Prop) : Prop * Theorem      //  (cnf, proof : p == cnf),  cnf in clean CNF
+Cnf.to_cnf (p:Prop) : Prop * Theorem      //  (cnf, proof : p == cnf),  cnf in clean CNF
 ```
 
 A **structural recursive descent** on the `Prop` tree — eliminate `⇒`/`=`, push negations to leaves
@@ -191,7 +191,7 @@ Two design notes that made it work: (1) the recursive congruence approach sidest
 schema-matcher, which could not reliably handle nested negations (an earlier fixpoint attempt stalled
 there); (2) it uses the **existing** De Morgan theorems `distrib_not_or`/`distrib_not_and` (Gries
 3.47), which treat their operands opaquely — the built-in `double_neg` rule *cancels* `¬¬` and so does
-not preserve the exact `¬x ∧ ¬y` shape the recursion needs. In the reconstruction, `Cnf.toCnf` is both
+not preserve the exact `¬x ∧ ¬y` shape the recursion needs. In the reconstruction, `Cnf.to_cnf` is both
 the clausifier (clauses are read off its CNF) and the equivalence proof; `normalize` bridges its CNF to
 the reconstruction's right-associated conjunction `A`.
 
@@ -230,11 +230,11 @@ lemmas — **no new kernel primitive**:
 | Value | Role |
 |-------|------|
 | `SatProof.prove : Prop -> Theorem` | Decide and replay; raises on a non-theorem or an unusable solver. Resolves `cadical` from `SYLVIA_CADICAL` / PATH. |
-| `SatProof.proveWith : Cadical -> Prop -> Theorem` | Same, with an explicit solver (path, timeout). `proveWithLog` keeps the kernel trace. |
-| `SatProof.tryProve` / `tryProveWith` | `Result<Theorem,string>`. The message distinguishes **"NOT a theorem"** from "solver not found / timed out" — a caller choosing whether to fall back needs to know which. |
-| `SatProof.Sat` / `SatWith` | The proof as a `Rule`, so a SAT-discharged subgoal can sit inside a hand-written proof: `SatProof.SatWith sat sub \|> apply_left`. |
-| `SatProof.install` / `installWith` / `uninstall` | Register this backend as `PropCalculus.decide`'s decider — see §4.10. |
-| `SatProof.clausesOf` / `dedupCnf` / `refute` / `conjElimAll` | The stages, exposed for testing and for callers that want the refutation rather than the theorem. |
+| `SatProof.prove_with : Cadical -> Prop -> Theorem` | Same, with an explicit solver (path, timeout). `prove_with_log` keeps the kernel trace. |
+| `SatProof.try_prove` / `try_prove_with` | `Result<Theorem,string>`. The message distinguishes **"NOT a theorem"** from "solver not found / timed out" — a caller choosing whether to fall back needs to know which. |
+| `SatProof.Sat` / `Sat_with` | The proof as a `Rule`, so a SAT-discharged subgoal can sit inside a hand-written proof: `SatProof.Sat_with sat sub \|> apply_left`. |
+| `SatProof.install` / `install_with` / `uninstall` | Register this backend as `PropCalculus.decide`'s decider — see §4.10. |
+| `SatProof.clauses_of` / `dedup_cnf` / `refute` / `conj_elim_all` | The stages, exposed for testing and for callers that want the refutation rather than the theorem. |
 
 Proof logging is silenced for the duration of a `prove` and restored afterwards (the `Calc` precedent)
 — a reconstruction emits thousands of kernel steps, which is noise at any call site.
@@ -243,19 +243,19 @@ The stages themselves:
 
 - `resolveStep cnf apos aneg pv out` — one binary resolution → `cp(apos) ∧ cp(aneg) ⇒ cp(out)`, where
   each clause is AC-matched to `resolve`'s `(C∨x)` / `(¬x∨D)` shape by `acEq = ident (l==r) [simp]`.
-- `conjElimAll`, `elimR` — `(∧ inputs) ⇒ Cᵢ` for every input clause, in one O(n) pass sharing the
-  peel-chain (per-clause elimination is O(n²) in the expensive `Calc.chainImp`).
-- `conj`, `mp` — conjoin two theorems / modus ponens, reusing the idiom from `Calc.chainImp`.
+- `conj_elim_all`, `elimR` — `(∧ inputs) ⇒ Cᵢ` for every input clause, in one O(n) pass sharing the
+  peel-chain (per-clause elimination is O(n²) in the expensive `Calc.chain_imp`).
+- `conj`, `mp` — conjoin two theorems / modus ponens, reusing the idiom from `Calc.chain_imp`.
 - `clauseImp` — subset weakening (§4.9).
 - `refute` — replay every LRAT step (§4.7) into **R : `(∧ inputs) ⇒ F`** (STEP 1).
-- `proveWith` — STEP 2: `¬φ = A` via `Cnf.toCnf` + `dedupCnf` + `normalize`, rewrite R, then
+- `prove_with` — STEP 2: `¬φ = A` via `Cnf.to_cnf` + `dedup_cnf` + `normalize`, rewrite R, then
   `PropCalculus.Contradiction` → **`⊢ φ`**.
 
 Reconnaissance finding that shaped this: on long implication chains CaDiCaL emits **almost entirely
 binary** resolution steps (2 hints) — so folding is ~one `resolve` per step. That is a property of
 *chains*, not of refutations in general; see §4.7.
 
-### 4.7 `SAT.rupChain` — every LRAT step as a binary-resolution chain
+### 4.7 `SAT.rup_chain` — every LRAT step as a binary-resolution chain
 
 The original replay handled only 2-hint steps and skipped the rest. Measuring what CaDiCaL actually
 emits (probe over eight goals) showed that assumption is specific to implication chains:
@@ -271,7 +271,7 @@ emits (probe over eight goals) showed that assumption is specific to implication
 
 Non-binary steps appear in **every** non-chain refutation, and the empty clause itself is often
 derived by one — so the old replay did not merely miss a rare case, it could not close these goals
-at all. `rupChain` removes the special case entirely:
+at all. `rup_chain` removes the special case entirely:
 
 > LRAT hints are the antecedents of a *unit-propagation* refutation. Assign every literal of the
 > step's clause to false and walk the hints in order: each is unit under the running assignment and
@@ -314,22 +314,22 @@ goals close:
   missing literals (Gries 3.76a), then AC-match. This is what absorbs the gap between what a chain
   derives and what the step declares, and it also covers the case where CaDiCaL lists the resolvent's
   literals in a different order than the replay computes them (observed).
-- **`dedupCnf`** — `Cnf.toCnf`'s distribution readily emits clauses with repeated literals (Peirce's
+- **`dedup_cnf`** — `Cnf.to_cnf`'s distribution readily emits clauses with repeated literals (Peirce's
   law yields a `p ∨ p`). Each clause is rewritten to its deduped form by **congruence at an exact
   position**; `¬φ == A` is then the dedup proof followed by pure-AC reassociation. This was
   originally a workaround: a `p ∨ p` inside `A` mis-targeted the `idemp_or` step inside `absorb_or`,
-  which `strengthen_and` — and hence `conjElimAll` — is built on, so the reconstruction failed on a
+  which `strengthen_and` — and hence `conj_elim_all` — is built on, so the reconstruction failed on a
   lemma unrelated to the refutation. With §7.5's addressing fix that dependency is gone (verified:
   all 13 goals close with dedup disabled), and it is kept purely as an **optimization** — every
   kernel step costs O(|A|), so smaller clauses are cheaper: `∨` over `∧` 12.1 s → 7.7 s, xor
   commutativity 26.8 s → 16.6 s, 12-atom chain 2.6 s → 1.9 s.
-- **One CNF, not two.** `reconstruct` used to clausify twice — `Cnf.toCnf` for the equivalence proof
-  and `cnfOfNegatedGoal` (inside `Cadical.Prove`) for the solver — and interpret the LRAT clause ids
+- **One CNF, not two.** `reconstruct` used to clausify twice — `Cnf.to_cnf` for the equivalence proof
+  and `cnf_of_negated_goal` (inside `Cadical.Prove`) for the solver — and interpret the LRAT clause ids
   against the first while the solver numbered them by the second. The two agree on implication chains
-  and diverge elsewhere (`cnfOfNegatedGoal` drops tautological clauses, `Cnf.toCnf` keeps them). The
-  replay now solves the exact clause list it reads off `Cnf.toCnf`.
+  and diverge elsewhere (`cnf_of_negated_goal` drops tautological clauses, `Cnf.to_cnf` keeps them). The
+  replay now solves the exact clause list it reads off `Cnf.to_cnf`.
 
-`Cnf.toCnf` also gained a case for `≢`/xor (via Gries 3.10, `def_not_eq`). It previously fell through
+`Cnf.to_cnf` also gained a case for `≢`/xor (via Gries 3.10, `def_not_eq`). It previously fell through
 to `VAtom`, abstracting the whole subformula away — which is sound but leaves a valid xor goal
 unprovable, reported as "¬φ is satisfiable".
 
@@ -369,7 +369,7 @@ as they did before. A regression test pins this.
 > this section and in §4.11 predate both `distribOr` pruning and the optimization pass, so they were
 > re-taken (Release, warm; `decide_max_anf_atoms` is unchanged at 3).
 >
-> **The stack overflow is gone.** It was `Cnf.toCnf` building 441 clauses for 3-variable xor
+> **The stack overflow is gone.** It was `Cnf.to_cnf` building 441 clauses for 3-variable xor
 > associativity to keep 8; pruning inside `distribOr` fixed it, and that goal now reconstructs
 > through the SAT route in **210 ms**. So "the routing has to prevent it" is no longer true, and
 > nothing in `decide` is standing between the SAT route and a crash. The rest of the table also
@@ -469,7 +469,7 @@ discussion; what changed is that there is now a caller for it. It is deliberatel
   is rejected.
 
 ```fsharp
-SatProof.installWith sat
+SatProof.install_with sat
 let th = PropCalculus.decide eightAtomGoal      // ⊢ … , ~0.6 s, no ceiling
 ```
 
@@ -477,13 +477,13 @@ let th = PropCalculus.decide eightAtomGoal      // ⊢ … , ~0.6 s, no ceiling
 
 - **Suite 113/113** (`tests/Sylvia.Tests.Prover/`): in `KernelProofTests.fs` — `resolve` (atoms,
   compound-clause robustness, tautology-vs-oracle incl. the empty-clause `resolve F F p`), `Memo`
-  (cache-hit same-instance, distinct-arg no-collision), `combine_implies`, `Cnf.toCnf` (checked
+  (cache-hit same-instance, distinct-arg no-collision), `combine_implies`, `Cnf.to_cnf` (checked
   equivalence to clean CNF at up to 6 atoms, both xor polarities), `_chain_simp` in the
   admissible-rule equivalence sweep, and simp-confluence on AC-equal clauses. In `SatChainTests.fs` —
-  `rupChain` over verbatim CaDiCaL LRAT traces (1-, 2- and 3-hint steps, merge resolvents), with every
+  `rup_chain` over verbatim CaDiCaL LRAT traces (1-, 2- and 3-hint steps, merge resolvents), with every
   link checked to be a genuine binary resolution and every chain checked to subsume the declared
   clause, plus the rejection cases. These are pure integer logic: no solver executable is involved.
-  Also in `SatChainTests.fs` — `SatProof`'s clause plumbing (`clausesOf`, `dedupCnf`) as pure tests,
+  Also in `SatChainTests.fs` — `SatProof`'s clause plumbing (`clauses_of`, `dedup_cnf`) as pure tests,
   and end-to-end `prove` checks asserting the result is a theorem **of the goal** and that a
   non-theorem is rejected distinguishably from a missing solver. `bin/cadical.exe` is not tracked by
   git, so those last tests skip when it is absent — but they say so in the test output rather than
@@ -513,7 +513,7 @@ end-to-end through 8 atoms: 2→5 s, 5→39 s, 8→142 s).
 
 - **Step 1 (resolution replay)** — the refutation `R : (∧ inputs) ⇒ F` is produced and verified sound
   (`valid`) for every test goal.
-- **Step 2 (CNF-equivalence)** — `¬φ = A` is produced by `Cnf.toCnf`, a recursive CNF proof that is
+- **Step 2 (CNF-equivalence)** — `¬φ = A` is produced by `Cnf.to_cnf`, a recursive CNF proof that is
   size-bounded, not atom-exponential. The old `autoproof_anf` ≤5-atom ceiling is gone.
 
 > **Update 2026-07-25 (the ceiling is gone).** `PropCalculus.decide` with the backend installed
@@ -521,14 +521,14 @@ end-to-end through 8 atoms: 2→5 s, 5→39 s, 8→142 s).
 > fast. The guard itself is unchanged and still protects the exponential fallback; see §4.10.
 
 > **Update 2026-07-25 (replay completeness).** The replay no longer skips anything. Every LRAT step
-> is unfolded into binary resolutions by `SAT.rupChain` (§4.7); merge resolvents are discharged by a
+> is unfolded into binary resolutions by `SAT.rup_chain` (§4.7); merge resolvents are discharged by a
 > `simp` that is now confluent on clauses (§4.8); and the input side is deduped, weakened and
 > clausified once (§4.9). Before this, the pipeline closed implication chains and nothing denser —
 > the all-8-clauses, distributivity, pigeonhole and `≡`-chain goals all failed, most of them because
 > the empty clause was derived by a non-binary step. Timings are unchanged (8-atom chain 1.1 s).
 
 The remaining limitation is **speed**, and it is **architectural**. The bottleneck is
-`Calc.chainImp` at ~1.9 s per call — it pushes the large input-clause conjunction `A` through several
+`Calc.chain_imp` at ~1.9 s per call — it pushes the large input-clause conjunction `A` through several
 kernel steps (`Taut`/`reduce`/completeness-check), each **O(|expression|)** — and it is called O(n)
 times. So the cost is the equational kernel's per-step cost on a large object, not leaf re-derivation.
 
@@ -615,7 +615,7 @@ concern that motivates a fresh-start redesign.
    replaying it.
 
 1a. ~~**RUP-only replay is complete enough.**~~ **NO — found and mitigated (2026-07-28).** This was
-   never written down as an assumption, which is precisely how it survived. `SAT.rupChain` replays
+   never written down as an assumption, which is precisely how it survived. `SAT.rup_chain` replays
    RUP steps and rejects RAT ones (a negative hint is satisfiability-preserving, not entailed, so it
    has no forward reading as resolution). Every goal in the suite was a chain or tiny, and chains
    never produce RAT — so the first genuinely dense instance pointed at the pipeline **failed
@@ -635,41 +635,41 @@ concern that motivates a fresh-start redesign.
    claim precise rather than false — it was always about `autoproof_anf`'s exponential in atoms, and
    it was never a claim that any propositional theorem reconstructs.
 2. ~~**Merge-clause AC-dedup.**~~ **DONE (2026-07-25)** — `_chain_simp` (§4.8).
-3. ~~**Non-binary RUP steps.**~~ **DONE (2026-07-25)** — `SAT.rupChain` (§4.7). They are not rare.
+3. ~~**Non-binary RUP steps.**~~ **DONE (2026-07-25)** — `SAT.rup_chain` (§4.7). They are not rare.
 4. ~~**Clausification blowup (formula size)** — Tseitin is the top blocker.~~ **RETRACTED, and fixed
    (2026-07-28).** This item claimed the recursive descent was exponential in ∨/∧ nesting on the
    strength of one measurement: xor associativity over 3 variables produced **441 clauses / 2940
-   literals**, enough to overflow the replay's stack, where the solver-side `cnfOfNegatedGoal`
+   literals**, enough to overflow the replay's stack, where the solver-side `cnf_of_negated_goal`
    produced **8**. Two successive explanations for that gap were wrong, and the audit is worth
    recording because the wrong ones were plausible.
 
-   The first guess was a *bad xor expansion* — `Cnf.toCnf` routes `x ≢ y` through `¬(x = y)` and
+   The first guess was a *bad xor expansion* — `Cnf.to_cnf` routes `x ≢ y` through `¬(x = y)` and
    mutual implication, so a direct `(x ∨ y) ∧ (¬x ∨ ¬y)` theorem should have collapsed it. But
-   `cnfOfNegatedGoal` does not use that form either; it expands xor to the DNF
-   `(x ∧ ¬y) ∨ (¬x ∧ y)`, essentially what `Cnf.toCnf` already reaches. Counting instead of
+   `cnf_of_negated_goal` does not use that form either; it expands xor to the DNF
+   `(x ∧ ¬y) ∨ (¬x ∧ y)`, essentially what `Cnf.to_cnf` already reaches. Counting instead of
    theorising settled it:
 
    ```
-   Cnf.toCnf raw clauses        : 441
+   Cnf.to_cnf raw clauses        : 441
      of those, TAUTOLOGICAL     : 433
      non-tautological           : 8
-   cnfOfNegatedGoal clauses     : 8
+   cnf_of_negated_goal clauses     : 8
    ```
 
-   Both clausifiers produce **the same essential CNF**. The entire gap was that `cnfOfNegatedGoal`
-   drops tautological clauses (in `normClause`) and `Cnf.toCnf` kept every one. Not an expansion
+   Both clausifiers produce **the same essential CNF**. The entire gap was that `cnf_of_negated_goal`
+   drops tautological clauses (in `normClause`) and `Cnf.to_cnf` kept every one. Not an expansion
    problem, and not size blowup in the Tseitin sense at all.
 
-   `Cnf.toCnf` now prunes them, clause by clause, by congruence — each obligation is `clause == T`
+   `Cnf.to_cnf` now prunes them, clause by clause, by congruence — each obligation is `clause == T`
    from a complementary pair, discharged by `simp`, then the `T` conjunct collapses via `ident_and`
    (Gries 3.39). Two things that a global `simp` over the conjunction gets wrong, and which cost a
    round each: it simplifies ACROSS clauses, so the CNF of `¬(p ∨ ¬p)` — which is `¬p ∧ p`, with no
    tautological clause — collapses to `F`, leaving nothing to clausify; and even where that is not
    fatal, the two sides do not reliably converge (it fails on `∨`-over-`∧` distributivity).
 
-   `Cnf.toCnf` now matches the solver-side clausifier's clause count on **every** goal measured:
+   `Cnf.to_cnf` now matches the solver-side clausifier's clause count on **every** goal measured:
 
-   | goal | `Cnf.toCnf` before | after | `cnfOfNegatedGoal` |
+   | goal | `Cnf.to_cnf` before | after | `cnf_of_negated_goal` |
    |---|--:|--:|--:|
    | excluded middle / Peirce / chains 3, 8 | 2 / 3 / 4 / 9 | unchanged | 2 / 3 / 4 / 9 |
    | `∨` over `∧` distributivity | 24 | **12** | 12 |
@@ -703,7 +703,7 @@ concern that motivates a fresh-start redesign.
 
    One consequence to keep in mind: pruning can now reduce the whole conversion to `T`, which is not
    a clause set. That happens exactly when `¬φ` is valid — i.e. `φ` is unsatisfiable, not a theorem —
-   and `toCnf` handles it by converting again with pruning off, so the caller still has clauses to
+   and `to_cnf` handles it by converting again with pruning off, so the caller still has clauses to
    hand the solver and still gets a `SAT` verdict rather than an internal error.
 5. ~~**`absorb_or`'s positional rewrites are shape-sensitive.**~~ **DONE (2026-07-25)** — and it was
    a class, not one theorem. A reflection-driven sweep instantiating every all-`Prop`-parameter
@@ -711,9 +711,9 @@ concern that motivates a fresh-start redesign.
    `p ∧ p`, `¬¬p`, `p = p`, …) found schemas failing that collapse to **seven root derivations**:
    `absorb_or`, `absorb_and`, `ident_and_implies`, `ident_or_conseq`, `ident_and_eq`,
    `ident_eq_and_or_not`, `shunt'` and `distrib_implies_eq_implies`. The rest inherit — including
-   **`trans_implies`**, which fails at `q = p ∧ p` and which `Calc.chainImp` instantiates at
+   **`trans_implies`**, which fails at `q = p ∧ p` and which `Calc.chain_imp` instantiates at
    whatever the caller is composing, so this was live risk in the reconstruction itself and not
-   only in `conjElimAll`. The sweep is now [`examples/proofs/AdversarialSweep.fsx`](../examples/proofs/AdversarialSweep.fsx)
+   only in `conj_elim_all`. The sweep is now [`examples/proofs/AdversarialSweep.fsx`](../examples/proofs/AdversarialSweep.fsx)
    (3370 instantiations, ~9 min, ALL CLEAR); re-run it after adding or editing any derivation. Its
    fast subset is pinned as a unit test.
 
@@ -748,7 +748,7 @@ concern that motivates a fresh-start redesign.
    case needs its own argument. Eight tests in `KernelProofTests.fs` pin the behaviour, most of them
    on what it refuses.
 
-   Measured on implication chains, Release, warm — `Calc.chainImp` routed through the instantiated
+   Measured on implication chains, Release, warm — `Calc.chain_imp` routed through the instantiated
    `trans_implies`, and `SatProof` through instantiated `resolve` / `combine_implies` /
    `strengthen_and` / `weaken_or` / `reflex_implies`:
 
@@ -775,18 +775,18 @@ concern that motivates a fresh-start redesign.
    Instantiation is also **stricter** than replay, which is worth stating because it sounds like the
    opposite. A `Derive` step rewrites the leftmost-outermost match inside the subterm it addresses,
    so replaying a schema at compound arguments can target the wrong occurrence — the failure class
-   §7.5 exists to catch, and which named `trans_implies` reached through `chainImp` as live risk in
+   §7.5 exists to catch, and which named `trans_implies` reached through `chain_imp` as live risk in
    this very pipeline. A schema instantiated by substitution only ever ran its derivation at
    metavariables, where there is no competing subterm to mis-target.
 
-   Currently wired in at `Calc.chainImp` and inside `SatProof`, deliberately not pushed into
+   Currently wired in at `Calc.chain_imp` and inside `SatProof`, deliberately not pushed into
    `PropCalculus` itself, so no existing proof changes shape. The only proof-log difference across
    the whole example suite is that `trans_implies`'s derivation now prints once at metavariables
    instead of at each caller's arguments; every conclusion is byte-identical.
 7. ~~**Truth constants in the goal.**~~ **FOUND AND FIXED (2026-07-30).** Never written down as an
-   assumption, which is again how it survived: **`Cnf.toCnf` treated `T` and `F` as atoms.** They are
+   assumption, which is again how it survived: **`Cnf.to_cnf` treated `T` and `F` as atoms.** They are
    named constants, so the conversion's structural `view` classified them as `VAtom` and carried them
-   into the CNF as literals — and `clausesOf` then minted a DIMACS variable for `T`, whereupon the
+   into the CNF as literals — and `clauses_of` then minted a DIMACS variable for `T`, whereupon the
    solver satisfied `¬φ` by setting it **false**. Every goal mentioning a truth constant therefore
    came back "NOT a theorem":
 
@@ -799,7 +799,7 @@ concern that motivates a fresh-start redesign.
 
    This was a **false negative, never an unsound theorem** — nothing wrong can be proved this way,
    and `decide` verifies what a backend returns regardless. But it silently disagreed with the
-   solver-side clausifier `SAT.cnfOfNegatedGoal`, which has folded constants since it was written
+   solver-side clausifier `SAT.cnf_of_negated_goal`, which has folded constants since it was written
    (`BTrue`/`BFalse` plus its own `simp`), so the two clausifiers were answering different questions
    on any goal with a constant in it. §4.9's "one CNF" discipline is exactly what should have caught
    that and did not.
@@ -821,7 +821,7 @@ concern that motivates a fresh-start redesign.
    Two results are now possible that are not clause sets, and `SatProof` handles both instead of
    clausifying them: `¬φ == F` **is** the refutation, already kernel-proved, so it closes against
    `F ⇒ F` with no solver call at all (pinned with a deliberately unavailable solver); `¬φ == T` means
-   the negation is valid, reported in the same words as the solver's `Sat` verdict. `clausesOf` now
+   the negation is valid, reported in the same words as the solver's `Sat` verdict. `clauses_of` now
    fails loudly if a constant ever reaches it again rather than answering a different question.
 
    Found by rerouting the set-theory metatheorem tactics through `decide` (§4.10) — the ∅/U laws
@@ -833,18 +833,18 @@ concern that motivates a fresh-start redesign.
 
 | Path | What |
 |------|------|
-| `src/lang/solvers/Sylvia.Solver.CaDiCaL/CaDiCaL.fs` | Clausifier, runner, LRAT parser, `rupChain`, reconstruction plan |
+| `src/lang/solvers/Sylvia.Solver.CaDiCaL/CaDiCaL.fs` | Clausifier, runner, LRAT parser, `rup_chain`, reconstruction plan |
 | `src/lang/core/Sylvia.Prover/Theories/PropCalculus.fs` | `resolve`, `combine_implies` (+ their memoized aliases) |
-| `src/lang/core/Sylvia.Prover/Theories/Cnf.fs` | `Cnf.toCnf` — recursive CNF conversion with kernel proof |
+| `src/lang/core/Sylvia.Prover/Theories/Cnf.fs` | `Cnf.to_cnf` — recursive CNF conversion with kernel proof |
 | `src/lang/core/Sylvia.Prover/EquationalLogic.fs` | `_chain_simp` — whole-chain ∨/∧ normalization inside `_simp` |
 | `src/lang/core/Sylvia.Prover/Proof.fs` | `Memo` combinator |
 | `src/lang/core/Sylvia.Prover/Tactics.fs` | `Instantiate` / `Schema.p1-p3` — schema instantiation (§7.6) |
-| `src/lang/core/Sylvia.Prover.SAT/SatProof.fs` | **The reconstruction library** — `prove`/`proveWith`/`tryProve`/`Sat`, and the stages |
+| `src/lang/core/Sylvia.Prover.SAT/SatProof.fs` | **The reconstruction library** — `prove`/`prove_with`/`try_prove`/`Sat`, and the stages |
 | `examples/sat/CaDiCaL.fsx` | Validity decision + `resolve` demo |
 | `examples/sat/Reconstruct.fsx` | Demo + end-to-end gate for `SatProof` |
 | `examples/proofs/AdversarialSweep.fsx` | Schema-instantiation sweep (§7.5) |
 | `tests/Sylvia.Tests.Prover/KernelProofTests.fs` | `resolve` / `Memo` / `combine_implies` / `Cnf` / simp-confluence tests |
-| `tests/Sylvia.Tests.Prover/SatChainTests.fs` | `rupChain` over real LRAT traces |
+| `tests/Sylvia.Tests.Prover/SatChainTests.fs` | `rup_chain` over real LRAT traces |
 | `bin/cadical.exe` | CaDiCaL 3.0.0 (MSYS2 build) |
 | `reference/papers/dpllt.pdf` | The DPLL(T) paper that motivated the approach |
 

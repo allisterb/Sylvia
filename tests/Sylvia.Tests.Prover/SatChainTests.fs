@@ -8,7 +8,7 @@ open Xunit
 open Sylvia
 open Sylvia.SAT
 
-/// Tests for `SAT.rupChain` — the unfolding of an LRAT step's unit-propagation hints into an
+/// Tests for `SAT.rup_chain` — the unfolding of an LRAT step's unit-propagation hints into an
 /// explicit chain of BINARY resolutions, which is what lets the reconstruction replay EVERY step of
 /// a refutation (not just the 2-hint ones) through `PropCalculus.resolve`.
 ///
@@ -19,18 +19,18 @@ open Sylvia.SAT
 type SatChainTests() =
     inherit Sylvia.Tests.Prover.TestsRuntime()
 
-    /// Replay a whole LRAT proof through `rupChain`, checking every link is a genuine binary
+    /// Replay a whole LRAT proof through `rup_chain`, checking every link is a genuine binary
     /// resolution and every step's chain subsumes the clause the solver declared. Returns the
     /// per-step chains, in order.
     let replay (inputs: int list list) (lrat: string) : (int * RupChain) list =
         let lits = Dictionary<int, int list>()
         inputs |> List.iteri (fun i c -> lits.[i + 1] <- c)
         let clauseOf id = match lits.TryGetValue id with | true, c -> Some c | _ -> None
-        [ for step in parseLrat lrat do
+        [ for step in parse_lrat lrat do
             match step with
             | Delete _ -> ()
             | Add(id, cl, hints) ->
-                match rupChain clauseOf cl hints with
+                match rup_chain clauseOf cl hints with
                 | Error e -> failwithf "step %d: %s" id e
                 | Ok chain ->
                     // Every link must be a real binary resolution of the running clause with its
@@ -118,15 +118,15 @@ type SatChainTests() =
         let clauseOf id = if id = 1 then Some [1; 2] elif id = 2 then Some [-1] else None
         let isError = function Error (_: string) -> true | Ok (_: RupChain) -> false
         // an unknown antecedent
-        Assert.True(isError (rupChain clauseOf [] [99]), "unknown hint should be rejected")
+        Assert.True(isError (rup_chain clauseOf [] [99]), "unknown hint should be rejected")
         // a RAT step (negative hint) has no forward reading as resolution
-        Assert.True(isError (rupChain clauseOf [] [1; -2]), "RAT hint should be rejected")
+        Assert.True(isError (rup_chain clauseOf [] [1; -2]), "RAT hint should be rejected")
         // a hint already satisfied by the falsifying assignment never conflicts, so nothing is proved
-        Assert.True(isError (rupChain clauseOf [1] [2]), "non-conflicting hints should be rejected")
+        Assert.True(isError (rup_chain clauseOf [1] [2]), "non-conflicting hints should be rejected")
         // a hint that is neither unit nor falsified is not a propagation
-        Assert.True(isError (rupChain clauseOf [] [1]), "a non-unit hint should be rejected")
+        Assert.True(isError (rup_chain clauseOf [] [1]), "a non-unit hint should be rejected")
         // a tautological conclusion has no falsifying assignment to propagate from
-        Assert.True(isError (rupChain clauseOf [1; -1] [1; 2]), "tautological clause should be rejected")
+        Assert.True(isError (rup_chain clauseOf [1; -1] [1; 2]), "tautological clause should be rejected")
 
 
 /// Tests for the `Sylvia.Prover.SAT` library (`SatProof`) — the replay layer that turns a solver's
@@ -166,11 +166,11 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
         | None -> let c = Cadical() in if c.IsAvailable then Some c else None
 
     [<Fact>]
-    member _.``clausesOf reads the clause list off a CNF Prop, deduping literals`` () =
-        // The clauses handed to the solver must be exactly the ones Cnf.toCnf proved ¬φ equal to,
+    member _.``clauses_of reads the clause list off a CNF Prop, deduping literals`` () =
+        // The clauses handed to the solver must be exactly the ones Cnf.to_cnf proved ¬φ equal to,
         // with a 1-1 atom mapping — the LRAT ids and variable indices are meaningless otherwise.
         let cnfProp = (p + q) * (!!p + q + q) * !!r
-        let cnf = SatProof.clausesOf (p ==> q) cnfProp
+        let cnf = SatProof.clauses_of (p ==> q) cnfProp
         Assert.Equal(3, cnf.NumVars)
         Assert.Equal(3, List.length cnf.Clauses)
         // literal dedup: the second clause's repeated q collapses
@@ -179,16 +179,16 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
         Assert.Equal(3, cnf.AtomOfVar.Count)
 
     [<Fact>]
-    member _.``dedupCnf proves the dedup it performs, and no-ops when there is nothing to drop`` () =
+    member _.``dedup_cnf proves the dedup it performs, and no-ops when there is nothing to drop`` () =
         // The proof must be exactly `input == deduped`, so it composes by transitivity into ¬φ == A.
-        let (d, pf) = SatProof.dedupCnf ((p + p + q) * !!r)
+        let (d, pf) = SatProof.dedup_cnf ((p + p + q) * !!r)
         match pf with
-        | None -> Assert.Fail "dedupCnf should have fired on a clause with a repeated literal"
+        | None -> Assert.Fail "dedup_cnf should have fired on a clause with a repeated literal"
         | Some t ->
             Assert.Equal<FSharp.Quotations.Expr>(expand (((p + p + q) * !!r) == d).Expr, t.Stmt)
             Assert.True(PropCalculus.valid (((p + p + q) * !!r) == d), "dedup changed the meaning")
-        let (_, none) = SatProof.dedupCnf ((p + q) * !!r)
-        Assert.True(none.IsNone, "dedupCnf must not fire when no clause has a repeated literal")
+        let (_, none) = SatProof.dedup_cnf ((p + q) * !!r)
+        Assert.True(none.IsNone, "dedup_cnf must not fire when no clause has a repeated literal")
 
     [<Fact>]
     member _.``prove returns a kernel-checked theorem OF THE GOAL`` () =
@@ -200,7 +200,7 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
                           ((p ==> q) ==> p) ==> p                       // Peirce
                           ((p + q) * (!!p + q)) ==> q                   // a merge resolvent
                           ((p ==> q) * (q ==> r)) ==> (p ==> r) ] do    // a chain
-                let th = SatProof.proveWith sat goal
+                let th = SatProof.prove_with sat goal
                 // Not merely "a theorem" — the statement must BE the goal.
                 Assert.True(sequal th.Stmt (expand goal.Expr),
                             sprintf "proved %s, expected %s" (src th.Stmt) (src (expand goal.Expr)))
@@ -210,20 +210,20 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
         match solver with
         | None -> out.WriteLine "SKIPPED (no cadical): examples/sat/Reconstruct.fsx is the end-to-end gate"
         | Some sat ->
-            match SatProof.tryProveWith sat (p ==> q) with
+            match SatProof.try_prove_with sat (p ==> q) with
             | Ok _ -> Assert.Fail "p ⇒ q is not a theorem and must not be proved"
             | Error e ->
                 Assert.Contains("NOT a theorem", e)
                 Assert.DoesNotContain("not found", e)
             // An unreachable solver must say so rather than claim the goal is false.
-            match SatProof.tryProveWith (Cadical(exePath = "no-such-cadical.exe")) (p + !!p) with
+            match SatProof.try_prove_with (Cadical(exePath = "no-such-cadical.exe")) (p + !!p) with
             | Ok _ -> Assert.Fail "a missing solver cannot have proved anything"
             | Error e -> Assert.Contains("not found", e)
 
     [<Fact>]
     member _.``the solver defaults to a RUP-only (replayable) proof, and can be asked not to`` () =
         // CaDiCaL's default preprocessing introduces fresh variables and justifies them with RAT
-        // steps, which `rupChain` cannot replay — pigeonhole 5→4 failed on 12 of its 82 steps that
+        // steps, which `rup_chain` cannot replay — pigeonhole 5→4 failed on 12 of its 82 steps that
         // way. `--plain` is therefore the DEFAULT here, and this pins it: a caller who constructs a
         // solver in order to reconstruct must get a replayable trace without having to know any of
         // the above. Opting out is for verdict-only use.
@@ -234,7 +234,7 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
         | Some sat ->
             // Opting out must still DECIDE correctly — only the proof format changes.
             let verdictOnly = Cadical(exePath = sat.ExePath, timeoutMs = 20000, plain = false)
-            let cnf = SatProof.clausesOf (p + !!p) (fst (Cnf.toCnf !!(p + !!p)))
+            let cnf = SatProof.clauses_of (p + !!p) (fst (Cnf.to_cnf !!(p + !!p)))
             Assert.Equal(Unsat, (verdictOnly.Solve cnf).Status)
 
     [<Fact>]
@@ -254,7 +254,7 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
                               for i in 0 .. n do
                                 for k in i + 1 .. n do yield !!(ph.[i, j] * ph.[k, j]) ]
             let goal = !!((someHole @ noClash) |> List.reduce ( * ))
-            let th = SatProof.proveWith sat goal
+            let th = SatProof.prove_with sat goal
             Assert.True(sequal th.Stmt (expand goal.Expr),
                         sprintf "proved %s, expected %s" (src th.Stmt) (src (expand goal.Expr)))
 
@@ -283,7 +283,7 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
             Assert.Equal(5, PropCalculus.autoproof_max_atoms)
             Assert.True(PropCalculus.prop_atom_count (expand big.Expr) > PropCalculus.autoproof_max_atoms)
             try
-                SatProof.installWith sat
+                SatProof.install_with sat
                 let th = PropCalculus.decide big
                 Assert.True(sequal th.Stmt (expand big.Expr), sprintf "proved %s, expected the goal" (src th.Stmt))
             finally SatProof.uninstall ()
@@ -313,13 +313,13 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
         // 77 ms and 210 ms through the SAT route (re-measured 2026-07-30, Release, warm).
         //
         // This comment used to say the SAT route STACK-OVERFLOWED on xor associativity. It did, and
-        // that is fixed — `Cnf.toCnf` was building 441 clauses to keep 8, and `distribOr` now prunes
+        // that is fixed — `Cnf.to_cnf` was building 441 clauses to keep 8, and `distribOr` now prunes
         // them as it goes. The preference stands on the timings, not on avoiding a crash.
         match solver with
         | None -> out.WriteLine "SKIPPED (no cadical): examples/sat/Reconstruct.fsx is the end-to-end gate"
         | Some sat ->
             try
-                SatProof.installWith sat
+                SatProof.install_with sat
                 for g in [ (p * (q + r)) == ((p * q) + (p * r))
                            ((p != q) != r) == (p != (q != r))
                            p + !!p ] do
@@ -353,13 +353,13 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
     // ===== the truth constants ==============================================================
 
     [<Fact>]
-    member _.``clausesOf refuses to mint a variable for a truth constant`` () =
+    member _.``clauses_of refuses to mint a variable for a truth constant`` () =
         // The failure this guards against was silent and looked like a solver verdict: a `T` in the
         // clause set becomes a free DIMACS variable, the solver sets it false, `¬φ` comes back
         // SATISFIABLE, and the pipeline reports a perfectly good theorem as "NOT a theorem". Since
-        // `Cnf.toCnf` now folds constants, one reaching here means that folding regressed — so fail
+        // `Cnf.to_cnf` now folds constants, one reaching here means that folding regressed — so fail
         // loudly rather than answer a different question.
-        let e = Assert.ThrowsAny<exn>(fun () -> SatProof.clausesOf (p ==> q) ((pq + tt') * !!pr) |> ignore)
+        let e = Assert.ThrowsAny<exn>(fun () -> SatProof.clauses_of (p ==> q) ((pq + tt') * !!pr) |> ignore)
         Assert.Contains("truth constant", e.Message)
 
     [<Fact>]
@@ -370,7 +370,7 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
         // fails with "not found" rather than passing quietly.
         let noSolver = Cadical(exePath = "no-such-cadical.exe")
         for goal in [ (pq * ff') == ff'; (pq + tt') == tt'; (- tt') == ff' ] do
-            let th = SatProof.proveWith noSolver goal
+            let th = SatProof.prove_with noSolver goal
             Assert.True(sequal th.Stmt (expand goal.Expr),
                         sprintf "proved %s, expected %s" (src th.Stmt) (src (expand goal.Expr)))
 
@@ -390,7 +390,7 @@ type SatProofTests(out: Xunit.Abstractions.ITestOutputHelper) =
                   (pq + ff') == tt'; (pq * tt') == ff'; (pq * tt') == pr; ff' ]
             for c in cases do
                 let proved =
-                    match SatProof.tryProveWith sat c with
+                    match SatProof.try_prove_with sat c with
                     | Ok th -> sequal th.Stmt (expand c.Expr)
                     | Error _ -> false
                 Assert.Equal(PropCalculus.valid c, proved)
