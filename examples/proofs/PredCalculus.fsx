@@ -1,3 +1,4 @@
+#nowarn "3391"
 #load "Include.fsx"
 
 // Predicate calculus (Gries & Schneider, "A Logical Approach to Discrete Math", ch. 8-9).
