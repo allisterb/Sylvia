@@ -351,8 +351,17 @@ module SetOps =
     let complement<'t when 't: equality> = typeof<Set<'t>>.GetMethod("op_BarDivideBar", (FSharp.Core.Operators.(|||) BindingFlags.Public BindingFlags.Static), System.Type.DefaultBinder, 
                                             [| typeof<Set<'t>>; typeof<Set<'t>> |], [||])
 
-    let absoluteComplement<'t when 't: equality> = typeof<Set<'t>>.GetMethod("op_UnaryNegation", (FSharp.Core.Operators.(|||) BindingFlags.Public BindingFlags.Static), System.Type.DefaultBinder, 
+    let absoluteComplement<'t when 't: equality> = typeof<Set<'t>>.GetMethod("op_UnaryNegation", (FSharp.Core.Operators.(|||) BindingFlags.Public BindingFlags.Static), System.Type.DefaultBinder,
                                                     [| typeof<Set<'t>> |], [||])
+
+    /// S − T. Note this is NOT `complement` above: `a.Complement b` is `b.Difference a`, so `|/|`
+    /// takes its operands the other way round. Difference is Gries' `−` (11.22).
+    let difference<'t when 't: equality> = typeof<Set<'t>>.GetMethod("op_BarMinusBar", (FSharp.Core.Operators.(|||) BindingFlags.Public BindingFlags.Static), System.Type.DefaultBinder,
+                                            [| typeof<Set<'t>>; typeof<Set<'t>> |], [||])
+
+    /// 𝒫S, the set of all subsets (Gries 11.23). An instance PROPERTY, not an operator, so a symbolic
+    /// power set is built with `Expr.PropertyGet` and matched as `PropertyGet(Some s, pi, [])`.
+    let powerset<'t when 't: equality> = typeof<Set<'t>>.GetProperty("Powerset")
 
     let createSubset<'t when 't: equality> = typeof<Set<'t>>.GetMethod("op_BarGreaterBar", (FSharp.Core.Operators.(|||) BindingFlags.Public BindingFlags.Static), System.Type.DefaultBinder, 
                                                 [| typeof<Set<'t>>; typeof<Expr<'t -> bool>> |], [||])
@@ -395,6 +404,11 @@ type SetTerm<'t when 't: equality>(expr:Expr<Set<'t>>) =
     static member (|?|) (l:Term<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.elementOf<'t>, l.Expr, r.Expr) |> expand_as<bool> |> Prop
 
     static member (|?|) (l:'t, r:SetTerm<'t>) = binary_call(None, SetOps.elementOf<'t>, Expr.Value l, r.Expr) |> expand_as<bool> |> Prop
+
+    /// A SET as a member of a set of sets — `T ∈ 𝒫S`, the shape Gries 11.23 needs. Without this the
+    /// generic `Term<'u>`-in-`SetTerm<'u>` overload at `'u := Set<'t>` is the one that ought to apply,
+    /// but F# will not upcast `SetTerm<'t>` to `Term<Set<'t>>` while resolving the operator.
+    static member (|?|) (l:SetTerm<'t>, r:SetTerm<Set<'t>>) = binary_call(None, SetOps.elementOf<Set<'t>>, l.Expr, r.Expr) |> expand_as<bool> |> Prop
     
     // Subset S ⊆ T is a proposition (bool), not a set — the op_BarLessBar method returns bool.
     static member (|<|) (l:SetTerm<'t>, r:Set<'t>) = binary_call(None, SetOps.subsetOf<'t>, l.Expr, Expr.Value r) |> expand_as<bool> |> Prop
@@ -424,6 +438,24 @@ type SetTerm<'t when 't: equality>(expr:Expr<Set<'t>>) =
     static member (|/|) (l:ISet<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.complement<'t>, Expr.Value l.Set, r.Expr) |> expand_as<Set<'t>> |> SetTerm
 
     static member (~-) (l:SetTerm<'t>) = unary_call(None, SetOps.absoluteComplement<'t>, l.Expr) |> expand_as<Set<'t>> |> SetTerm
+
+    // Difference S − T (Gries 11.22). Distinct from `|/|`, whose operands are the other way round
+    // (`a.Complement b` = `b.Difference a`) — `|-|` is the one that reads as it is written.
+    static member (|-|) (l:SetTerm<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.difference<'t>, l.Expr, r.Expr) |> expand_as<Set<'t>> |> SetTerm
+
+    static member (|-|) (l:SetTerm<'t>, r:Set<'t>) = binary_call(None, SetOps.difference<'t>, l.Expr, Expr.Value r) |> expand_as<Set<'t>> |> SetTerm
+
+    static member (|-|) (l:Set<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.difference<'t>, Expr.Value l, r.Expr) |> expand_as<Set<'t>> |> SetTerm
+
+    static member (|-|) (l:SetTerm<'t>, r:ISet<'t>) = binary_call(None, SetOps.difference<'t>, l.Expr, Expr.Value r.Set) |> expand_as<Set<'t>> |> SetTerm
+
+    static member (|-|) (l:ISet<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.difference<'t>, Expr.Value l.Set, r.Expr) |> expand_as<Set<'t>> |> SetTerm
+
+    /// 𝒫S, symbolically (Gries 11.23). The element type goes up a level — `𝒫S : set(set(t))` — so
+    /// membership `T ∈ 𝒫S` is `(T: SetTerm<'t>) |?| S.Powerset`, using the `Term<'u>`-in-`SetTerm<'u>`
+    /// overload at `'u := Set<'t>`.
+    member a.Powerset : SetTerm<Set<'t>> =
+        Expr.PropertyGet(a.Expr, SetOps.powerset<'t>) |> expand_as<Set<Set<'t>>> |> SetTerm
 
     static member (|>|) (l:SetTerm<'t>, r:Expr<'t->bool>) = binary_call(None, SetOps.createSubset<'t>, l.Expr, r) |> expand_as<Set<'t>> |> SetTerm
     

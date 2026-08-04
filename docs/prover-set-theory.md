@@ -5,7 +5,13 @@ Schneider, *A Logical Approach to Discrete Math*, **Chapter 11**. Companion to
 [`prover-predicate-calculus.md`](prover-predicate-calculus.md) and
 [`prover-automation.md`](prover-automation.md).
 
-Runnable foundation check: `dotnet fsi examples/proofs/SetTheory.fsx`.
+Runnable foundation check: `dotnet fsi examples/proofs/SetTheory.fsx` (**89/89**).
+
+**Status.** Chapter 11 is covered apart from Size (11.12): the foundational layer (Membership 11.3,
+Extensionality 11.4), every operator definition (Subset 11.13, Complement 11.18, Union 11.20,
+Intersection 11.21, Difference 11.22, Power set 11.23, and `∅`/`U` membership), the Boolean-algebra
+layer, and Metatheorem 11.25(a)/(b)/(c) mechanized as the `metaset` / `metasubset` tactics. Size needs
+a Σ quantifier — see §4d.
 
 ## 1. What Chapter 11 actually builds
 
@@ -151,7 +157,10 @@ Check (C) confirms the corrected polarity is recognized and the inverted forms a
   now including the ∅/U identity/zero/excluded-middle/contradiction laws via the `EmptyMember`/
   `UniverseMember` axioms); `metasubset` (b) proves `Es ⊆ Fs` via `Ep ⇒ Fp` (reflexivity 11.58, the
   ∩/∪ bound laws, …); (c) `Es = U` is just `metaset Es U`. See §4c and `examples/proofs/SetTheory.fsx`
-  sections K–M. Still open: Difference/Power set/Size (11.22/11.23/11.12 — the last needs a Σ quantifier).
+  sections K–M.
+- **Difference (11.22) and Power set (11.23).** ✅ Done — sections O and P. **Size (11.12) remains the
+  one gap in the chapter**, and it is a real one: `#S = (Σx | x∈S : 1)` needs a Σ quantifier the pure
+  fragment does not have. See §4d.
 
 ## 4a. Two coherence issues — resolved
 
@@ -254,8 +263,47 @@ writing `Set.Empty` outside one evaluates it to an opaque value that no axiom ma
 `v∈U → true`, so `metaset` now covers every Gries law mentioning `∅` or `U`: **11.29/11.30** identity
 of ∪ and zero, **11.34/11.35** identity of ∩ and zero, **11.32** excluded middle `S∪~S = U`, **11.39**
 contradiction `S∩~S = ∅` (section M). **Metatheorem 11.25(c)** (`Es = U` valid iff `Ep` valid) needs
-*no* separate tactic — it is just `metaset Es U`, whose body reduces to `Ep = true`. Example is now
-**55/55**. Remaining ch.11: Difference (11.22), Power set (11.23), Size (11.12 — needs a Σ quantifier).
+*no* separate tactic — it is just `metaset Es U`, whose body reduces to `Ep = true`.
+
+## 4d. Difference (11.22) and Power set (11.23)
+
+These are the last two operators of the chapter, and they land on opposite sides of the metatheorem —
+which is the interesting part.
+
+**Difference `S − T` (11.22, `v ∈ S−T = v∈S ∧ v∉T`) extends `metaset`.** New: `SetOps.difference` and
+the `SetTerm.(|-|)` overloads in `Definitions/Set.fs` (`Set<'t>` already had `|-|`; `SetTerm<'t>`, the
+*symbolic* type theories are written against, did not), the `DifferenceMember` axiom, and an `SDiff`
+case in the example's classifier / `translate` (`− ↦ ∧¬`) / `unfold`. In `unfold` the right operand
+sits under the `¬` that 11.22 introduces, so its sub-rewrite needs the extra `apply_unary` descent the
+complement case also makes.
+
+Note carefully that **`−` is NOT in Definition 11.24's grammar** (`{set variables, ∅, U, ~, ∪, ∩}`),
+so this is a conservative *extension* of the mechanized metatheorem, not an instance of it. It is
+sound because `−` is definable from operators that are in the grammar — `S − T = S ∩ ~T` — so the
+translated body stays inside the fragment 11.25 talks about. Section O opens by proving that defining
+identity **through the extended translation**, which is what distinguishes "the extension agrees with
+11.22" from "the extension compiles": eleven further laws follow, including Gries' own remark that
+`~S = U − S` (p.203), the two De Morgan forms over `−`, and the 11.25(b) bounds `S−T ⊆ S`, `S−T ⊆ ~T`.
+
+**Power set `𝒫S` (11.23, `T ∈ 𝒫S = T ⊆ S`) does not.** Membership in `𝒫S` does not reduce to a
+propositional combination of memberships *of the same element*: the right-hand side is a subset
+proposition, itself a `∀` over a different element. The type climbs too — `𝒫S : set(set(t))` — so the
+member is itself a set. Mechanically it is an instance `PropertyGet` rather than an operator, and it
+needed one new overload, `SetTerm<'t> |?| SetTerm<Set<'t>>`, because F# will not upcast `SetTerm<'t>`
+to `Term<Set<'t>>` while resolving `|?|`.
+
+So the power set sits one layer up, and the way to use it is a composition of the two metatheorem
+tactics: let 11.23 take the goal **down** to a subset obligation, then discharge that with 11.25(b).
+That is `powerset_member` in section P, and it proves `∅ ∈ 𝒫S`, `S ∈ 𝒫S`, `S∩T ∈ 𝒫S`, `S−T ∈ 𝒫S`
+while refusing `S∪T ∈ 𝒫S`.
+
+Example is now **89/89**.
+
+**Size (11.12) is the one thing left in ch.11**, and it is genuinely out of reach rather than merely
+unstarted: `#S = (Σx | x∈S : 1)` needs a Σ quantifier, i.e. a quantified fold over a numeric codomain.
+Sylvia's quantifier machinery is `∀`/`∃` over `Prop` bodies; a Σ needs arithmetic in the body and a
+different one-point/split-off-term story — the same reason Gries 8.22/8.23 are out of scope for the
+predicate calculus (see `prover-predicate-calculus.md` §6).
 
 ## 3a. One-Point (Gries 8.14) kernel fix
 

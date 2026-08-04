@@ -227,23 +227,32 @@ open FSharp.Quotations.Patterns
 // Classify a set expression's head: operator (∪ / ∩ / ~), the constants ∅ / U, else an atom (a set
 // variable). ∅ (`NewUnionCase Empty`) and U (`PropertyGet U`) stay structured because the SetTerm is
 // built inside a quotation (writing `Set.Empty` outside one embeds it as an opaque value).
-let (|SUnion|SInter|SCompl|SEmpty|SUniv|SAtom|) (s: SetTerm<int>) =
+let (|SUnion|SInter|SDiff|SCompl|SEmpty|SUniv|SAtom|) (s: SetTerm<int>) =
     match expand s.Expr with
     | Call(None, mi, [a; b]) when mi.Name = "op_BarPlusBar"     -> SUnion(SetTerm<int>(Expr.Cast a), SetTerm<int>(Expr.Cast b))
     | Call(None, mi, [a; b]) when mi.Name = "op_BarMultiplyBar" -> SInter(SetTerm<int>(Expr.Cast a), SetTerm<int>(Expr.Cast b))
+    | Call(None, mi, [a; b]) when mi.Name = "op_BarMinusBar"    -> SDiff(SetTerm<int>(Expr.Cast a), SetTerm<int>(Expr.Cast b))
     | Call(None, mi, [a])    when mi.Name = "op_UnaryNegation"  -> SCompl(SetTerm<int>(Expr.Cast a))
     | NewUnionCase(uc, _)       when uc.Name = "Empty" -> SEmpty
     | PropertyGet(None, pi, []) when pi.Name  = "U"     -> SUniv
     | _ -> SAtom
 
 // Definition 11.24: ∪↦∨, ∩↦∧, ~↦¬, ∅↦false, U↦true, and each set variable ↦ its membership atom v∈S.
+//
+// `−` is NOT in 11.24's grammar (`{set variables, ∅, U, ~, ∪, ∩}`) — this is a deliberate, and
+// conservative, EXTENSION of the definition. It is sound for the same reason Gries can remark that
+// `~S = U − S`: difference is definable from the operators that ARE in the grammar, `S − T = S ∩ ~T`,
+// so translating it to `p ∧ ¬q` adds no expressive power and Metatheorem 11.25 continues to apply to
+// the translated body. Section N proves that defining identity itself, via `metaset`, which is the
+// check that the extension agrees with the definition rather than merely compiling.
 let rec translate (s: SetTerm<int>) : Prop =
     match s with
-    | SUnion(a, b) -> (translate a) + (translate b)   // ∪ ↦ ∨
-    | SInter(a, b) -> (translate a) * (translate b)   // ∩ ↦ ∧
-    | SCompl a     -> !! (translate a)                // ~ ↦ ¬
-    | SEmpty       -> F                               // ∅ ↦ false
-    | SUniv        -> T                               // U ↦ true
+    | SUnion(a, b) -> (translate a) + (translate b)          // ∪ ↦ ∨
+    | SInter(a, b) -> (translate a) * (translate b)          // ∩ ↦ ∧
+    | SDiff(a, b)  -> (translate a) * !!(translate b)        // − ↦ ∧¬  (Gries 11.22)
+    | SCompl a     -> !! (translate a)                       // ~ ↦ ¬
+    | SEmpty       -> F                                      // ∅ ↦ false
+    | SUniv        -> T                                      // U ↦ true
     | SAtom        -> memv s
 
 // A rewrite rule  (v ∈ s) = translate s, built by recursion mirroring the operator axioms
@@ -260,6 +269,10 @@ let rec unfold (s: SetTerm<int>) : Rule =
                         ((id_ax st ((memv s) == ((memv a) + (memv b))) |> at_left) :: sub a [left_branch; left_branch] @ sub b [left_branch; right_branch])
     | SInter(a, b)-> ident st ((memv s) == (translate s))
                         ((id_ax st ((memv s) == ((memv a) * (memv b))) |> at_left) :: sub a [left_branch; left_branch] @ sub b [left_branch; right_branch])
+    // Difference's right operand sits under the ¬ introduced by 11.22, hence the extra `apply_unary`
+    // — the same descent the complement case makes.
+    | SDiff(a, b) -> ident st ((memv s) == (translate s))
+                        ((id_ax st ((memv s) == ((memv a) * !!(memv b))) |> at_left) :: sub a [left_branch; left_branch] @ sub b [left_branch; right_branch; apply_unary])
 
 // The tactic: prove a set identity  Es = Fs  via Metatheorem 11.25(a).
 let metaset (lhs: SetTerm<int>) (rhs: SetTerm<int>) : Theorem =
@@ -406,6 +419,59 @@ else
     SatProof.install_with (SAT.Cadical(exePath = cadicalPath, timeoutMs = 60000))
     ok "and proves again once the backend is reinstalled"
        (metaproven (neg union6) compl6i)
+
+printfn "\n===== (O) Difference (Gries 11.22):  v ∈ S−T = v∈S ∧ v∉T ====="
+// The `Difference` axiom is now live in SetTheory.fs, and `translate`/`unfold` above carry `−` into
+// the propositional body as `∧¬`. Difference is NOT one of Definition 11.24's operators, so this is
+// an extension of the mechanized metatheorem rather than an instance of it — sound because `−` is
+// definable from `∩` and `~`. The first check below is the one that earns the extension: it proves
+// the defining identity `S − T = S ∩ ~T` through the very translation being justified, so if the
+// `SDiff` case disagreed with 11.22 this would fail rather than quietly prove the wrong thing.
+ok "11.22 Difference axiom recognized"
+   (st.AxEquiv ((v |?| (sS |-| sT)) == ((v |?| sS) * !!(v |?| sT))).Expr)
+ok "11.22 wrong polarity rejected"
+   (not (st.AxEquiv ((v |?| (sS |-| sT)) == ((v |?| sS) * (v |?| sT))).Expr))
+
+ok "defining identity        S−T = S∩~T"               (metaproven (sS |-| sT) (sS |*| (neg sT)))
+ok "Gries p.203              ~S = U−S"                 (metaproven (neg sS) (uT |-| sS))
+ok "self-difference          S−S = ∅"                  (metaproven (sS |-| sS) emptyT)
+ok "identity                 S−∅ = S"                  (metaproven (sS |-| emptyT) sS)
+ok "zero                     ∅−S = ∅"                  (metaproven (emptyT |-| sS) emptyT)
+ok "difference from U        U−S = ~S"                 (metaproven (uT |-| sS) (neg sS))
+ok "De Morgan over ∪         S−(T∪U) = (S−T)∩(S−U)"    (metaproven (sS |-| (sT |+| sU)) ((sS |-| sT) |*| (sS |-| sU)))
+ok "De Morgan over ∩         S−(T∩U) = (S−T)∪(S−U)"    (metaproven (sS |-| (sT |*| sU)) ((sS |-| sT) |+| (sS |-| sU)))
+ok "∪ distributes            (S∪T)−U = (S−U)∪(T−U)"    (metaproven ((sS |+| sT) |-| sU) ((sS |-| sU) |+| (sT |-| sU)))
+ok "∩ associates through     S∩(T−U) = (S∩T)−U"        (metaproven (sS |*| (sT |-| sU)) ((sS |*| sT) |-| sU))
+ok "11.25(b) bound           S−T ⊆ S"                  (subproven (sS |-| sT) sS)
+ok "11.25(b) disjoint        S−T ⊆ ~T"                 (subproven (sS |-| sT) (neg sT))
+// Soundness at the new operator: difference is NOT symmetric, and is not intersection.
+ok "INVALID S−T = T−S  rejected"                       (not (metaproven (sS |-| sT) (sT |-| sS)))
+ok "INVALID S−T = S∩T  rejected"                       (not (metaproven (sS |-| sT) (sS |*| sT)))
+ok "INVALID S ⊆ S−T  rejected"                         (not (subproven sS (sS |-| sT)))
+
+printfn "\n===== (P) Power set (Gries 11.23):  T ∈ 𝒫S = T ⊆ S ====="
+// The power set is the first operator in this chapter that does NOT fit the metatheorem. Membership
+// in 𝒫S does not reduce to a propositional combination of memberships of the same element — it
+// reduces to a SUBSET proposition, which is itself a ∀ over a different element, and `𝒫S` lives at
+// `set(set(t))` rather than `set(t)`. So it sits one layer up, and the way to use it is to let the
+// axiom take a power-set goal DOWN to a subset obligation and then discharge that with the other
+// metatheorem tactic, 11.25(b). That composition is the point of this section.
+ok "11.23 Power set axiom recognized"    (st.AxEquiv ((sT |?| sS.Powerset) == (sT |<| sS)).Expr)
+ok "11.23 reversed subset rejected"      (not (st.AxEquiv ((sT |?| sS.Powerset) == (sS |<| sT)).Expr))
+
+/// `T ∈ 𝒫S`, by Power set (11.23) then Metatheorem 11.25(b) on the resulting `T ⊆ S`.
+let powerset_member (t: SetTerm<int>) (s: SetTerm<int>) : Theorem =
+    let goal = t |?| s.Powerset
+    theorem st goal [ id_ax st (goal == (t |<| s)) |> apply      // 11.23: down to a subset obligation
+                      Taut (metasubset t s) |> apply ]          // 11.25(b) discharges it
+let inpow t s = try (powerset_member t s).Proof.Complete with e -> why "powerset_member" e
+
+ok "∅ ∈ 𝒫S     (∅ ⊆ S)"                                (inpow emptyT sS)
+ok "S ∈ 𝒫S     (reflexivity 11.58)"                    (inpow sS sS)
+ok "S∩T ∈ 𝒫S   (∩ lower bound)"                        (inpow (sS |*| sT) sS)
+ok "S−T ∈ 𝒫S   (difference bound, from section O)"     (inpow (sS |-| sT) sS)
+// Soundness: S∪T is not a subset of S, so it is not a member of 𝒫S and the tactic must refuse.
+ok "INVALID S∪T ∈ 𝒫S  rejected"                        (not (inpow (sS |+| sT) sS))
 
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1

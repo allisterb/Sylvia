@@ -102,11 +102,31 @@ module SetTheory =
             when sequal2 v s v1 s1 -> desc "Set Complement"
         | _ -> None
 
+    /// v ∈ S−T = v∈S ∧ ¬(v∈T)   (Gries 11.22, Difference).
+    let (|DifferenceMember|_|) =
+        function
+        | Equals(ElementOf(v, Call(None, Op "op_BarMinusBar", s::t::[])), And(ElementOf(v1, s1), Not(ElementOf(v2, t1))))
+            when sequal2 v s v1 s1 && sequal2 v t v2 t1 -> desc "Set Difference"
+        | _ -> None
+
     /// S ⊆ T = (∀x | x∈S : x∈T)   (Gries 11.13, Subset).
     let (|SubsetDef|_|) =
         function
         | Equals(Call(None, Op "op_BarLessBar", s::t::[]), ForAll(_, xv, ElementOf(xe1, s1), ElementOf(xe2, t1)))
             when sequal s s1 && sequal t t1 && vequal' xv (get_vars xe1) && vequal' xv (get_vars xe2) -> desc "Subset"
+        | _ -> None
+
+    /// T ∈ 𝒫S = T ⊆ S   (Gries 11.23, Power set).
+    ///
+    /// Unlike the operators above this does NOT reduce membership to a propositional combination of
+    /// memberships of the same element: the right-hand side is a SUBSET proposition, itself a ∀ over
+    /// a different element. So the power set sits outside Definition 11.24's grammar and outside what
+    /// `metaset` mechanizes — it is used in hand proofs, one layer up. `𝒫S : set(set(t))`, so the
+    /// member `T` here is itself a set and the power set is an instance `PropertyGet`, not an operator.
+    let (|PowersetMember|_|) =
+        function
+        | Equals(ElementOf(v, PropertyGet(Some s, pi, [])), Call(None, Op "op_BarLessBar", v1::s1::[]))
+            when pi.Name = "Powerset" && sequal v v1 && sequal s s1 -> desc "Power Set Membership"
         | _ -> None
 
     /// v ∈ ∅ = false   (the empty set has no members; Gries: ∅ = {x | false}, Exercise 11.4).
@@ -128,7 +148,9 @@ module SetTheory =
         | UnionMember x
         | IntersectMember x
         | ComplementMember x
+        | DifferenceMember x
         | SubsetDef x
+        | PowersetMember x
         | EmptyMember x
         | UniverseMember x -> Some x
         | _ -> None
@@ -141,9 +163,10 @@ module SetTheory =
     //      re-inheritance. This is what lets set membership (11.3) reduce ∈ to ∃ during a proof.
     //   2. The Boolean algebra of set operators (∪/∩/~/∅/U) — inherited from SetAlgebra : BooleanAlgebra,
     //      the object-level payoff of Metatheorem (11.25).
-    // Set-specific axioms (Membership 11.3, Extensionality 11.4, the operator definitions 11.12-11.23)
-    // are injected through `?axioms`; the plumbing now composes them over the Boolean-algebra axioms
-    // instead of discarding them. Wiring those axioms in is the next step (see docs/prover-set-theory.md).
+    // Set-specific axioms (Membership 11.3, Extensionality 11.4, the operator definitions 11.13-11.23)
+    // are injected through `?axioms`; the plumbing composes them over the Boolean-algebra axioms
+    // instead of discarding them. Size (11.12) is the one definition still missing — it needs a Σ
+    // quantifier the pure fragment does not have.
     type SetTheory<'t when 't : equality>(?axioms:Axioms, ?rules:Rules) =
         inherit SetAlgebra<'t>(BooleanAlgebra.combine_axioms (defaultArg axioms (fun _ -> None)) set_theory_axioms, ?rules = rules)
 

@@ -142,9 +142,17 @@ The generalized-De-Morgan rewrites use the structural `double_neg` admissible ru
 
 ## 6. Deferred
 
-These are conditional / metatheorem-Witness results whose previous proofs relied on the
-(now-fixed) under-reporting `occurs_free`; a correct port needs Prop-body variants of the ∃/∀
-distributivity theorems and the range-nonempty assumption discharged with `Deduce`, following
-Gries' own proofs: `distrib_forall_and_cond` (9.7), `trade_exists_or` (9.23), and the metatheorem
-Witness `ident_exists_implies` / `forall_conseq_trade_body` (9.30). The general change-of-dummy
-(8.22) and split-off-term (8.23) need arithmetic and are out of scope for the pure fragment.
+Only two things remain, and both are out of scope rather than merely unfinished: the general
+**change-of-dummy (8.22)** and **split-off-term (8.23)** need arithmetic, which the pure
+quantifier fragment does not have.
+
+> **Updated.** This section previously listed `distrib_forall_and_cond` (9.7), `trade_exists_or`
+> (9.23) and the metatheorem Witness (9.30) as deferred — they had been blocked on the
+> under-reporting `occurs_free`, which was fixed in Phase 2. **All three have since landed** and the
+> section was never updated: `distrib_forall_and_cond` (conditional ∧-over-∀, via the mixed
+> `collect_mixed` axiom plus an `empty_is_false` lemma and `Deduce'`), `trade_exists_or`, and
+> `PredCalculus.witness` — the ∃-elimination combinator for 9.30, which takes a completed subproof
+> over a fresh witness and is the sole guardian of its own freshness and shape conditions. Chapter 9
+> also gained `ident_exists_implies`, `mono_exists` (9.27), `forall_conseq` (9.16) and
+> `exists_forall_interchange` (9.29). So chapters 8 and 9 are covered apart from the two arithmetic
+> items above.
