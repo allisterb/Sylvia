@@ -6,14 +6,22 @@ namespace Sylvia
 /// `⊢ φ`.
 ///
 /// This is Sylvia's scalable, trace-emitting propositional decider. `PropCalculus.autoproof_anf`
-/// also emits a checkable trace but is exponential in the number of distinct atoms (guarded at
-/// `autoproof_max_atoms = 5`); `PropCalculus.valid` scales but is a yes/no *tool* outside the
-/// trusted base that emits no proof. This module has neither limitation: it decides with a
-/// state-of-the-art SAT solver and then **replays the solver's resolution refutation as native
-/// kernel steps**, so the solver is advisory and the resulting `Theorem` is checked the same way
-/// any hand-written proof is.
+/// also emits a checkable trace but is exponential in the number of distinct atoms (bounded by
+/// `autoproof_max_atoms = 5` and `autoproof_max_steps`); `PropCalculus.valid` scales but is a yes/no
+/// *tool* outside the trusted base that emits no proof. This module has neither limitation: it
+/// decides with a state-of-the-art SAT solver and then **replays the solver's resolution refutation
+/// as native kernel steps**, so the solver is advisory and the resulting `Theorem` is checked the
+/// same way any hand-written proof is.
 ///
-///     goal φ ─Cnf.toCnf→ (¬φ == A, kernel proof) ─clausesOf→ DIMACS ─CaDiCaL→ UNSAT + LRAT
+/// Scale, for choosing between the two (Release, warm, 2026-07-30). This route: 24-atom chain
+/// ~280 ms, 50 atoms ~1.1 s, pigeonhole 5→4 (20 atoms, dense) ~3.9 s. `autoproof_anf`: 3-atom chain
+/// 453 ms, 4 atoms 1.9 s, 5 atoms 9.2 s. The crossover on chains is between 3 and 4 atoms, which is
+/// what `decide_max_anf_atoms` encodes — but it is shape-dependent above that, and nested `≢` stays
+/// overwhelmingly cheaper in-kernel. **Retire atom count as the unit for this route**: its cost
+/// tracks LRAT steps × clause-set size × clause width, so a 20-atom pigeonhole costs what a 60-atom
+/// chain does.
+///
+///     goal φ ─Cnf.to_cnf→ (¬φ == A, kernel proof) ─clauses_of→ DIMACS ─CaDiCaL→ UNSAT + LRAT
 ///            ─resolve-fold→ R : A ⇒ F                                     (STEP 1)
 ///            ─rewrite ¬φ to A, then Contradiction→ ⊢ φ                     (STEP 2)
 ///
@@ -340,7 +348,13 @@ module SatProof =
     (* ---------------------------------------------------------------------- *)
 
     /// Register this backend as `PropCalculus.decide`'s decider, so goals past
-    /// `autoproof_max_atoms` are proved by SAT refutation instead of failing fast.
+    /// `decide_max_anf_atoms` are proved by SAT refutation instead of by the exponential in-kernel
+    /// prover, and goals past `autoproof_max_atoms` are proved instead of failing fast.
+    ///
+    /// Installing also covers the in-kernel route FAILING below those thresholds: `decide` re-asks the
+    /// `valid` oracle when `autoproof_anf` refuses, and hands a genuine theorem to this backend rather
+    /// than propagating the refusal. That matters because the in-kernel route is bounded by
+    /// `autoproof_max_steps` as well as by atom count.
     ///
     /// The kernel cannot reference a solver, so the dependency is inverted: this assembly registers
     /// itself. `decide` re-checks that what comes back is a theorem of the goal it asked about, so
@@ -355,5 +369,5 @@ module SatProof =
     /// `install_with`, resolving the solver from `SYLVIA_CADICAL` / PATH.
     let install () : unit = install_with (Cadical())
 
-    /// Restore `PropCalculus.decide`'s solver-free fallback (`autoproof_anf`, atom-capped).
+    /// Restore `PropCalculus.decide`'s solver-free fallback (`autoproof_anf`, atom- and step-capped).
     let uninstall () : unit = PropCalculus.prop_decider <- None

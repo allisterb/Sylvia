@@ -5,8 +5,8 @@
 // docs/prover-scalable-prop-prover): use CaDiCaL as a SAT oracle that emits a kernel-REPLAYABLE proof
 // trace (LRAT), instead of the exponential `autoproof_anf`.
 //
-//   goal φ  ──cnfOfNegatedGoal──▶  CNF(¬φ)  ──Cadical.Solve──▶  UNSAT + LRAT
-//           ──parseLrat──▶  steps  ──reconstructionPlan──▶  Sylvia `Prop` obligations  ──▶  Theorem
+//   goal φ  ──cnf_of_negated_goal──▶  CNF(¬φ)  ──Cadical.Solve──▶  UNSAT + LRAT
+//           ──parse_lrat──▶  steps  ──reconstruction_plan──▶  Sylvia `Prop` obligations  ──▶  Theorem
 //
 // φ is valid  ⇔  ¬φ is UNSAT. CaDiCaL's UNSAT proof is a refutation of ¬φ; each LRAT step names the
 // exact antecedent clauses that entail it (RUP), so replay needs NO search. The solver is advisory —

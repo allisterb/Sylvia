@@ -154,6 +154,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sylvia.Benchmarks", "..\tes
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.Prover.SAT", "lang\core\Sylvia.Prover.SAT\Sylvia.Prover.SAT.fsproj", "{A9D37967-6C4A-48A6-8E64-6C9486B98304}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Sat", "Sat", "{5EA5F3CD-E100-4EA7-A32C-B0B39EB2A27D}"
+	ProjectSection(SolutionItems) = preProject
+		..\examples\sat\CaDiCaL.fsx = ..\examples\sat\CaDiCaL.fsx
+		..\examples\sat\Reconstruct.fsx = ..\examples\sat\Reconstruct.fsx
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -664,6 +670,7 @@ Global
 		{E4A069D3-F641-499A-B5D8-990AB935EF1E} = {0A5DF3B9-699A-4E9C-BB68-B6249A99F8EC}
 		{37479205-723C-4041-A2CF-856E1208FE1F} = {0A5DF3B9-699A-4E9C-BB68-B6249A99F8EC}
 		{A9D37967-6C4A-48A6-8E64-6C9486B98304} = {304C0F4E-92D1-471C-8952-7C5E88C9AB55}
+		{5EA5F3CD-E100-4EA7-A32C-B0B39EB2A27D} = {90231D93-09C2-4A7B-9235-F2F38FB7505F}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E40D909F-6B62-4714-AD1E-DE15A95FCFA3}

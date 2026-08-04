@@ -37,9 +37,12 @@ rewrite steps. For the **propositional** fragment we already had two ways to clo
 
 - `PropCalculus.valid` / `equiv` — a *decision tool* (ANF / Zhegalkin normal form). Fast, but it
   only answers *yes/no*; it is **out of the trusted base** and emits no proof.
-- `PropCalculus.autoproof_anf` — a *complete, trace-emitting* decider that DOES emit a checkable
-  proof. But it is **exponential in the number of distinct atoms** (~21 s at 4 atoms, non-terminating
-  at 6) and is guarded at `autoproof_max_atoms = 5`.
+- `PropCalculus.autoproof_anf` — a trace-emitting decider that DOES emit a checkable proof, complete
+  *within its bounds*. But it is **exponential in the number of distinct atoms** and is bounded by
+  `autoproof_max_atoms = 5` and `autoproof_max_steps`. The "~21 s at 4 atoms, non-terminating at 6"
+  measured here is superseded: after the 2026-07-30 move-order fix (§3.2b of
+  [`prover-automation.md`](prover-automation.md)) chains measure 453 ms / 1.9 s / 9.2 s at 3 / 4 / 5
+  atoms. Faster, but the shape of the wall is unchanged, and it is still the wall this work removes.
 
 That ~5-atom ceiling caps *all* native reconstruction — most importantly the ∀-instantiation step in
 the [E Sledgehammer loop](prover-e-atp.md) — and it is the wall this work removes. The research
@@ -84,7 +87,7 @@ no forward reading.
    goal φ
      │  cnf_of_negated_goal                          (F#, Sylvia.Solver.CaDiCaL)
      ▼
-   CNF(¬φ)  ──dimacsOf──▶ DIMACS ──cadical──▶ UNSAT + LRAT proof
+   CNF(¬φ)  ──dimacs_of──▶ DIMACS ──cadical──▶ UNSAT + LRAT proof
      │                                              │  parse_lrat
      │                                              ▼
      │                                        LratStep list
@@ -125,8 +128,11 @@ Depends only on `Sylvia.Expressions`. Public surface:
 | `lit_prop` / `clause_prop` | | Build a `Prop` from a DIMACS literal / clause. |
 
 Design note: clausification is **direct NNF+distribute** (worst-case exponential in formula size, but
-keeps atoms in 1‑1 correspondence with `Prop`s). Tseitin is the scalable upgrade but complicates the
-replay (auxiliary variables need definitional-clause discharge) — deferred.
+keeps atoms in 1‑1 correspondence with `Prop`s). Tseitin was recorded here as "the scalable upgrade,
+deferred"; that framing is **withdrawn** — see §7 item 4. The one apparent blowup turned out to be
+retained tautological clauses on the *kernel* side, not size, and this function had always dropped
+them. Nothing measured since motivates auxiliary variables, and they are not free (the replay would
+have to discharge the definitional clauses). Measure a real blowup before reaching for it.
 
 ### 4.2 `PropCalculus.resolve` — binary resolution (new trusted theorem)
 

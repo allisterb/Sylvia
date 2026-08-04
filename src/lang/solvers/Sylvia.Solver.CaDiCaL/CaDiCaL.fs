@@ -16,8 +16,8 @@ open FsExpr
 ///
 /// The intended pipeline (see `docs/prover-scalable-prop-prover`):
 ///
-///   goal φ  ──cnfOfNegatedGoal──▶  CNF(¬φ)  ──Cadical.Solve──▶  UNSAT + LRAT proof
-///           ──parseLrat──▶  resolution steps  ──reconstructionPlan──▶  Sylvia `Prop` obligations
+///   goal φ  ──cnf_of_negated_goal──▶  CNF(¬φ)  ──Cadical.Solve──▶  UNSAT + LRAT proof
+///           ──parse_lrat──▶  resolution steps  ──reconstruction_plan──▶  Sylvia `Prop` obligations
 ///           ──(kernel replay, in an .fsx / PropCalculus)──▶  a checked `Theorem` of φ.
 ///
 /// φ is a theorem iff ¬φ is unsatisfiable (validity ≡ dual UNSAT), so the solver's UNSAT proof is a
@@ -71,10 +71,21 @@ module SAT =
     /// maximal non-(boolean-structural) subterms, deduplicated structurally (`sequal`).
     ///
     /// NOTE: direct distribution is worst-case exponential in the formula's ∨/∧ nesting. That is fine
-    /// for typical goals and keeps atoms in 1-1 correspondence with Sylvia `Prop`s (which the kernel
-    /// replay depends on). The scalable upgrade is a Tseitin/Plaisted-Greenbaum encoding with auxiliary
-    /// variables — at the cost of teaching the reconstruction how to discharge the definitional
-    /// clauses. See the module doc / design notes.
+    /// for every goal measured and keeps atoms in 1-1 correspondence with Sylvia `Prop`s (which the
+    /// kernel replay depends on).
+    ///
+    /// This note used to name a Tseitin/Plaisted-Greenbaum encoding as the scalable upgrade, on the
+    /// strength of an apparent blowup on nested `≢`. **That was withdrawn (2026-07-28)**: the blowup
+    /// was on the kernel side, in `Cnf.to_cnf`, and it was retained TAUTOLOGICAL clauses rather than
+    /// genuine size — 441 clauses to keep 8, where this function had always dropped them in
+    /// `normClause`. Pruning inside `Cnf`'s distribution closed the gap and the two clausifiers now
+    /// agree clause for clause. Nothing measured since motivates auxiliary variables, and they are not
+    /// free here: the reconstruction would have to learn to discharge the definitional clauses.
+    /// Measure a real blowup first.
+    ///
+    /// The two clausifiers must keep agreeing — that is a correctness property, not tidiness. When one
+    /// folds something the other does not, the pipeline proves one formula and asks the solver about a
+    /// different one; that is exactly how the truth constants went wrong (`Cnf`'s `constOf` notes).
     let cnf_of_negated_goal (goal: Prop) : CnfProblem =
         let atoms = ResizeArray<Expr>()      // index i (0-based) -> atom; DIMACS var = i+1
 

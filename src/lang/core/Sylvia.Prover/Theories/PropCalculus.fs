@@ -236,7 +236,8 @@ module PropCalculus =
     /// This is not a ceiling on propositional proof as such: `decide` (below) hands a goal to an
     /// installed scalable decider when there is one, and only falls back to `autoproof_anf` — and
     /// hence to this limit — when there is not. Raising this number does NOT make the exponential
-    /// provers scale; it just lets them run longer before they hang.
+    /// provers scale; it just lets them run longer before they hang. For scale, measured on
+    /// implication chains (Release, warm, 2026-07-30): 3 atoms 453 ms, 4 atoms 1.9 s, 5 atoms 9.2 s.
     let mutable autoproof_max_atoms = 5
 
     /// The second bound on `autoproof_anf`: how many rewrite steps its normalization driver may take
@@ -289,13 +290,24 @@ module PropCalculus =
 
     let Auto = Proof.Auto Taut autoproof |> RuleApplication.Auto
 
-    /// Complete, trace-emitting propositional prover via Boolean-ring normal form (ANF): drive the
-    /// goal to canonical form with the local admitted rewrites (eliminate ¬/∨/⇒/≡ into ⊕/∧,
-    /// distribute ∧ over ⊕, normalize ∧ monomials and ⊕ chains, reduce constants), greedily to a
-    /// fixpoint, returning a REAL replayable proof — a valid propositional goal collapses to T.
-    /// Complete for the propositional fragment (unlike the heuristic `autoproof` search); unlike
-    /// the `valid` oracle it produces a checkable derivation. Throws if the goal is not a
-    /// propositional theorem. (Candidate fallback for a complete hybrid `autoproof` — see notes.)
+    /// Trace-emitting propositional prover via Boolean-ring normal form (ANF): drive the goal to
+    /// canonical form with the local admitted rewrites (eliminate ¬/∨/⇒/≡ into ⊕/∧, distribute ∧ over
+    /// ⊕, normalize ∧ monomials and ⊕ chains, reduce constants), greedily to a fixpoint, returning a
+    /// REAL replayable proof — a valid propositional goal collapses to T. Unlike the heuristic
+    /// `autoproof` search it decides the whole fragment; unlike the `valid` oracle it produces a
+    /// checkable derivation.
+    ///
+    /// **Complete WITHIN ITS TWO BOUNDS**, and state it that way rather than as "complete": the
+    /// rewrite system decides propositional validity, but this driver only reaches the answer if the
+    /// goal is under `autoproof_max_atoms` and the normalization fits in `autoproof_max_steps`. So a
+    /// throw means "not a theorem, OR past a bound" — the caller cannot read it as a refutation. That
+    /// is exactly why `decide` re-asks the `valid` oracle before believing a failure.
+    ///
+    /// The unqualified "complete" this comment used to claim was false for a subtler reason too, worth
+    /// keeping in view when touching `anf_steps` below: the driver's MOVE ORDER, not the rule set,
+    /// decided whether valid goals were reachable at all, and it silently refused a class of them for
+    /// months. Verified since over generated goals (168, CNF⇒DNF and random, 1-3 atoms) against the
+    /// oracle rather than a fixed list; see `docs/prover-automation.md` §3.2b.
     let private anf_steps (name: string) (goal: Expr) =
         do guard_atoms name goal
         let isComplete x = prop_calculus.AxEquiv x || Proof.Logic.AxEquiv x
@@ -351,8 +363,9 @@ module PropCalculus =
     ///
     /// Deliberately SEPARATE from `autoproof_max_atoms`, which is a safety guard on the exponential
     /// provers rather than a preference. The two want different values: the guard sits where
-    /// `autoproof_anf` stops working at all (measured: 12 s at 5 atoms, fails at 6), while routing
-    /// wants to switch as soon as the backend is simply *better*, which happens earlier.
+    /// `autoproof_anf` becomes unusable (chains, Release warm 2026-07-30: 9.2 s at 5 atoms, and the
+    /// guard refuses at 6), while routing wants to switch as soon as the backend is simply *better*,
+    /// which happens much earlier.
     ///
     /// **Re-measured 2026-07-30** (Release, warm) after the optimization pass that cut the SAT route
     /// by ~6x and `distribOr` pruning that cut its clausification, since the original numbers here

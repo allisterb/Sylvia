@@ -6,7 +6,7 @@
 // checked `⊢ φ`. The pipeline itself now lives in the `Sylvia.Prover.SAT` library
 // (`SatProof.prove` / `prove_with`); this script is the demonstration and the end-to-end gate.
 //
-//   goal φ ─Cnf.toCnf→ (¬φ == A, kernel proof) ─clausesOf→ DIMACS ─CaDiCaL→ UNSAT + LRAT
+//   goal φ ─Cnf.to_cnf→ (¬φ == A, kernel proof) ─clauses_of→ DIMACS ─CaDiCaL→ UNSAT + LRAT
 //          ─resolve-fold→ R : A ⇒ F                                     (STEP 1)
 //          ─rewrite ¬φ to A, then Contradiction→ ⊢ φ                     (STEP 2)
 //

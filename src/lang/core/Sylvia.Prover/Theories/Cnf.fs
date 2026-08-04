@@ -9,13 +9,26 @@ namespace Sylvia
 /// disjunction of literals; negations only on atoms; no `⇒`/`=`) and `proof : Theorem` establishes
 /// `p == cnf` in `PropCalculus.prop_calculus`.
 ///
-/// Unlike `autoproof_anf` (which is exponential in the number of distinct atoms, and guarded at
-/// `autoproof_max_atoms`), this is a **structural recursive descent** — its cost is bounded by the
-/// size of the CNF, not by an atom-count exponential. It is the scalable CNF-equivalence step behind
-/// the SAT-refutation reconstruction (see `Sylvia.Solver.CaDiCaL` and `examples/sat/Reconstruct.fsx`):
-/// it lets the pipeline turn a CaDiCaL LRAT refutation of `¬φ` into a checked `⊢ φ` with no atom
-/// ceiling. It composes sub-proofs by **congruence** (`Ident subproof |> at [pos]`), sidestepping the
-/// schema matcher entirely, and produces minimal CNF (no over-distribution).
+/// Unlike `autoproof_anf` (which is exponential in the number of distinct atoms, and bounded by
+/// `autoproof_max_atoms` / `autoproof_max_steps`), this is a **structural recursive descent** — its
+/// cost is bounded by the size of the CNF, not by an atom-count exponential. It is the scalable
+/// CNF-equivalence step behind the SAT-refutation reconstruction (see `Sylvia.Solver.CaDiCaL` and
+/// `examples/sat/Reconstruct.fsx`): it lets the pipeline turn a CaDiCaL LRAT refutation of `¬φ` into a
+/// checked `⊢ φ` with no atom ceiling. It composes sub-proofs by **congruence**
+/// (`Ident subproof |> at [pos]`), sidestepping the schema matcher entirely.
+///
+/// Two properties the caller depends on, both of which cost real bugs to get wrong and are therefore
+/// maintained *during* the descent rather than as a pass over the finished CNF:
+///
+/// - **Tautological clauses are pruned as they are built.** Distribution is multiplicative, so one
+///   left in an intermediate is multiplied against every clause of every enclosing `∨`.
+/// - **The truth constants are folded away.** `T`/`F` are named constants, so nothing else in the
+///   descent treats them specially, and a literal `T` reaching `SatProof.clauses_of` becomes a free
+///   DIMACS variable the solver can set to false.
+///
+/// Both are why the output matches the solver-side clausifier `SAT.cnf_of_negated_goal` clause for
+/// clause on every goal measured — the two must agree, or the pipeline proves one thing and asks the
+/// solver about another.
 module Cnf =
 
     open FSharp.Quotations
@@ -164,7 +177,7 @@ module Cnf =
 
     // Distribute ∨ over ∧: given `ca`, `cb` already in CNF, return `(ca∨cb) in CNF, proof (ca∨cb)==·`.
     //
-    // A clause is dropped THE MOMENT distribution builds it, not once at the end (see `prune`).
+    // A clause is dropped THE MOMENT distribution builds it, not in a pass over the finished CNF.
     // Distribution is multiplicative, so a tautological clause left in an intermediate is multiplied
     // against every clause of every enclosing `∨` — that, not any genuine size blowup, is what made
     // nested `≢` explode: 4-variable xor associativity built tens of thousands of clauses to keep 16.
@@ -237,8 +250,8 @@ module Cnf =
 
     /// Convert `p` to CNF, returning `(cnf, proof : p == cnf)`.
     ///
-    /// Distribution emits a great many clauses that are **tautological** — holding both `v` and
-    /// `¬v`. Nested `≢` is the extreme case: xor associativity over three variables yields 441
+    /// Unpruned, distribution emits a great many clauses that are **tautological** — holding both `v`
+    /// and `¬v`. Nested `≢` is the extreme case: xor associativity over three variables yields 441
     /// clauses of which **433 are tautologies**, and the 8 that remain are exactly what the
     /// solver-side clausifier `SAT.cnf_of_negated_goal` produces (it drops them in `normClause`).
     /// Carrying the other 433 into the kernel replay is what used to overflow its stack.
@@ -248,8 +261,11 @@ module Cnf =
     /// than in one pass over the finished conjunction: distribution is multiplicative, so a
     /// tautology left in an intermediate is multiplied against every clause of every enclosing `∨`.
     /// The end result is the same either way; pruning early is what keeps the intermediates, and
-    /// hence the conversion itself, the size of the answer. Measured on 4-variable xor
-    /// associativity: 229 s → 0.4 s.
+    /// hence the conversion itself, the size of the answer. On 4-variable xor associativity — the
+    /// worst case measured — conversion went from **229 s** unpruned to **572 ms** (Release, warm,
+    /// 2026-07-30, 16 clauses out; the 3-variable case is 277 ms and 8 clauses). Earlier figures in
+    /// this comment and in `docs/prover-sat-reconstruction.md` were 0.4 s and 1.7 s: both were taken
+    /// before the general optimization pass, so re-measure rather than trusting any of them.
     ///
     /// The pruning is CLAUSE-LOCAL, by congruence, for two reasons. It must not simplify ACROSS
     /// clauses, because that destroys the clause structure the caller needs: the CNF of
@@ -258,6 +274,7 @@ module Cnf =
     /// unreliable anyway — it fails on `∨`-over-`∧` distributivity, where `simp` also dedups
     /// literals and absorbs, and the two sides do not converge. Locally, each obligation is just
     /// `clause == T` on a single clause, which `simp` discharges from the complementary pair.
+    ///
     /// Two results are NOT clause sets, and a caller that hands the output to a solver has to treat
     /// them as decided rather than clausify them (`SatProof` does):
     ///
