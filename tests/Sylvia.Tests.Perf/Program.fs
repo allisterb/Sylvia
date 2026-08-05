@@ -97,5 +97,8 @@ let main argv =
     // Not hermetic — needs a solver, because the phase split is not reconstructible from a canned
     // trace. See Profile.fs.
     | [| "phases" |] -> Profile.runPhases ()
+    | [| "model" |] -> Profile.runModel None
+    // One goal per process: measurements contaminate each other badly (see Profile.runModel).
+    | [| "model"; g |] -> Profile.runModel (Some g)
     | _ -> runMicro (); runReconstruction ()
     0

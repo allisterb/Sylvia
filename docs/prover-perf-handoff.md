@@ -98,19 +98,20 @@ Release, warm, each phase timed separately:
 
 | goal | to_cnf | clausify | solve | **refute** | dedup | AC bridge | close | total |
 |---|--:|--:|--:|--:|--:|--:|--:|--:|
-| chain 8 | 26.2 | 0.1 | 0.40 | **38.8** | 0.2 | 1.9 | 3.9 | 72 |
-| chain 32 | 32.7 | 0.0 | 0.37 | **219.9** | 0.3 | 0.7 | 1.4 | 255 |
-| pigeonhole 4→3 | 26.3 | 0.0 | 0.38 | **225.4** | 0.2 | 0.5 | 3.2 | 256 |
-| pigeonhole 5→4 | 84.3 | 0.1 | 0.44 | **2308.1** | 0.7 | 1.1 | 5.8 | 2401 |
+| chain 8 | 17.3 | 0.1 | 0.39 | **35.4** | 0.2 | 1.8 | 3.8 | 59 |
+| chain 16 | 41.1 | 0.1 | 0.37 | **98.1** | 0.1 | 0.8 | 1.9 | 142 |
+| chain 32 | 33.1 | 0.0 | 0.37 | **184.3** | 0.3 | 0.6 | 7.7 | 227 |
+| pigeonhole 4→3 | 27.1 | 0.0 | 0.38 | **253.9** | 0.2 | 0.5 | 2.8 | 285 |
+| pigeonhole 5→4 | 91.3 | 0.1 | 0.44 | **2536.5** | 0.8 | 1.3 | 6.2 | 2637 |
 
-`refute` is 54% of a small goal and 96% of a large one, so it stays the target. Two side findings:
+`refute` is 60% of a small goal and 96% of a large one, so it stays the target. Two side findings:
 
 - **The AC-normalize warning is refuted.** Böhme & Weber report that a rewriting-based AC treatment
   is far too slow, and [`prover-z3-reconstruction.md`](prover-z3-reconstruction.md) §3 flagged that as
   applying to our `normalize` / `_chain_simp` clause path, unmeasured. It is **0–3% of total**,
   everywhere. Close that concern.
-- **`Cnf.to_cnf` is now the number-two cost** — a flat 26–84 ms, which is **43% of chain 8**. It is
-  the fixed tax that process spawn used to be (§6), and nobody has ever profiled it.
+- **`Cnf.to_cnf` is the number-two cost** — a flat 17–91 ms, which is **29% of chain 8**. It is the
+  fixed tax that process spawn used to be (§6), and nobody has ever profiled it.
 
 ### What drives per-step cost
 
@@ -121,29 +122,72 @@ Release, warm, each phase timed separately:
 | pigeonhole 4→3 | 15 | 59 | 3.9 | 3 | 4 | 15.0 | 3.82 |
 | pigeonhole 5→4 | 48 | 332 | 6.9 | 4 | 8 | 48.1 | 6.95 |
 
-`ms/step` spans 10×. Input clause width spans 2→4 and resolvent width 1→8; **neither tracks it**.
-**Links per step tracks it exactly**, and `ms/link` collapses into a 3.8–7.0 band across both shapes.
-A "step" is not a unit of work — `SAT.rup_chain` unfolds each LRAT hint chain into binary
-resolutions, and pigeonhole needs ~7 where a chain needs 1.
+The structural columns are exact counts; treat the two timing columns as indicative only, for the
+reasons in the next section. `ms/step` spans 10×. Input clause width spans 2→4 and resolvent width
+1→8; **neither tracks it**. **Links per step does**, and `ms/link` collapses into a 3.8–7.0 band
+across both shapes. A "step" is not a unit of work — `SAT.rup_chain` unfolds each LRAT hint chain
+into binary resolutions, and pigeonhole needs ~7 where a chain needs 1.
 
-### The second variable, isolated
+### The cost model, and its out-of-sample test
 
-Control: the **same 3-link refutation in every row**, with `A` grown by hypotheses the proof can never
-use (fresh variables, so the trace is byte-identical):
+The first version of this section said `refute ≈ links × f(|A|)`. That was **under-specified**, and
+validating it out-of-sample is what exposed the gap. Two corrections, both worth the space because
+each was a wrong turn a reader could repeat:
 
-| pad | input literals | steps | links | refute ms | ms/link |
-|--:|--:|--:|--:|--:|--:|
-| 0 | 6 | 3 | 3 | 12.1 | 4.04 |
-| 8 | 22 | 3 | 3 | 29.0 | 9.65 |
-| 32 | 70 | 3 | 3 | 218.1 | 72.69 |
+1. **`refute` has a setup phase that is often the majority of it.** `conj_elim_all` derives `A ⇒ Cᵢ`
+   for every input clause before any replay happens — `O(clauses)` chain-implications, each over a
+   statement containing `A`. It is 17–60% of `refute` on the goals here, and **95%** on the padded
+   control. The control's headline "18× for an unchanged proof" was almost entirely THIS, not the
+   link loop, because the control holds links at 3 while growing the clause count.
+2. **Measuring it needs fresh variable names.** `conj_elim_all` goes through `elimR = Memo.p2`, so
+   timing it before `refute` warms `refute`'s own setup — the first decomposition produced a
+   *negative* loop time that way. Every trial below uses structurally identical goals with distinct
+   variable names, so each measurement is cold.
 
-Same proof, 18× the cost. Per-link cost is a function of `|A|` — linear or slightly worse.
+A quantitative law of the form `refute ≈ |A| × (K₁·clauses + K₂·links)` was fitted and **it did not
+validate**. It predicted the held-out pigeonhole 6→5 to +1% on one run and −16% and −73% on two
+others of the same computation, and its per-goal errors span −53% to +27%. Do not resurrect it
+without reading the measurement trap below first. What survives is qualitative, and sharper than the
+law would have been anyway.
 
-> **`refute` ≈ links × f(|A|).** Per-step cost follows LINKS, not clause width. Per-link cost follows
-> `|A|`, because every link's obligation is `A ⇒ clause` and `A` is the whole clause conjunction.
+### The measurement trap (read before profiling this pipeline)
 
-That explains §1's dense-refutation numbers without appealing to width at all: pigeonhole 6→5 has
-both more links per step and a larger `A` than any chain.
+Timings here are only reproducible in **a fresh process, warmed on a goal DIFFERENT from the payload**.
+Two ways to get this wrong, both of which I did:
+
+- **Payloads that share variable names contaminate each other.** `elimR` is a `Memo.p2` keyed
+  structurally, so `chain 8`'s clauses are a subset of `chain 32`'s and warm its setup. Measured
+  fresh, `chain 32`'s `conj_elim_all` is ~351 ms; measured after chains 8/16/24 in the same process,
+  ~200 ms. The `-- phases` table above still has this — it is fine for the phase *split*, which is
+  what it exists to show, and wrong for cross-goal comparison.
+- **Warming on the payload itself with fresh names is worse.** Fresh names miss the memo and add
+  entries that are never evicted, so the cache grows without bound and everything after slows down.
+  That alone made pigeonhole 6→5 measure **104 s instead of 34 s.**
+
+Done properly, repeat runs are tight: pigeonhole 5→4 measured 2471 / 2523 / 2530 ms across three
+fresh processes. Chain 32 gave 371 / 378 / 512 — so expect the occasional 35% outlier and take three.
+
+### What is robust
+
+Measured one goal per fresh process (`-- model "<goal>"`):
+
+| goal | clauses | \|A\| | links | setup | loop | refute | setup share |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| chain 16 | 17 | 32 | 16 | 94 | 83 | 176 | 53% |
+| chain 32 | 33 | 64 | 32 | 351 | 20 | 371 | **95%** |
+| pigeonhole 4→3 | 22 | 48 | 59 | 202 | 516 | 718 | 28% |
+| pigeonhole 5→4 | 45 | 100 | 332 | 566 | 1906 | 2471 | 23% |
+| pigeonhole 6→5 | 81 | 180 | 1886 | 1335 | 32848 | 34183 | **4%** |
+
+1. **`refute` dominates the pipeline** — 54% of a small goal, 96% of a large one. Every run agrees.
+2. **Which HALF of `refute` dominates swings completely with shape.** `conj_elim_all` is ~95% of a
+   chain-32 reconstruction and ~4% of pigeonhole 6→5. There is no single hot spot: sparse goals are
+   setup-bound, dense goals are loop-bound. **This is the most actionable thing here**, and the fitted
+   law would have obscured it.
+3. **Per-step cost follows LINKS, not clause width.** A step is not a unit of work — `rup_chain`
+   unfolds each LRAT step into 1 link on a chain and 12.1 on pigeonhole 6→5.
+4. **Everything grows with `|A|`,** in direction if not by a reliable exponent — `A` is in the
+   statement of every setup implication and every link's obligation.
 
 ---
 
@@ -238,33 +282,43 @@ divides — so it needs a solver, and it prints a skip message rather than faili
 Reordered after the §1b reprofile. Items 1 and 4 of the previous list are DONE and REFUTED
 respectively; the rest carry over.
 
-1. **Get `A` out of the per-link obligation.** This is the deepest lever the cost model exposes.
-   Every one of pigeonhole 5→4's 332 links proves `A ⇒ clause`, so each manipulates a term carrying
-   all 100 input literals — and the control experiment shows that factor is the whole story. It is
-   not inherent to the refutation: working with bare clauses under an assumption and discharging once
-   would make per-link cost O(clause) instead of O(|A|). **This is a design job, not a drop-in** —
-   `Deduce` / `Deduce'` in `Proof.fs` are substitution devices, not a hypothesis-discharge rule, so
-   the deduction-theorem shape has to be built and its soundness argued.
-2. **Shrink `A` to the clauses the refutation actually uses.** The cheap version of item 1, and it
-   needs no new kernel capability: the LRAT antecedents already name the used clauses, so prove
-   `A_used ⇒ F` and weaken to `A ⇒ F` once at the end. **Scope honestly** — on chains and pigeonhole
-   every clause is used, so this buys nothing on the benchmark shapes. It is worth 18× on the §1b
-   control, and the control is the shape of a real Sledgehammer-style call carrying a fact list.
-   `SAT.Native` already exposes assumption cores (`sc_failed`), which gives the minimized hypothesis
-   set for free; it is not yet surfaced through `ISatBackend`.
-3. **Cut links.** `rup_chain` unfolds every LRAT hint chain into binary resolutions — 48 steps become
+1. **Get `A` out of the obligations.** The deepest lever, and the only one that hits both halves of
+   `refute` at once: `A` is in the statement of every setup implication *and* every link's obligation,
+   so it is the single quantity that matters whether a goal is setup-bound or loop-bound. Working
+   with bare clauses under an assumption and discharging once would replace `|A|` with clause width —
+   on pigeonhole 6→5 that is 180 against a mean width near 2.
+   **This is a design job, not a drop-in.** `Deduce` / `Deduce'` in `Proof.fs` are substitution
+   devices, not a hypothesis-discharge rule. The standard equational route is assuming `A` by
+   rewriting it to `true` and discharging at the end; it has to be built and its soundness argued.
+   Prototype it on ONE goal of each shape before committing — §1b's fitted law failed precisely
+   because it was asked to extrapolate rather than to compare two measured things.
+2. **Shrink `A` to the clauses the refutation actually uses.** The cheap version of item 1, needing
+   no new kernel capability: the LRAT antecedents already name the used clauses, so prove
+   `A_used ⇒ F` and weaken to `A ⇒ F` once at the end. It cuts `clauses` and `|A|` together, and the
+   model is quadratic in that pair — the padded control goes from 283 ms to single digits.
+   **Scope honestly**: on chains and pigeonhole every clause is used, so this buys nothing on the
+   benchmark shapes. It pays on goals carrying irrelevant hypotheses, which is what a real
+   Sledgehammer-style call with a fact list looks like. `SAT.Native` already exposes assumption cores
+   (`sc_failed`) and would hand over the minimized set for free; not yet surfaced on `ISatBackend`.
+3. **Attack `conj_elim_all` on its own.** Independent of items 1–2, much smaller in scope, and the
+   best value for *ordinary* goals: measured fresh it is **95% of `refute` on chain 32** and 53% on
+   chain 16, against 4% on pigeonhole 6→5. Chains are what real callers hit; pigeonholes are what the
+   benchmark hits. It is one `O(clauses)` pass that already shares its peel-chain, so whether the cost
+   is the `chain_imp` calls themselves or the `A`-sized statements they carry has not been separated —
+   that separation is the first experiment.
+4. **Cut links.** `rup_chain` unfolds every LRAT hint chain into binary resolutions — 48 steps become
    332 links on pigeonhole 5→4. Fewer, larger kernel steps would cut the multiplier directly, but
    needs a resolution rule that consumes a whole propagation chain at once.
-4. **Profile `Cnf.to_cnf`.** Flat 26–84 ms and never looked at; it is 43% of a small goal now that the
+5. **Profile `Cnf.to_cnf`.** Flat 26–84 ms and never looked at; it is 43% of a small goal now that the
    solver is free. The first thing to establish is whether it is the clausification or the kernel
    equivalence proof.
-5. **Named candidates not yet tested** (carried over): an allocation-free `specific_call` (was 5.4%
+6. **Named candidates not yet tested** (carried over): an allocation-free `specific_call` (was 5.4%
    self CPU), `traverse` without `ExprShape` (4.8%), and the source of `FSharpExpr.Deserialize40`
    (3.7%, not located — the `EquationalLogic` templates are already hoisted and `Term.(==)` was a red
    herring). All three are in the "asking quotations what they are" family.
-6. **`state <- state @ [(_state, msg)]`** in the `Proof` step loop is an O(n) append per step, so
+7. **`state <- state @ [(_state, msg)]`** in the `Proof` step loop is an O(n) append per step, so
    O(n²) per proof. Harmless for the 1–4-step proofs the replay builds; would bite a long derivation.
-7. **Schema coverage.** Böhme & Weber wrap 230+ schematic theorems, covering 76% of their `rewrite`
+8. **Schema coverage.** Böhme & Weber wrap 230+ schematic theorems, covering 76% of their `rewrite`
    obligations; we wrap six (five in `SatProof`, plus `trans_implies` in `Calc`). `Tactics.Schema` was
    the single biggest win to date, so more of it is tempting — but the cost model says per-link cost
    is dominated by `|A|`, not by how a link's lemma is obtained, so measure before investing.
