@@ -30,8 +30,6 @@ struct ProofBuffer {
   std::vector<int64_t> antes;
   std::vector<int64_t> ante_off;  /* steps + 1 entries */
 
-  int64_t first_derived_id = 0;
-
   int conclusion_kind = SC_CONCLUDE_NONE;
   std::vector<int64_t> conclusion_ids;
 
@@ -46,7 +44,6 @@ struct ProofBuffer {
     antes.clear ();
     lit_off.assign (1, 0);
     ante_off.assign (1, 0);
-    first_derived_id = 0;
     conclusion_kind = SC_CONCLUDE_NONE;
     conclusion_ids.clear ();
   }
@@ -103,7 +100,10 @@ public:
     buf.push (SC_STEP_ASSUMPTION, id, false, 0, clause, &antecedents);
   }
 
-  void begin_proof (int64_t id) override { buf.first_derived_id = id; }
+  /* `begin_proof` is deliberately NOT overridden. It fires only from `Internal::reserve_ids`, whose
+   * sole caller is the DIMACS parser after reading the `p cnf` header; nothing on the public
+   * `Solver` reaches it, so it never fires when clauses arrive through this API. Measured: 0 of 37
+   * events on pigeonhole 4->3. SC_STEP_ORIGINAL answers the same question and always arrives. */
 
   void conclude_unsat (CaDiCaL::ConclusionType type,
                        const std::vector<int64_t> &clause_ids) override {
@@ -444,15 +444,6 @@ int sc_proof_num_antes (SylviaCadical *s, int64_t *antes) {
     if (!antes)
       return fail (s, SC_ERR_ARG, "sc_proof_num_antes: null out-parameter");
     *antes = (int64_t) s->buffer.antes.size ();
-    return ok (s);
-  });
-}
-
-int sc_proof_first_derived_id (SylviaCadical *s, int64_t *id) {
-  SC_GUARD (s, {
-    if (!id)
-      return fail (s, SC_ERR_ARG, "sc_proof_first_derived_id: null out-parameter");
-    *id = s->buffer.first_derived_id;
     return ok (s);
   });
 }

@@ -190,9 +190,11 @@ SC_API int sc_proof_num_steps (SylviaCadical *, int64_t *steps);
 SC_API int sc_proof_num_lits (SylviaCadical *, int64_t *lits);
 SC_API int sc_proof_num_antes (SylviaCadical *, int64_t *antes);
 
-/* The id of the first DERIVED clause, as announced by `begin_proof`. Ids below it are input
- * clauses. Writes through `id`; 0 if the proof never began. */
-SC_API int sc_proof_first_derived_id (SylviaCadical *, int64_t *id);
+/* NOTE: there is deliberately no `first_derived_id` accessor. CaDiCaL's `begin_proof` event fires
+ * only from `Internal::reserve_ids`, which only the DIMACS *parser* calls after reading the
+ * `p cnf` header — it is not reachable when clauses are added through the API, so such a function
+ * would always report 0. Use SC_STEP_ORIGINAL instead: it names the input clause ids outright,
+ * which is the question that was actually being asked. */
 
 /* How the last solve concluded (SC_CONCLUDE_*), and the clause ids involved: the empty clause for
  * CONFLICT, the failing assumption/constraint clauses otherwise. `ids` may be null to query the

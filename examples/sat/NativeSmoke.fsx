@@ -59,8 +59,6 @@ module N =
     [<DllImport(DLL, CallingConvention = CallingConvention.Cdecl)>]
     extern int sc_proof_num_antes(IntPtr s, int64& n)
     [<DllImport(DLL, CallingConvention = CallingConvention.Cdecl)>]
-    extern int sc_proof_first_derived_id(IntPtr s, int64& id)
-    [<DllImport(DLL, CallingConvention = CallingConvention.Cdecl)>]
     extern int sc_proof_export(IntPtr s, int[] kinds, int64[] ids, int[] redundant, int[] witness,
                                int[] lits, int64[] litOff, int64[] antes, int64[] anteOff,
                                int64 stepsCap, int64 litsCap, int64 antesCap)
@@ -137,9 +135,11 @@ check "derived steps carry antecedents" (derived |> Array.forall (fun x -> x.Ant
 check "ends in the empty clause" (derived |> Array.exists (fun x -> x.Lits.Length = 0))
 check "no RAT steps under --plain" (derived |> Array.forall (fun x -> x.Witness = 0))
 
-let mutable firstDerived = 0L
-N.sc_proof_first_derived_id(s, &firstDerived) |> ignore
-check "begin_proof id is past the inputs" (firstDerived > int64 pigeonhole.Length)
+// The input/derived id split, asked of the trace itself. (CaDiCaL's `begin_proof` event would state
+// it directly, but it only fires from the DIMACS parser's id reservation and never on this path.)
+let maxOriginalId = originals |> Array.map (fun x -> x.Id) |> Array.max
+check "derived ids all follow the input ids"
+    (derived |> Array.forall (fun x -> x.Id > maxOriginalId))
 
 printfn "\n== 3. parity with the CLI's LRAT =="
 let tmp = IO.Path.GetTempPath()
@@ -176,9 +176,17 @@ check "identical ids, literals and antecedents"
             cid = d.Id && clits = d.Lits && chints = d.Antes) cliAdds derived)
 
 printfn "\n== 4. API misuse returns a status instead of aborting =="
-check "unknown option -> SC_ERR_ARG" (N.sc_set_option(s, "no_such_option", 1) = SC_ERR_ARG)
-check "  ... with a message" (err s <> "")
-check "'plain' is rejected, not silently ignored" (N.sc_set_option(s, "plain", 1) <> SC_OK)
+// Option-name errors have to be probed on a solver still in the configuring phase. On one that has
+// already taken clauses the state guard fires first — correct, but it answers a different question.
+let sCfg = N.sc_create ()
+check "unknown option -> SC_ERR_ARG" (N.sc_set_option(sCfg, "no_such_option", 1) = SC_ERR_ARG)
+check "  ... with a message" (err sCfg <> "")
+// `--plain` is a CLI shortcut, not an option: the stock C API accepts this and silently does
+// nothing, which is what makes the 15-vs-48-step proof difference so easy to miss.
+check "'plain' is rejected, not silently ignored" (N.sc_set_option(sCfg, "plain", 1) = SC_ERR_ARG)
+check "a real option is accepted while configuring" (N.sc_set_option(sCfg, "elim", 0) = SC_OK)
+N.sc_destroy sCfg
+
 check "set_option after adding -> SC_ERR_STATE" (N.sc_set_option(s, "elim", 0) = SC_ERR_STATE)
 check "capture_proof after adding -> SC_ERR_STATE" (N.sc_capture_proof s = SC_ERR_STATE)
 check "zero literal -> SC_ERR_ARG" (N.sc_add_clause(s, [| 1; 0 |], 2un) = SC_ERR_ARG)
