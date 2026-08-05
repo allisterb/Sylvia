@@ -270,7 +270,11 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
             alwayslog_s (sprintf "Proof of %s:" (print_formula a))
 
     let mutable _state = a
-    let mutable state:(Expr * Lazy<string>) list = []
+    // Appending with `state @ [x]` is O(n) per step, so O(n^2) per proof. That was harmless while
+    // proofs were 1-4 steps, but the SAT reconstruction now builds ONE proof with an `Establish` per
+    // resolution link — 15,284 of them on pigeonhole 7->6 — where it dominates. (Flagged as a latent
+    // item in docs/prover-perf-handoff.md long before anything triggered it.)
+    let state = ResizeArray<Expr * Lazy<string>>()
     let mutable stepCount = 0
 
     // Facts established under this proof's antecedent by `Rule.Establish` (the set Δ). Indexed by
@@ -299,9 +303,13 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
     /// Splitting is sound in the obvious direction: if `A ⊨ P` and `A ⊨ Q` then `A ⊨ P ∧ Q`. It does
     /// not loosen the guard on the leaves, so a theorem asking for something genuinely unavailable
     /// is still refused, naming it.
+    /// Δ is checked FIRST because it is a hash lookup while the conjunct list is a linear `sequal`
+    /// scan, and in a forward derivation most premises are facts established a moment ago rather
+    /// than original conjuncts. On pigeonhole 7→6 the antecedent has ~265 conjuncts and there are
+    /// 30k premise checks, so the order is worth real time.
     let rec is_covered (conjuncts: Expr list) (v: Expr) =
-        (conjuncts |> List.exists (fun v' -> sequal v v'))
-        || is_established v
+        is_established v
+        || (conjuncts |> List.exists (fun v' -> sequal v v'))
         || (match v with
             | And(l, r) -> is_covered conjuncts l && is_covered conjuncts r
             | _ -> false)
@@ -407,7 +415,7 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
                     sprintf "%i. %s: No change." (stepId) (stepName.Replace("(expression)", step.Pos)))
         do if prooflog_on then prooflog_s msg.Value
         _state <- _a
-        state <- state @ [(_state, msg)]
+        state.Add((_state, msg))
         if theory |- _state then
             if prooflog_on then
                 let axeq = theory.Axioms _a
@@ -447,7 +455,7 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
     abstract Complete:bool; default val Complete = logic |- _state || theory |- _state
     /// Step states with their (lazily formatted) step messages; same content as before,
     /// materialized on access so unread messages never pay for formatting.
-    member x.State = state |> List.map (fun (e, m) -> e, m.Value)
+    member x.State = state |> Seq.map (fun (e, m) -> e, m.Value) |> List.ofSeq
     member val Subst = steps |> List.map (fun s  -> s.ApplyRule) |> List.fold(fun e r -> e >> r) id
     member val Msg = fun (s:string) -> if prooflog_on then prooflog_s s
     member x.Log with get() = logBuilder.ToString() and set(_:string) = logBuilder.Clear() |> ignore

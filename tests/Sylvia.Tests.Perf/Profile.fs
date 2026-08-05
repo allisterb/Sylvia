@@ -243,9 +243,9 @@ module Profile =
             let cnf = SatProof.clauses_of goal cnfProp
             cnf, sat.Run cnf
 
-        printfn "%-14s %5s %6s %7s %7s %11s %10s %10s"
-                "goal" "cls" "|A|" "steps" "links" "refuteMs" "ms/step" "ms/link"
-        printfn "%s" (String.replicate 78 "-")
+        printfn "%-14s %6s %5s %6s %7s %7s %10s %11s %9s"
+                "goal" "atoms" "cls" "|A|" "steps" "links" "refuteMs" "prove_with" "ms/link"
+        printfn "%s" (String.replicate 84 "-")
 
         let row (label: string) (mk: string -> Prop) =
           if only.IsNone || only = Some label then
@@ -259,20 +259,30 @@ module Profile =
             let cnfR, runR = prep (mk "r")
             let _, tRefute = ms (fun () -> SatProof.refute cnfR runR.Originals runR.Steps)
             let s = traceStats cnfR runR
-            printfn "%-14s %5d %6d %7d %7d %11.1f %10.2f %10.3f"
-                    label cnfR.Clauses.Length s.InputLits s.Steps s.Links tRefute
-                    (tRefute / float s.Steps) (tRefute / float s.Links)
+            // The whole user-facing call, on yet another copy: this is what "under a second" means.
+            let _, tProve = ms (fun () -> SatProof.prove_with sat (mk "w"))
+            printfn "%-14s %6d %5d %6d %7d %7d %10.1f %11.1f %9.3f"
+                    label cnfR.NumVars cnfR.Clauses.Length s.InputLits s.Steps s.Links tRefute
+                    tProve (tRefute / float s.Links)
 
         row "chain 8"   (fun t -> chain t 8)
         row "chain 16"  (fun t -> chain t 16)
+        row "chain 20"  (fun t -> chain t 20)
         row "chain 24"  (fun t -> chain t 24)
         row "chain 32"  (fun t -> chain t 32)
+        row "chain 40"  (fun t -> chain t 40)
+        row "chain 50"  (fun t -> chain t 50)
+        row "chain 64"  (fun t -> chain t 64)
+        row "chain 100" (fun t -> chain t 100)
+        row "chain 128" (fun t -> chain t 128)
+        row "chain 200" (fun t -> chain t 200)
         row "php 4→3"   (fun t -> pigeonhole t 4 3)
         row "php 5→4"   (fun t -> pigeonhole t 5 4)
         printfn ""
         for pad in [ 0; 8; 32 ] do row (sprintf "pad %d" pad) (fun t -> padded t pad)
         printfn "\nHeld out when the model was fitted (~30 s):"
         row "php 6→5"   (fun t -> pigeonhole t 6 5)
+        row "php 7→6"   (fun t -> pigeonhole t 7 6)
 
         printfn "\nrefute ≈ |A| × (%.3f × clauses + %.3f × links). Both terms carry |A|." K_SETUP K_LINK
         Proof.LogLevel <- 1

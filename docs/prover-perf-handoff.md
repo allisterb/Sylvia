@@ -64,18 +64,39 @@ goals:
 **Per-step cost fell ~3× uniformly across shapes.** 5→4 and 6→5 did not run *at all* before the
 `--plain` fix, so "3×" understates those two.
 
-### Against the original target
+### Against the original target — MET (2026-08-04)
 
-§1 of the reconstruction doc set "~20–50 atoms in well under a second".
+§1 of the reconstruction doc set "~20–50 atoms in well under a second". Full `SatProof.prove_with`,
+one goal per fresh process (`-- model "<goal>"`):
 
-- **On chains: met up to ~40 atoms**, sitting on the bar at 50 (1.05 s).
-- **On dense refutations: not met.** A 20-atom pigeonhole is 3.9 s, because it costs what a 60-atom
-  chain costs. Practical ceiling there is ~20 atoms for single-digit seconds.
-- **Atom count is the wrong unit** and should be retired. Cost tracks LRAT steps × clause-set size ×
-  clause width. State future targets that way.
+| chain | atoms | 2026-07-30 | now | | dense | atoms | 2026-07-30 | now |
+|---|--:|--:|--:|---|---|--:|--:|--:|
+| chain 20 | 20 | 250–460 ms | **19 ms** | | pigeonhole 4→3 | 12 | 741 ms | **42 ms** |
+| chain 32 | 32 | 464 ms | **32 ms** | | pigeonhole 5→4 | 20 | 3851 ms | **401 ms** |
+| chain 50 | 50 | 1055 ms | **63 ms** | | pigeonhole 6→5 | 30 | 33 600 ms | **1744 ms** |
+| chain 64 | 64 | 1676 ms | **83 ms** | | pigeonhole 7→6 | 42 | — | 70 536 ms |
+| chain 200 | 200 | — | **291 ms** | | | | | |
 
-For external calibration: this is still one to two orders of magnitude off HOL4/Isabelle-class SAT
-proof reconstruction, and that gap is per-step constant factors, not algorithmic.
+- **Chains: met across the whole 20–50 range with 16× of margin**, and they stay under a second to
+  **200 atoms** — four times the target's upper end.
+- **Dense: met at 20 atoms** (401 ms), which was the documented failure at 3.9 s. 30 atoms is 1.7 s,
+  just over; 42 atoms is out of reach.
+
+**Atom count is still the wrong unit, and the numbers above show why.** Chain 200 and pigeonhole 6→5
+are 291 ms and 1744 ms at 200 and 30 atoms respectively. The unit that travels is **RUP links**: we
+now cost ~0.3–1 ms per link on everything up to ~2000 links, so *a goal fits under a second when its
+refutation has roughly ≤1000 links*. Chains have one link per atom; pigeonhole's link count grows
+exponentially (59 → 332 → 1886 → 15 284 for 4→3 … 7→6), which is Haken's theorem, not a Sylvia
+limit — resolution refutations of PHP are exponentially long, so no amount of per-link work fixes it.
+
+Per-link cost does drift upward at extreme scale (2.1 ms at 15 284 links against 0.94 at 1886) and
+two contributors were found and fixed while measuring this: the O(n²) `state @ [x]` append (§5's
+item 7, latent for months and triggered by §5.1 building single proofs with one step per link), and
+`is_covered` scanning the antecedent's conjuncts before checking Δ. Together 94.7 s → 70.5 s on
+pigeonhole 7→6. What remains is unattributed.
+
+For external calibration: the gap to HOL4/Isabelle-class SAT proof reconstruction was one to two
+orders of magnitude; roughly one of those has been closed.
 
 ---
 
