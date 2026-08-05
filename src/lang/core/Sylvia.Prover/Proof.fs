@@ -152,20 +152,35 @@ and Rule =
     | Derive of string * Proof * (Proof -> Expr -> Expr) 
     /// A deduced rule in a theory
     | Deduce of string * Proof * (Proof -> Expr -> Expr)
+    /// A fact ESTABLISHED under the antecedent of the goal, which later `Deduce`/`Establish` steps
+    /// of the same proof may then use as though it were a conjunct of that antecedent.
+    ///
+    /// Carries a proof of `(B₁ ∧ … ∧ Bₖ) ⇒ Z` and changes the expression NOT AT ALL — it only
+    /// records `Z`. `Deduce` already lets a theorem be used when every `Bᵢ` is a conjunct of the
+    /// goal's antecedent; this is what lets the covered set GROW, which is what a forward
+    /// derivation (a resolution refutation, say) needs and `Deduce` alone cannot express.
+    ///
+    /// Sound by induction on the established set Δ, with invariant `A ⊨ Z` for every `Z ∈ Δ`:
+    /// the conjuncts of `A` are entailed by `A`, and if every `Bᵢ` is entailed by `A` and
+    /// `⊢ (∧Bᵢ) ⇒ Z` is a theorem then `A ⊨ Z`. Because it rewrites nothing, none of the
+    /// substitution/Leibniz side conditions that constrain assumptions in equational logic apply.
+    | Establish of string * Proof
     /// A defined rule in a theory
-    | Define of string * (Expr -> Expr)   
+    | Define of string * (Expr -> Expr)
 with
-    member x.Name = 
-        match x with 
+    member x.Name =
+        match x with
         | Admit(n, _) -> n
         | Derive(n, _, _) -> n
         | Deduce(n,_,_) -> n
+        | Establish(n, _) -> n
         | Define(n, _) -> n
     member x.Apply =
         match x with
         | Admit(_, r) -> r
         | Derive(_, p, r) -> r p
         | Deduce(_, p, r) -> r p
+        | Establish(_, _) -> id          // records a fact; the expression is untouched
         | Define(_, r) -> r
     /// A bare rule used where a RuleApplication is expected (e.g. as a proof step) means "apply
     /// the rule to the whole expression". This is the implicit form of `apply r` / `r |> apply`.
@@ -257,6 +272,28 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
     let mutable _state = a
     let mutable state:(Expr * Lazy<string>) list = []
     let mutable stepCount = 0
+
+    // Facts established under this proof's antecedent by `Rule.Establish` (the set Δ). Indexed by
+    // `skey` and VERIFIED with `sequal` on every hit, the same discipline as `Memo`: the key is a
+    // cheap discriminator, so a collision is a miss rather than a wrongly-admitted premise. A plain
+    // list would be O(|Δ|) per lookup and Δ reaches ~1900 on a dense refutation.
+    let established = System.Collections.Generic.Dictionary<string, ResizeArray<Expr>>()
+    let is_established (e: Expr) =
+        match established.TryGetValue(skey e) with
+        | true, xs -> xs |> Seq.exists (sequal e)
+        | _ -> false
+    let add_established (e: Expr) =
+        let k = skey e
+        match established.TryGetValue k with
+        | true, xs -> if not (xs |> Seq.exists (sequal e)) then xs.Add e
+        | _ ->
+            let xs = ResizeArray<Expr>()
+            xs.Add e
+            established.[k] <- xs
+    /// A premise is available if it is a conjunct of the goal's antecedent, or was established
+    /// earlier in this same proof.
+    let is_covered (conjuncts: Expr list) (v: Expr) =
+        (conjuncts |> List.exists (fun v' -> sequal v v')) || is_established v
     do if theory |- a  then
             if prooflog_on then
                 let axeq = theory.Axioms a
@@ -299,12 +336,27 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
                     match p.Stmt with 
                     | Argument(_, _, cj) -> cj 
                     | _ -> failwithf "%s is not a logical implication with an antecedent and consequent." (print_formula p.Stmt)
-                if conjs |> List.forall(fun v -> List.exists(fun v' -> sequal v v') current_conjuncts.Value) |> not then
+                // A premise may be a conjunct of the antecedent OR a fact established earlier in this
+                // proof by `Establish` — see that rule's soundness note.
+                if conjs |> List.forall (is_covered current_conjuncts.Value) |> not then
                     // Report the conjunct that is present in NO current conjunct (the complement of
                     // the forall condition above), so the message names the actually-missing one.
                     failwithf "The conjunct %s in deduction rule at step %i (%s) is not in the antecedent of %s."
-                        (conjs |> List.find(fun v -> not (List.exists(fun v' -> sequal v v') current_conjuncts.Value)) |> print_formula) stepId n (print_formula a)
+                        (conjs |> List.find(is_covered current_conjuncts.Value >> not) |> print_formula) stepId n (print_formula a)
                 if not step.RightApplication then failwith "A deduction rule can only be applied to the consequent of a logical implication."
+            | Establish(n, p) ->
+                if current_ant.IsNone then failwithf "Establish rule at step %i (%s) cannot be used since %s is not a logical implication with an antecedent and consequent." stepId n (print_formula a)
+                if not ((p.Theory = logic) || (p.Theory = theory) || (p.Theory.GetType().IsAssignableFrom(theory.GetType()))) then
+                    failwithf "Establish rule at step %i (%s) does not use the rules of the current proof logic or theory." stepId n
+                let conjs, con =
+                    match p.Stmt with
+                    | Argument(_, c, cj) -> cj, c
+                    | _ -> failwithf "%s is not a logical implication with an antecedent and consequent." (print_formula p.Stmt)
+                if conjs |> List.forall (is_covered current_conjuncts.Value) |> not then
+                    failwithf "The conjunct %s in establish rule at step %i (%s) is neither in the antecedent of %s nor established earlier in this proof."
+                        (conjs |> List.find(is_covered current_conjuncts.Value >> not) |> print_formula) stepId n (print_formula a)
+                // Only now, with every premise covered, does the consequent join Δ.
+                add_established con
             | _ -> ()
         // For an Auto step, `rule` above already holds the searched-for rule (rf _state); reuse
         // it here so the auto-search runs once per step, not twice.
@@ -334,6 +386,9 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
                     sprintf "%i. %s." (stepId) (stepName.Replace("(expression)", step.Pos))
                 else
                     sprintf "%i. %s: No change." (stepId) (stepName.Replace("(expression)", step.Pos))
+            | Establish(_, _) ->
+                // Establishing a fact never changes the expression, so "No change" would be noise.
+                sprintf "%i. %s." (stepId) (stepName.Replace("(expression)", step.Pos))
             | Define(_, _) ->
                 if not ((sequal _a prevState)) then
                     sprintf "%i. %s: %s \u2192 %s." (stepId) (stepName.Replace("(expression)", step.Pos)) (print_formula prevState) (print_formula _a)
@@ -685,6 +740,27 @@ module LogicalRules =
 
     /// Substitute the LHS q of a proven identity p ==> (q = r) with the RHS r in a proof where p is one of the conjuncts of the antecedent.
     let Deduce'(t:Theorem) = t.Proof |> Subst''
+
+    /// Record the consequent of a proven theorem `(B₁ ∧ … ∧ Bₖ) ⇒ Z` as ESTABLISHED, in a proof whose
+    /// goal is an implication and each of whose `Bᵢ` is either a conjunct of that goal's antecedent
+    /// or itself already established. The expression is left completely unchanged.
+    ///
+    /// This is what lets a FORWARD derivation be carried out under the goal's antecedent. `Deduce`
+    /// can only use a theorem whose premises are conjuncts of the antecedent, so it cannot chain:
+    /// the clause a resolution step produces is not a conjunct of anything. `Establish` grows the
+    /// set of usable premises instead of rewriting, and a final `Deduce` discharges the consequent.
+    ///
+    /// The kernel — not this function — checks premise coverage, so an `Establish` step whose
+    /// premises are not available fails the proof rather than silently widening what is assumable.
+    let Establish(t:Theorem) =
+        let p = t.Proof
+        if not p.Complete then
+            failwithf "The proof of %A is not complete" (p.Stmt |> p.Theory.PrintFormula)
+        let ant, con =
+            match p.Stmt with
+            | Argument(a, c, _) -> a, c
+            | _ -> failwithf "The theorem %s is not a logical implication." (p.Stmt |> p.Theory.PrintFormula)
+        Rule.Establish(sprintf "Establish %s from %s" (p.Theory.PrintFormula con) (p.Theory.PrintFormula ant), p)
 
     let Define (theory:Theory) (expr:Expr) = 
         let rec subst (lhs:Expr, rhs:Expr) = 

@@ -648,6 +648,64 @@ type KernelProofTests() =
         Assert.Contains("is not in the antecedent", msg)
         Assert.Contains("x ∧ y", msg)
 
+    // ----- Establish: growing the set of premises usable under the antecedent ------------------
+    // `Deduce` can only use a theorem whose premises are conjuncts of the goal's antecedent, so it
+    // cannot chain — the fact a forward step produces is not a conjunct of anything. `Establish`
+    // records such a fact so later steps may use it. Soundness is induction on the established set
+    // Δ with invariant `A ⊨ Z`, so the guard on Establish's OWN premises is what carries the proof.
+
+    [<Fact>]
+    member _.``establish lets a forward chain reach a consequent Deduce alone cannot`` () =
+        // (x∨w) is not a conjunct of the antecedent, so the closing Deduce is only legal because
+        // the second Establish put it in Δ.
+        let x, y, w, v = boolvar "x", boolvar "y", boolvar "w", boolvar "v"
+        let th =
+            theorem PropCalculus.prop_calculus ((x * y) ==> ((x + w) + v)) [
+                Establish (PropCalculus.strengthen_and x y)        // Δ = { x }
+                Establish (PropCalculus.weaken_or x w)             // Δ = { x, x∨w }
+                Deduce (PropCalculus.weaken_or (x + w) v) |> apply_right ]
+        Assert.True(sequal th.Stmt (expand ((x * y) ==> ((x + w) + v)).Expr),
+                    sprintf "Establish chain produced %s" (src th.Stmt))
+
+    [<Fact>]
+    member _.``without the establishing step the same deduction is refused`` () =
+        // Exactly the proof above minus the middle Establish: it must NOT go through, or Establish
+        // would be decorative rather than load-bearing.
+        let x, y, w, v = boolvar "x", boolvar "y", boolvar "w", boolvar "v"
+        let msg =
+            try
+                proof PropCalculus.prop_calculus ((x * y) ==> ((x + w) + v)) [
+                    Establish (PropCalculus.strengthen_and x y)
+                    Deduce (PropCalculus.weaken_or (x + w) v) |> apply_right ] |> ignore
+                ""
+            with e -> e.Message
+        Assert.Contains("is not in the antecedent", msg)
+
+    [<Fact>]
+    member _.``establish refuses a premise that is neither a conjunct nor established`` () =
+        let x, y, w, v = boolvar "x", boolvar "y", boolvar "w", boolvar "v"
+        let msg =
+            try
+                proof PropCalculus.prop_calculus ((x * y) ==> ((x + w) + v)) [
+                    Establish (PropCalculus.weaken_or (x + w) v) ] |> ignore
+                ""
+            with e -> e.Message
+        Assert.Contains("nor established earlier in this proof", msg)
+        Assert.Contains("x ∨ w", msg)
+
+    [<Fact>]
+    member _.``establish is refused when the goal is not an implication`` () =
+        // There is no antecedent to assume, so there is nothing Δ could be relative to.
+        let x, y = boolvar "x", boolvar "y"
+        let msg =
+            try
+                proof PropCalculus.prop_calculus ((x * y) == (y * x)) [
+                    Establish (PropCalculus.strengthen_and x y)
+                    PropCalculus.commute_and x y ] |> ignore
+                ""
+            with e -> e.Message
+        Assert.Contains("is not a logical implication", msg)
+
     // ===== Calculational (mixed-relation) proofs — Gries Ch. 4 ================
     // A calc chain produces a genuine Theorem of `start REL end`; relations compose by
     // transitivity (= identity, ⇒∘⇒=⇒), and ⇒/⇐ cannot be mixed.

@@ -307,13 +307,51 @@ respectively; the rest carry over.
    I had estimated ~400× from item 3's micro-benchmark. That was an order of magnitude optimistic —
    the second time extrapolation has misled here. Take the measured number.
 
-   **This is a design job, not a drop-in.** `Deduce` / `Deduce'` in `Proof.fs` are substitution
-   devices, not a hypothesis-discharge rule. The standard equational route is assuming `A` by
-   rewriting it to `true` and discharging at the end. Two risks to settle before writing code: the
-   deduction theorem in *equational* logic carries side conditions on substitution and Leibniz
-   rewriting (the same family that makes `Tactics.Instantiate` refuse binders), and discharge must
-   verify the body used only the declared assumptions — which needs the proof object to record which
-   axioms fired.
+   **The mechanism is smaller than it looked.** I previously wrote that `Deduce` / `Deduce'` are
+   "substitution devices, not a hypothesis-discharge rule". **That was wrong.** `Rule.Deduce` IS the
+   deduction theorem, and the kernel already checks it (`Proof.fs` ~294–307): given
+   `t : (B₁ ∧ … ∧ Bₖ) ⇒ C`, it verifies every `Bᵢ` is a conjunct of the CURRENT goal's antecedent,
+   then rewrites `C ↦ T` in the consequent. Assuming the antecedent is therefore already sound,
+   already implemented, and already used (`PredCalculus` 9.7).
+
+   What it could not do is accumulate. Resolution derives *new* clauses, and a derived clause is not
+   a conjunct of `A`, so the guard rejected it at the second level. **That gap is now closed in the
+   kernel** (2026-08-04) — the remaining work is rewiring `SatProof`, which has not been done:
+
+   - **Proof state carries a set `Δ` of established facts**, per `Proof`, initially empty. Indexed by
+     `skey` and `sequal`-verified on every hit, the `Memo` discipline — a key collision is a miss,
+     never a wrongly-admitted premise. A list would be O(|Δ|) per lookup and Δ reaches ~1900 links.
+   - **`Rule.Establish`**: given `t : (∧Bᵢ) ⇒ Z` with every `Bᵢ ∈ conjuncts(A) ∪ Δ`, adds `Z` to `Δ`
+     and leaves the expression completely untouched. The KERNEL checks coverage, not the combinator.
+   - **`Deduce`'s guard generalised** from `conjuncts(A)` to `conjuncts(A) ∪ Δ`.
+
+   Four kernel tests pin it: a forward chain reaching a consequent `Deduce` alone cannot; the same
+   proof minus the establishing step being refused (so `Establish` is load-bearing, not decorative);
+   `Establish` refusing an uncovered premise; and `Establish` refused when the goal is not an
+   implication. Gate 131 → **135**, `AdversarialSweep` ALL CLEAR, `VerifyRuleFixes` and the three
+   proof examples unchanged.
+
+   The refutation then becomes: no `conj_elim_all` at all, one `Establish` per link carrying
+   `resolveStep`'s clause-scale theorem, and one closing `Deduce` of `(X ∧ Y) ⇒ F` that rewrites the
+   consequent `F` to `T`.
+
+   Soundness is induction on `Δ`, and it is short: the invariant is `A ⊨ Z` for every `Z ∈ Δ`. Base —
+   conjuncts of `A` are entailed by `A`. Step — if every `Bᵢ` is entailed by `A` and `⊢ (∧Bᵢ) ⇒ Z`
+   is a theorem, then `A ⊨ Z`. `Deduce`'s existing argument then goes through unchanged over the
+   larger set.
+
+   **Both risks I flagged earlier were dissolved, not managed.** The equational deduction theorem's
+   side conditions on substitution and Leibniz are not in play, because `Establish` rewrites nothing.
+   And "verify the body used only the declared assumptions" needed no axiom-firing record, because
+   the check is local to each step.
+
+   **What remains is the `SatProof` rewiring**, and it is not small. `refute` currently threads
+   `A ⇒ ·` explicitly and returns `A, Theorem option`; under `Establish` it would instead emit a step
+   list — one `Establish` per link carrying `resolveStep`'s clause-scale theorem, then a closing
+   `Deduce` — to be run inside a single `theorem prop_calculus (A ==> F) [...]`. `conj_elim_all` and
+   the `resolveUnder` plumbing (`conj`, `combine_implies`, `mp`, `chain_imp`) all go away. Do it
+   behind the existing `-- model` / `-- ceiling` measurements so the predicted 10–30× is checked
+   rather than assumed.
 2. **Shrink `A` to the clauses the refutation actually uses.** The cheap version of item 1, needing
    no new kernel capability: the LRAT antecedents already name the used clauses, so prove
    `A_used ⇒ F` and weaken to `A ⇒ F` once at the end. It cuts `clauses` and `|A|` together, and the
