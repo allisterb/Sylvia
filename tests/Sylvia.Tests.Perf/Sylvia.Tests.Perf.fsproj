@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Include="Payloads.fs" />
     <Compile Include="Reconstruction.fs" />
+    <Compile Include="Profile.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

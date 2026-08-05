@@ -1,9 +1,12 @@
-# Prover performance — handoff (end of 2026-07-30)
+# Prover performance — handoff (2026-07-30, extended 2026-08-04)
 
 Entry point for the next session on prover/reconstruction speed. Read this, then
 [`prover-sat-reconstruction.md`](prover-sat-reconstruction.md) §7 for the design detail.
 
-Everything below is committed through `6a6dbf4`.
+§§1–7 as written on 2026-07-30 are committed through `6a6dbf4`. **§1b is a 2026-08-04 addition** and
+supersedes two items of the original §5: the reprofile it asked for is done, and the clause-width
+hypothesis it named is refuted. §3, §4 §5 and §6 were amended the same day; the numbers in §1 are
+unchanged and still stand.
 
 > **Since this handoff was written (same day, uncommitted at the time of writing).** Two things
 > happened that a reader of §5 should know about, both found by *using* the now-faster pipeline rather
@@ -76,6 +79,74 @@ proof reconstruction, and that gap is per-step constant factors, not algorithmic
 
 ---
 
+## 1b. Reprofile (2026-08-04): the cost model
+
+§5.1 asked for a reprofile before picking a target, and §5.4 named clause width as the suspect behind
+dense refutations. **The reprofile is done, and clause width is refuted.** Run it with:
+
+```bash
+dotnet run --project tests/Sylvia.Tests.Perf/Sylvia.Tests.Perf.fsproj -c Release -- phases
+```
+
+Unlike `dense43`, that payload is NOT hermetic — it needs a solver, because a canned trace cannot
+tell you how the pipeline divides. Solving is now ~0.4 ms of a multi-second payload, so which backend
+runs is immaterial (see §6).
+
+### Where the time goes
+
+Release, warm, each phase timed separately:
+
+| goal | to_cnf | clausify | solve | **refute** | dedup | AC bridge | close | total |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|
+| chain 8 | 26.2 | 0.1 | 0.40 | **38.8** | 0.2 | 1.9 | 3.9 | 72 |
+| chain 32 | 32.7 | 0.0 | 0.37 | **219.9** | 0.3 | 0.7 | 1.4 | 255 |
+| pigeonhole 4→3 | 26.3 | 0.0 | 0.38 | **225.4** | 0.2 | 0.5 | 3.2 | 256 |
+| pigeonhole 5→4 | 84.3 | 0.1 | 0.44 | **2308.1** | 0.7 | 1.1 | 5.8 | 2401 |
+
+`refute` is 54% of a small goal and 96% of a large one, so it stays the target. Two side findings:
+
+- **The AC-normalize warning is refuted.** Böhme & Weber report that a rewriting-based AC treatment
+  is far too slow, and [`prover-z3-reconstruction.md`](prover-z3-reconstruction.md) §3 flagged that as
+  applying to our `normalize` / `_chain_simp` clause path, unmeasured. It is **0–3% of total**,
+  everywhere. Close that concern.
+- **`Cnf.to_cnf` is now the number-two cost** — a flat 26–84 ms, which is **43% of chain 8**. It is
+  the fixed tax that process spawn used to be (§6), and nobody has ever profiled it.
+
+### What drives per-step cost
+
+| goal | steps | links | links/step | max input width | max resolvent width | ms/step | **ms/link** |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| chain 8 | 8 | 8 | 1.0 | 2 | 1 | 4.9 | 4.85 |
+| chain 32 | 32 | 32 | 1.0 | 2 | 1 | 6.9 | 6.87 |
+| pigeonhole 4→3 | 15 | 59 | 3.9 | 3 | 4 | 15.0 | 3.82 |
+| pigeonhole 5→4 | 48 | 332 | 6.9 | 4 | 8 | 48.1 | 6.95 |
+
+`ms/step` spans 10×. Input clause width spans 2→4 and resolvent width 1→8; **neither tracks it**.
+**Links per step tracks it exactly**, and `ms/link` collapses into a 3.8–7.0 band across both shapes.
+A "step" is not a unit of work — `SAT.rup_chain` unfolds each LRAT hint chain into binary
+resolutions, and pigeonhole needs ~7 where a chain needs 1.
+
+### The second variable, isolated
+
+Control: the **same 3-link refutation in every row**, with `A` grown by hypotheses the proof can never
+use (fresh variables, so the trace is byte-identical):
+
+| pad | input literals | steps | links | refute ms | ms/link |
+|--:|--:|--:|--:|--:|--:|
+| 0 | 6 | 3 | 3 | 12.1 | 4.04 |
+| 8 | 22 | 3 | 3 | 29.0 | 9.65 |
+| 32 | 70 | 3 | 3 | 218.1 | 72.69 |
+
+Same proof, 18× the cost. Per-link cost is a function of `|A|` — linear or slightly worse.
+
+> **`refute` ≈ links × f(|A|).** Per-step cost follows LINKS, not clause width. Per-link cost follows
+> `|A|`, because every link's obligation is `A ⇒ clause` and `A` is the whole clause conjunction.
+
+That explains §1's dense-refutation numbers without appealing to width at all: pigeonhole 6→5 has
+both more links per step and a larger `A` than any chain.
+
+---
+
 ## 2. What changed, and what it cost
 
 Eight commits, `1668035`..`6a6dbf4`. Three lifted a wall; five were profile-driven micro-work.
@@ -114,6 +185,12 @@ This is the most reusable part. Do not redo these.
 - **`sprintf` → concatenation in the log headers.** Zero. F# caches literal format strings.
 - **`print_formula` is not 40% of runtime.** An earlier claim of mine. That measurement included
   console I/O and eager `Theorem.Name`; both are gone.
+- **Clause width does not drive per-step replay cost** (2026-08-04, §1b). It was §5.4's named
+  suspect. Across chains and pigeonholes, input width spans 2→4 and resolvent width 1→8 while
+  `ms/step` spans 10×; neither correlates. RUP **links per step** does, exactly.
+- **The AC-`normalize` bridge is not slow** (2026-08-04, §1b). Böhme & Weber's warning that
+  rewriting-based AC is far too slow was flagged as applying to our clause path and is now measured:
+  **0–3% of total**, on every shape. Withdrawn.
 
 ### The two lessons behind those
 
@@ -139,6 +216,14 @@ dotnet run --project tests/Sylvia.Tests.Perf/Sylvia.Tests.Perf.fsproj -c Release
 runs and the profile is entirely Sylvia-side replay. A guard fails loudly if clausification output
 drifts from what the traces were generated against.
 
+```bash
+dotnet run --project tests/Sylvia.Tests.Perf/Sylvia.Tests.Perf.fsproj -c Release -- phases
+```
+
+`-- phases` is the §1b payload: the phase split, the per-step structure table, and the `|A|` control.
+It is the one measurement here that is NOT hermetic — a canned trace cannot tell you how the pipeline
+divides — so it needs a solver, and it prints a skip message rather than failing if none is found.
+
 - **Build Release.** Every `.fsx` under `examples/` references Debug DLLs, and Debug is ~1.5× slower.
 - **Measure warm.** A fresh `dotnet run` spends over a second in JIT on a 600 ms payload. `runDense`
   repeats the payload; read runs 2+. Three of this session's early conclusions were noise read as
@@ -150,18 +235,39 @@ drifts from what the traces were generated against.
 
 ## 5. What to try next, ranked
 
-1. **Re-profile first.** Every model I had of where the time goes was falsified by measurement, and
-   the last CPU profile predates the `AxEquiv` and `print_formula` caches — so whatever is underneath
-   them has never been visible. Do this before picking a target.
-2. **Named candidates not yet tested**: an allocation-free `specific_call` (was 5.4% self CPU),
-   `traverse` without `ExprShape` (4.8%), and the source of `FSharpExpr.Deserialize40` (3.7%, not
-   located — the `EquationalLogic` templates are already hoisted and `Term.(==)` was a red herring).
-   All three are in the "asking quotations what they are" family, which the CPU view kept pointing at.
-3. **`state <- state @ [(_state, msg)]`** in the `Proof` step loop is an O(n) append per step, so
+Reordered after the §1b reprofile. Items 1 and 4 of the previous list are DONE and REFUTED
+respectively; the rest carry over.
+
+1. **Get `A` out of the per-link obligation.** This is the deepest lever the cost model exposes.
+   Every one of pigeonhole 5→4's 332 links proves `A ⇒ clause`, so each manipulates a term carrying
+   all 100 input literals — and the control experiment shows that factor is the whole story. It is
+   not inherent to the refutation: working with bare clauses under an assumption and discharging once
+   would make per-link cost O(clause) instead of O(|A|). **This is a design job, not a drop-in** —
+   `Deduce` / `Deduce'` in `Proof.fs` are substitution devices, not a hypothesis-discharge rule, so
+   the deduction-theorem shape has to be built and its soundness argued.
+2. **Shrink `A` to the clauses the refutation actually uses.** The cheap version of item 1, and it
+   needs no new kernel capability: the LRAT antecedents already name the used clauses, so prove
+   `A_used ⇒ F` and weaken to `A ⇒ F` once at the end. **Scope honestly** — on chains and pigeonhole
+   every clause is used, so this buys nothing on the benchmark shapes. It is worth 18× on the §1b
+   control, and the control is the shape of a real Sledgehammer-style call carrying a fact list.
+   `SAT.Native` already exposes assumption cores (`sc_failed`), which gives the minimized hypothesis
+   set for free; it is not yet surfaced through `ISatBackend`.
+3. **Cut links.** `rup_chain` unfolds every LRAT hint chain into binary resolutions — 48 steps become
+   332 links on pigeonhole 5→4. Fewer, larger kernel steps would cut the multiplier directly, but
+   needs a resolution rule that consumes a whole propagation chain at once.
+4. **Profile `Cnf.to_cnf`.** Flat 26–84 ms and never looked at; it is 43% of a small goal now that the
+   solver is free. The first thing to establish is whether it is the clausification or the kernel
+   equivalence proof.
+5. **Named candidates not yet tested** (carried over): an allocation-free `specific_call` (was 5.4%
+   self CPU), `traverse` without `ExprShape` (4.8%), and the source of `FSharpExpr.Deserialize40`
+   (3.7%, not located — the `EquationalLogic` templates are already hoisted and `Term.(==)` was a red
+   herring). All three are in the "asking quotations what they are" family.
+6. **`state <- state @ [(_state, msg)]`** in the `Proof` step loop is an O(n) append per step, so
    O(n²) per proof. Harmless for the 1–4-step proofs the replay builds; would bite a long derivation.
-4. **Dense refutations are the real frontier**, not chains. If the goal is a capability rather than a
-   number, the question is what makes pigeonhole 6→5 cost 215 ms per LRAT step when a chain step
-   costs 21 ms — clause width is the obvious suspect and has never been isolated.
+7. **Schema coverage.** Böhme & Weber wrap 230+ schematic theorems, covering 76% of their `rewrite`
+   obligations; we wrap six (five in `SatProof`, plus `trans_implies` in `Calc`). `Tactics.Schema` was
+   the single biggest win to date, so more of it is tempting — but the cost model says per-link cost
+   is dominated by `|A|`, not by how a link's lemma is obtained, so measure before investing.
 
 ---
 
@@ -171,6 +277,13 @@ drifts from what the traces were generated against.
   Without it the process dies with `0xC0000135` and the wrapper reports "the solver exited without a
   verdict", which looks exactly like a solver bug. `dotnet test` from PowerShell fails three SAT
   tests this way; from the Bash/MSYS shell it passes. **Run the gate from Bash.**
+- **The native backend avoids that entirely** (2026-08-04). `SAT.Native.CadicalNative` calls
+  `bin/sylvia_cadical.dll` in process; it is statically linked and loads from a plain Windows process
+  with nothing on PATH. It also removes the CLI's fixed **~18.5 ms per solve** of process spawn and
+  DIMACS/LRAT file round-trip — measured constant across every goal shape, because CaDiCaL's actual
+  solving at our sizes is sub-millisecond. Solve went 18.5 ms → 0.26 ms. That is 65% of a small
+  goal's total and 4% of a large one's, which is why §1b now shows solving as a rounding error.
+  Point it somewhere else with `SYLVIA_CADICAL_NATIVE`. See `examples/sat/NativeBench.fsx`.
 - An IDE-hosted FSI session (`--fsi-server`) locks `Sylvia.Prover.dll` and blocks builds.
 - In `.fsx` here, `set [...]` resolves to Sylvia's set-comprehension builder — use `Set.ofList`.
 - Do not `open Sylvia.Tactics` in a script that opens `PropCalculus`; it shadows the specialized

@@ -288,7 +288,10 @@ module ReconstructionDense =
         if cnf.NumVars <> expectVars || List.length cnf.Clauses <> expectClauses then
             failwithf "canned LRAT is stale: clausification now gives %d vars / %d clauses, trace was generated against %d / %d — regenerate it (see the module comment)"
                       cnf.NumVars (List.length cnf.Clauses) expectVars expectClauses
-        let A, rOpt = SatProof.refute cnf (parse_lrat lrat)                // STEP 1: R : A ⇒ F
+        // `[]` for the input-clause ids: a TEXT LRAT proof always numbers them 1..m, because
+        // CaDiCaL's DIMACS parser reserves that range from the `p cnf` header. Only clauses fed
+        // through the C++ API get other ids, which is why the native backend reports its own.
+        let A, rOpt = SatProof.refute cnf [] (parse_lrat lrat)             // STEP 1: R : A ⇒ F
         let rTh = match rOpt with
                   | Some t -> t
                   | None -> failwith "canned LRAT never derives the empty clause"

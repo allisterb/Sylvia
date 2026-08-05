@@ -94,5 +94,8 @@ let main argv =
     | [| "micro" |] -> runMicro ()
     | [| "dense" |] -> runDense false
     | [| "dense43" |] -> runDense true
+    // Not hermetic — needs a solver, because the phase split is not reconstructible from a canned
+    // trace. See Profile.fs.
+    | [| "phases" |] -> Profile.runPhases ()
     | _ -> runMicro (); runReconstruction ()
     0
