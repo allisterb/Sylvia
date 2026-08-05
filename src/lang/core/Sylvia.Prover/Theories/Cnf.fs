@@ -60,7 +60,11 @@ module Cnf =
 
     (* ---- congruence + equality plumbing (compose equational sub-proofs) ---- *)
 
-    let private refl (e: Prop) : Theorem = theorem prop_calculus (e == e) [ ident_eq (e == e) ]
+    let private refl_impl (e: Prop) : Theorem = theorem prop_calculus (e == e) [ ident_eq (e == e) ]
+    /// Fires at every atom and every finished clause. Cheaper than the rewrite lemmas below but not
+    /// free — 89 us at an atom, 196 us at an 8-literal clause — and schema instantiation serves it
+    /// in 12 / 46 us. See the note beside the rewrite lemmas for why memoization does not apply.
+    let private refl = Tactics.Schema.p1 "cnf_refl" refl_impl
 
     /// `x == y` and `y == z`  ⟼  `x == z`  (rewrite the LHS through both).
     let private transEq (p1: Theorem) (p2: Theorem) : Theorem =
@@ -86,27 +90,56 @@ module Cnf =
 
     (* ---- one-step equality lemmas, as Theorems (so they compose with transEq) ---- *)
 
-    let private implEq (x: Prop) (y: Prop) : Theorem =
+    let private implEq_impl (x: Prop) (y: Prop) : Theorem =
         theorem prop_calculus ((x ==> y) == (-x + y)) [ ident_implies_not_or x y |> apply ]
-    let private dnegEq (x: Prop) : Theorem =
+    let private dnegEq_impl (x: Prop) : Theorem =
         theorem prop_calculus ((-(-x)) == x) [ double_negation x |> apply ]
-    let private dmOrEq (x: Prop) (y: Prop) : Theorem =                         // Gries 3.47b
+    let private dmOrEq_impl (x: Prop) (y: Prop) : Theorem =                    // Gries 3.47b
         theorem prop_calculus ((-(x + y)) == (-x * -y)) [ distrib_not_or x y |> apply ]
-    let private dmAndEq (x: Prop) (y: Prop) : Theorem =                        // Gries 3.47a
+    let private dmAndEq_impl (x: Prop) (y: Prop) : Theorem =                   // Gries 3.47a
         theorem prop_calculus ((-(x * y)) == (-x + -y)) [ distrib_not_and x y |> apply ]
-    let private xorEq (x: Prop) (y: Prop) : Theorem =                          // Gries 3.10
+    let private xorEq_impl (x: Prop) (y: Prop) : Theorem =                     // Gries 3.10
         theorem prop_calculus ((x != y) == (-(x == y))) [ def_not_eq x y |> apply ]
-    let private iffEq (x: Prop) (y: Prop) : Theorem =
+    let private iffEq_impl (x: Prop) (y: Prop) : Theorem =
         theorem prop_calculus ((x == y) == ((x ==> y) * (y ==> x))) [ mutual_implication' x y |> Commute |> apply ]
     // ∨ distributes over ∧, both orientations.
-    let private dorL (a: Prop) (u: Prop) (v: Prop) : Theorem =
+    let private dorL_impl (a: Prop) (u: Prop) (v: Prop) : Theorem =
         theorem prop_calculus ((a + (u * v)) == ((a + u) * (a + v))) [ distrib_or_and a u v |> apply ]
-    let private dorR (x: Prop) (y: Prop) (a: Prop) : Theorem =
+    let private dorR_impl (x: Prop) (y: Prop) (a: Prop) : Theorem =
         theorem prop_calculus (((x * y) + a) == ((x + a) * (y + a))) [
             commute_or (x * y) a |> at_left
             distrib_or_and a x y |> at_left
             commute_or a x |> at [ left_branch; left_branch ]
             commute_or a y |> at [ left_branch; right_branch ] ]
+
+    /// Each of the lemmas above is a schema over arbitrary propositions, and the conversion applies
+    /// them once per NODE — so written as plain F# functions they replay their whole derivation at
+    /// the caller's arguments, every time, and those arguments are whole subformulas.
+    ///
+    /// `Tactics.Schema` derives each ONE time at metavariables and serves every later call by
+    /// substitution. Measured at fresh arguments (Release, 2026-08-04), which is the case that
+    /// matters because a conversion never sees the same subformula twice:
+    ///
+    ///     implEq   1233 → 27 us   (46x)      dmAndEq  2599 → 34 us   (77x)
+    ///     dorL      677 → 33 us   (21x)
+    ///     at 8-literal compound arguments: implEq 1742 → 108 (16x), dorL 2122 → 107 (20x)
+    ///
+    /// For an implication chain the whole conversion cost was ~1.1 ms per clause and `implEq` alone
+    /// accounted for essentially all of it. Same device `SatProof` uses for its five hot lemmas, and
+    /// for the same reason; memoization cannot substitute for it, because the arguments are distinct
+    /// at every node.
+    ///
+    /// `transEq` / `congAnd` / `congOr` / `congNot` are NOT wrapped: they take Theorems rather than
+    /// Props, so their statements depend on the arguments' statements and there is no fixed schema
+    /// to instantiate.
+    let private implEq = Tactics.Schema.p2 "cnf_implEq" implEq_impl
+    let private dnegEq = Tactics.Schema.p1 "cnf_dnegEq" dnegEq_impl
+    let private dmOrEq = Tactics.Schema.p2 "cnf_dmOrEq" dmOrEq_impl
+    let private dmAndEq = Tactics.Schema.p2 "cnf_dmAndEq" dmAndEq_impl
+    let private xorEq = Tactics.Schema.p2 "cnf_xorEq" xorEq_impl
+    let private iffEq = Tactics.Schema.p2 "cnf_iffEq" iffEq_impl
+    let private dorL = Tactics.Schema.p3 "cnf_dorL" dorL_impl
+    let private dorR = Tactics.Schema.p3 "cnf_dorR" dorR_impl
 
     (* ---- the truth constants ---- *)
 

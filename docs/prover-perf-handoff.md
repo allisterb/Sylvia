@@ -94,7 +94,8 @@ runs is immaterial (see §6).
 
 ### Where the time goes
 
-Release, warm, each phase timed separately:
+Release, warm, each phase timed separately. **These are the numbers BEFORE §5.1 landed** — they are
+what the diagnosis below was made from; for the current split see the end of this section:
 
 | goal | to_cnf | clausify | solve | **refute** | dedup | AC bridge | close | total |
 |---|--:|--:|--:|--:|--:|--:|--:|--:|
@@ -188,6 +189,30 @@ Measured one goal per fresh process (`-- model "<goal>"`):
    unfolds each LRAT step into 1 link on a chain and 12.1 on pigeonhole 6→5.
 4. **Everything grows with `|A|`,** in direction if not by a reliable exponent — `A` is in the
    statement of every setup implication and every link's obligation.
+
+### The split after §5.1 landed
+
+Two `-- phases` runs, for the shares rather than the absolute times (which drift in-process):
+
+Shares, three runs, after BOTH §5.1 (the `Establish` rewiring) and §5.5 (schema-wrapping `Cnf`'s
+lemmas):
+
+| goal | to_cnf | refute | AC bridge | total ms |
+|---|--:|--:|--:|--:|
+| chain 8 | 59–60% | 22% | 18–19% | 10 |
+| chain 16 | 57–59% | 36–38% | 5% | 15–16 |
+| chain 24 | 61–62% | 34% | 4% | 25 |
+| chain 32 | 63–67% | 28–33% | 4–5% | 38–58 |
+| pigeonhole 4→3 | 34–38% | 59–64% | 3% | 50–67 |
+| pigeonhole 5→4 | 9–14% | 85–90% | 1–2% | 231–295 |
+
+**The picture inverted twice.** `refute` was 54–96% before §5.1; removing the carried antecedent
+dropped it to 7–14% on chains and left `Cnf.to_cnf` at 84–88%. Schema-wrapping `Cnf`'s lemmas then
+took `to_cnf` down 3–7×, landing both phases in the same range on chains. Dense goals remain
+replay-bound (85–90%), and chains — what real callers actually hit — are now split roughly 60/30
+between conversion and replay, with **whole-pipeline totals down ~2.5–3×**.
+
+`ms/link` in the replay is now 0.27–0.75 across every shape, where before §5.1 it tracked `|A|`.
 
 ---
 
@@ -351,19 +376,31 @@ respectively; the rest carry over.
    `conj_elim_all` is no longer called by it, and `resolveUnder` / `conj` / `mp` /
    `combine_implies` are deleted.
 
-   | goal | refute before | refute after | |
-   |---|--:|--:|--:|
-   | chain 8 | 35.4 | 2.2 | 16× |
-   | chain 16 | 98.1 | 5.4 | 18× |
-   | chain 32 | 184.3 | 12.4 | 15× |
-   | pigeonhole 4→3 | 253.9 | 45.7 | 6× |
-   | pigeonhole 5→4 | 2536.5 | 344.4 | 7× |
-   | **pigeonhole 6→5** | **34183** | **1779** | **19×** |
+   `refute`, one goal per fresh process on both sides (`-- model "<goal>"`) — do NOT compare a
+   `-- phases` number against a `-- model` one, they differ by the in-process contamination §1b
+   describes:
 
-   Predicted 10–30×; measured 6–19× on `refute`, and `ms/link` fell from 3.8–7.0 to 0.39–1.04. The
-   estimate was in band for once — worth noting after §1b's law and item 3's micro-benchmark both
-   missed by an order of magnitude. What made the difference is that this one was interpolating
-   between two things that had been *measured*, not extrapolating from one.
+   | goal | \|A\| | links | before | after | | ms/link before → after |
+   |---|--:|--:|--:|--:|--:|---|
+   | chain 16 | 32 | 16 | 176.2 | 4.2 | **42×** | — → 0.26 |
+   | chain 32 | 64 | 32 | 373.4 | 10.6 | **35×** | — → 0.33 |
+   | pigeonhole 4→3 | 48 | 59 | 717.5 | 37.8 | **19×** | 3.8 → 0.64 |
+   | pigeonhole 5→4 | 100 | 332 | 2465.9 | 329.8 | **7.5×** | 5.7 → 0.99 |
+   | **pigeonhole 6→5** | 180 | 1886 | **34182.5** | **1750.1** | **20×** | 17.4 → 0.94 |
+
+   Predicted 10–30×; measured 7.5–42×. **`ms/link` is now flat at ~0.26–1.0 where it used to track
+   `|A|`** — which is the whole point: the per-link cost no longer scales with problem size. That
+   also explains why the multiplier varies: it is largest where `|A|` was largest, and chains gain
+   most of all because their `conj_elim_all` was ~95% of `refute` and is simply gone.
+
+   The estimate landing in band matters after §1b's law and item 3's micro-benchmark both missed by
+   an order of magnitude. The difference: this one interpolated between two *measured* quantities
+   rather than extrapolating from one.
+
+   **The new path is also far more reproducible.** Three fresh processes per goal now agree to ±3%
+   (pigeonhole 6→5: 1772.9 / 1671.1 / 1750.1; chain 32: 10.6 / 10.8 / 10.4). The old path gave chain
+   32 as 371 / 378 / **512** — a 35% outlier that §1b had to warn about. Building thousands of
+   `|A|`-sized theorems made GC variance dominate; small ones do not.
 
    **One kernel fix was needed along the way**, and it is the sort that only shows up on contact:
    `Formula.Argument` reports a conjunctive antecedent as the whole conjunction PLUS its parts, so a
@@ -404,9 +441,33 @@ respectively; the rest carry over.
 4. **Cut links.** `rup_chain` unfolds every LRAT hint chain into binary resolutions — 48 steps become
    332 links on pigeonhole 5→4. Fewer, larger kernel steps would cut the multiplier directly, but
    needs a resolution rule that consumes a whole propagation chain at once.
-5. **Profile `Cnf.to_cnf`.** Flat 26–84 ms and never looked at; it is 43% of a small goal now that the
-   solver is free. The first thing to establish is whether it is the clausification or the kernel
-   equivalence proof.
+5. **`Cnf.to_cnf` — profiled at last, and 3–7× taken off it.** It was 43% of a small goal when the
+   solver went free, then **84–88% of every chain** once §5.1 landed. Now 57–67%: still the largest
+   single phase on chains, but no longer overwhelming.
+
+   **It is entirely the PROOF, not the clausification.** `SAT.cnf_of_negated_goal` does the same job
+   — clausify `¬goal` — with no proof at all, and the gap was **212–743×** (0.02–0.5 ms against
+   13–80 ms). Cost was ~1.1 ms per clause on a chain, where the input is already a conjunction of
+   clauses and there is no distribution to do whatsoever.
+
+   The cause: `Cnf`'s nine per-node lemmas (`implEq`, `dnegEq`, `dmOrEq`, `dmAndEq`, `xorEq`,
+   `iffEq`, `dorL`, `dorR`, `refl`) were plain F# functions, so each call replayed its whole
+   derivation at the caller's arguments — the exact problem `Tactics.Schema` exists for, and which
+   `SatProof` had already applied to its own five hot lemmas. `Cnf` had none of them wrapped.
+   Measured per call at fresh arguments: `implEq` 1233 → 27 µs (**46×**), `dmAndEq` 2599 → 34 µs
+   (**77×**), `dorL` 677 → 33 µs (**21×**), `refl` 89 → 12 µs.
+
+   End to end, `to_cnf` (three `-- phases` runs): chain 8 **17.5–24.0 → 2.8**, chain 16 **30.4 → 5.6**,
+   chain 24 **47–79 → 11.3**, chain 32 **89–107 → 15–26**, pigeonhole 4→3 **56–61 → 15**. Whole-pipeline
+   totals fell ~2.5–3× on chains. Gate 135/135, sweep ALL CLEAR, all eight examples green.
+
+   **A caution for whoever picks this up**: the per-lemma micro-benchmark said 16–77×, the end-to-end
+   result is 3–7×. `implEq` was not the whole per-clause cost — that is the third time a
+   micro-benchmark has overstated an end-to-end win in this document. What remains is `transEq` /
+   `congAnd` / `congOr` / `congNot`, one or more per node, each over the subformula at that node.
+   They take **Theorems** rather than Props, so their statements depend on their arguments' statements
+   and there is no fixed schema to instantiate — a different and harder problem than the one just
+   fixed.
 6. **Named candidates not yet tested** (carried over): an allocation-free `specific_call` (was 5.4%
    self CPU), `traverse` without `ExprShape` (4.8%), and the source of `FSharpExpr.Deserialize40`
    (3.7%, not located — the `EquationalLogic` templates are already hoisted and `Term.(==)` was a red
