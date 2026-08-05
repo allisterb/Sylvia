@@ -63,7 +63,6 @@ module SatProof =
     /// This is confined to the reconstruction rather than pushed into `PropCalculus` itself, so no
     /// existing proof changes shape. Promoting the wrappers upstream is a separate decision.
     let private resolve = Tactics.Schema.p3 "sat_resolve" resolve
-    let private combine_implies = Tactics.Schema.p3 "sat_combine_implies" combine_implies
     let private strengthen_and = Tactics.Schema.p2 "sat_strengthen_and" strengthen_and
     let private weaken_or = Tactics.Schema.p2 "sat_weaken_or" weaken_or
     let private reflex_implies = Tactics.Schema.p1 "sat_reflex_implies" reflex_implies
@@ -78,16 +77,6 @@ module SatProof =
         | Equals(x, _), Equals(_, z) ->
             theorem prop_calculus (pOf x == pOf z) [ Ident p1 |> apply_left; Ident p2 |> apply_left ]
         | _ -> failwithf "SatProof.transEq: not equalities: %s / %s" (src p1.Stmt) (src p2.Stmt)
-
-    /// `⊢ x`, `⊢ y`  ⟼  `⊢ x ∧ y`.
-    let private conj (t1: Theorem) (t2: Theorem) (x: Prop) (y: Prop) : Theorem =
-        theorem prop_calculus (x * y) [ Taut t1 |> apply_left; Taut t2 |> apply_right; reduce |> apply ]
-
-    /// `⊢ P`, `⊢ (P ⇒ Q)`  ⟼  `⊢ Q`.
-    let private mp (factP: Theorem) (impl: Theorem) (pP: Prop) (qQ: Prop) : Theorem =
-        theorem prop_calculus qQ [ ident_conseq_true qQ |> Commute |> apply
-                                   Taut factP |> Commute |> apply_left
-                                   Taut impl |> apply ]
 
     let private elimR_impl (x: Prop) (y: Prop) : Theorem =                     // (x ∧ y) ⇒ y
         theorem prop_calculus (x * y ==> y) [ commute_and x y; strengthen_and y x |> Taut |> apply ]
@@ -239,10 +228,8 @@ module SatProof =
         let inputs = cnf.Clauses |> List.map (clause_prop cnf)
         let A = inputs |> List.reduceBack (*)
         let lits = Dictionary<int, int list>()
-        let imp = Dictionary<int, Theorem>()                        // id ⟼ A ⇒ cp(lits[id])
-        let elims = conj_elim_all inputs
         match originals with
-        | [] -> cnf.Clauses |> List.iteri (fun i c -> lits.[i + 1] <- c; imp.[i + 1] <- elims.[i])
+        | [] -> cnf.Clauses |> List.iteri (fun i c -> lits.[i + 1] <- c)
         | os ->
             // The tracer reports originals in the order they were added, so the i-th corresponds to
             // `cnf.Clauses.[i]`. Both the count and the literals are checked, because getting this
@@ -255,19 +242,16 @@ module SatProof =
                     if List.sort reported <> List.sort c then
                         failwithf "SatProof: input clause %d was traced as %A but the CNF has %A"
                                   i reported c
-                    lits.[id] <- c
-                    imp.[id] <- elims.[i])
+                    lits.[id] <- c)
                 os cnf.Clauses
         let clauseOf id = match lits.TryGetValue id with | true, c -> Some c | _ -> None
-        // A ⇒ cp xs  and  A ⇒ cp ys  ⟼  A ⇒ cp out   (one resolution, under the antecedent A)
-        let resolveUnder (impX: Theorem) (impY: Theorem) xs ys pv out =
-            let apos, aneg = if List.contains pv xs then xs, ys else ys, xs
-            let impPos, impNeg = if apos = xs then impX, impY else impY, impX
-            let cPos, cNeg = clause_prop cnf apos, clause_prop cnf aneg
-            let both = conj impPos impNeg (A ==> cPos) (A ==> cNeg)
-            let aToBoth = mp both (combine_implies A cPos cNeg) ((A ==> cPos) * (A ==> cNeg)) (A ==> (cPos * cNeg))
-            Calc.chain_imp aToBoth (resolveStep cnf apos aneg pv out)
-        let mutable r = None
+
+        // Each link becomes ONE `Establish` of `resolveStep`'s clause-scale theorem. The premises are
+        // covered because the running clause is either an input clause (a conjunct of A) or the
+        // resolvent the previous link established, and `clause_prop` is deterministic so the two
+        // occurrences are structurally equal — which is what Δ matches on.
+        let plan = ResizeArray<RuleApplication>()
+        let mutable closing: Theorem option = None
         for step in steps do
             match step with
             | Delete _ -> ()
@@ -276,14 +260,37 @@ module SatProof =
                 | Error e -> failwithf "SatProof: LRAT step %d: %s" id e
                 | Ok chain ->
                     let mutable cur = lits.[chain.Start]
-                    let mutable curImp = imp.[chain.Start]
+                    let mutable last = None
                     for link in chain.Links do
-                        curImp <- resolveUnder curImp imp.[link.Antecedent] cur lits.[link.Antecedent] link.Pivot link.Result
+                        let ys = lits.[link.Antecedent]
+                        let apos, aneg = if List.contains link.Pivot cur then cur, ys else ys, cur
+                        let t = resolveStep cnf apos aneg link.Pivot link.Result
+                        plan.Add(Establish t |> apply)
+                        last <- Some t
                         cur <- link.Result
+                    // The chain may derive a clause STRONGER than the one the step declares; weaken
+                    // to the declared one so later steps find it under the id they reference.
+                    if cur <> cl then
+                        let t = clauseImp cnf cur cl
+                        plan.Add(Establish t |> apply)
+                        last <- Some t
                     lits.[id] <- cl
-                    imp.[id] <- if cur = cl then curImp else Calc.chain_imp curImp (clauseImp cnf cur cl)
-                    if List.isEmpty cl then r <- Some imp.[id]
-        A, r
+                    if List.isEmpty cl then
+                        // `F` is now established. Keep the theorem that concluded it to close with.
+                        closing <-
+                            match last with
+                            | Some _ -> last
+                            // Degenerate: the referenced clause was already empty, so nothing was
+                            // derived and `F` is covered directly.
+                            | None -> Some(reflex_implies F)
+
+        match closing with
+        | None -> A, None
+        | Some final ->
+            // One kernel proof for the whole refutation: establish every derived clause under A,
+            // then discharge `F` in the consequent and reduce `A ⇒ T` to `T`.
+            let steps = List.ofSeq plan @ [ Deduce final |> apply_right; reduce |> apply ]
+            A, Some(theorem prop_calculus (A ==> F) steps)
 
     (* ---------------------------------------------------------------------- *)
     (* STEP 2 and the public entry points                                       *)

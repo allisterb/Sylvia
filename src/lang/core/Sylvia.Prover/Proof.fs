@@ -290,10 +290,21 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
             let xs = ResizeArray<Expr>()
             xs.Add e
             established.[k] <- xs
-    /// A premise is available if it is a conjunct of the goal's antecedent, or was established
-    /// earlier in this same proof.
-    let is_covered (conjuncts: Expr list) (v: Expr) =
-        (conjuncts |> List.exists (fun v' -> sequal v v')) || is_established v
+    /// A premise is available if it is a conjunct of the goal's antecedent, was established earlier
+    /// in this same proof, or is a CONJUNCTION whose parts are each available.
+    ///
+    /// The last clause matters because `Formula.Argument` reports a conjunctive antecedent as the
+    /// whole conjunction PLUS its parts, so a two-premise theorem `(P ∧ Q) ⇒ R` asks for `P ∧ Q`
+    /// itself — which is present only if the goal happens to conjoin them in exactly that order.
+    /// Splitting is sound in the obvious direction: if `A ⊨ P` and `A ⊨ Q` then `A ⊨ P ∧ Q`. It does
+    /// not loosen the guard on the leaves, so a theorem asking for something genuinely unavailable
+    /// is still refused, naming it.
+    let rec is_covered (conjuncts: Expr list) (v: Expr) =
+        (conjuncts |> List.exists (fun v' -> sequal v v'))
+        || is_established v
+        || (match v with
+            | And(l, r) -> is_covered conjuncts l && is_covered conjuncts r
+            | _ -> false)
     do if theory |- a  then
             if prooflog_on then
                 let axeq = theory.Axioms a

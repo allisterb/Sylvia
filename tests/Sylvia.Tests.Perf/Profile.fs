@@ -243,9 +243,9 @@ module Profile =
             let cnf = SatProof.clauses_of goal cnfProp
             cnf, sat.Run cnf
 
-        printfn "%-14s %5s %6s %7s %9s %9s %9s %7s %10s %8s"
-                "goal" "cls" "|A|" "links" "setupMs" "loopMs" "refuteMs" "setup%" "fitted" "err"
-        printfn "%s" (String.replicate 100 "-")
+        printfn "%-14s %5s %6s %7s %7s %11s %10s %10s"
+                "goal" "cls" "|A|" "steps" "links" "refuteMs" "ms/step" "ms/link"
+        printfn "%s" (String.replicate 78 "-")
 
         let row (label: string) (mk: string -> Prop) =
           if only.IsNone || only = Some label then
@@ -256,16 +256,12 @@ module Profile =
             quiet (fun () -> SatProof.prove_with sat (chain "warm2" 6)) |> ignore
             // Setup and refute are timed on separate, structurally identical goals: measuring both
             // on one goal would let the first warm `elimR`'s memo for the second.
-            let cnfS, _ = prep (mk "s")
-            let _, tSetup = ms (fun () -> SatProof.conj_elim_all (cnfS.Clauses |> List.map (clause_prop cnfS)))
             let cnfR, runR = prep (mk "r")
             let _, tRefute = ms (fun () -> SatProof.refute cnfR runR.Originals runR.Steps)
             let s = traceStats cnfR runR
-            let cls = cnfR.Clauses.Length
-            let pred = predict cls s.InputLits s.Links
-            printfn "%-14s %5d %6d %7d %9.1f %9.1f %9.1f %6.0f%% %10.0f %7.0f%%"
-                    label cls s.InputLits s.Links tSetup (tRefute - tSetup) tRefute
-                    (100.0 * tSetup / tRefute) pred (100.0 * (pred - tRefute) / tRefute)
+            printfn "%-14s %5d %6d %7d %7d %11.1f %10.2f %10.3f"
+                    label cnfR.Clauses.Length s.InputLits s.Steps s.Links tRefute
+                    (tRefute / float s.Steps) (tRefute / float s.Links)
 
         row "chain 8"   (fun t -> chain t 8)
         row "chain 16"  (fun t -> chain t 16)
@@ -396,9 +392,9 @@ module Profile =
                 acEq (cp out) (C + D) |> at [ right_branch ]
                 resolveS C D v |> Taut |> apply ]
 
-        printfn "%-14s %6s %8s %11s %11s %10s %11s"
-                "goal" "links" "|A|" "loop ms" "A-free ms" "A-free%" "loop ceiling"
-        printfn "%s" (String.replicate 76 "-")
+        printfn "%-14s %6s %8s %11s %11s %10s"
+                "goal" "links" "|A|" "refute ms" "A-free ms" "ratio"
+        printfn "%s" (String.replicate 64 "-")
 
         let row (label: string) (mk: string -> Prop) =
             quiet (fun () -> SatProof.prove_with sat (chain "warm" 6)) |> ignore
@@ -407,8 +403,6 @@ module Profile =
                 let (cnfProp, _) = quiet (fun () -> Cnf.to_cnf !!g)
                 let cnf = SatProof.clauses_of g cnfProp
                 cnf, sat.Run cnf
-            let cnfS, _ = prep "s"
-            let _, tSetup = ms (fun () -> SatProof.conj_elim_all (cnfS.Clauses |> List.map (clause_prop cnfS)))
             let cnfR, runR = prep "r"
             let _, tRefute = ms (fun () -> SatProof.refute cnfR runR.Originals runR.Steps)
 
@@ -439,15 +433,15 @@ module Profile =
                             links <- links + 1
                             cur <- l.Result
                     lits.[id] <- cl
-            let loop = tRefute - tSetup
-            printfn "%-14s %6d %8d %11.1f %11.1f %9.0f%% %10.0fx"
-                    label links (cnfR.Clauses |> List.sumBy List.length) loop tFree
-                    (100.0 * tFree / loop) (loop / tFree)
+            printfn "%-14s %6d %8d %11.1f %11.1f %9.2f"
+                    label links (cnfR.Clauses |> List.sumBy List.length) tRefute tFree
+                    (tRefute / tFree)
 
         row "chain 16" (fun t -> chain t 16)
         row "chain 32" (fun t -> chain t 32)
         row "php 4→3" (fun t -> pigeonhole t 4 3)
         row "php 5→4" (fun t -> pigeonhole t 5 4)
-        printfn "\nChains look poor only because they are SETUP-bound; setup does not get faster"
-        printfn "under §5.1, it disappears. See the handoff for the combined estimate."
+        printfn "\nBefore §5.1 landed this ratio was 14-25x: `refute` cost that much more than the"
+        printfn "bare inference it wraps. At ~1 the antecedent is no longer carried, so the wrapper"
+        printfn "is gone. (Under 1 only means the standalone walk misses warmth `refute` now shares.)"
         Proof.LogLevel <- 1

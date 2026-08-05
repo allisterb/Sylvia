@@ -345,13 +345,36 @@ respectively; the rest carry over.
    And "verify the body used only the declared assumptions" needed no axiom-firing record, because
    the check is local to each step.
 
-   **What remains is the `SatProof` rewiring**, and it is not small. `refute` currently threads
-   `A ⇒ ·` explicitly and returns `A, Theorem option`; under `Establish` it would instead emit a step
-   list — one `Establish` per link carrying `resolveStep`'s clause-scale theorem, then a closing
-   `Deduce` — to be run inside a single `theorem prop_calculus (A ==> F) [...]`. `conj_elim_all` and
-   the `resolveUnder` plumbing (`conj`, `combine_implies`, `mp`, `chain_imp`) all go away. Do it
-   behind the existing `-- model` / `-- ceiling` measurements so the predicted 10–30× is checked
-   rather than assumed.
+   **DONE, and the prediction held.** `refute` now emits one `Establish` per link carrying
+   `resolveStep`'s clause-scale theorem, then closes with `Deduce` of the theorem concluding `F` and
+   a `reduce` of `A ⇒ T`, all inside a single `theorem prop_calculus (A ==> F) [...]`.
+   `conj_elim_all` is no longer called by it, and `resolveUnder` / `conj` / `mp` /
+   `combine_implies` are deleted.
+
+   | goal | refute before | refute after | |
+   |---|--:|--:|--:|
+   | chain 8 | 35.4 | 2.2 | 16× |
+   | chain 16 | 98.1 | 5.4 | 18× |
+   | chain 32 | 184.3 | 12.4 | 15× |
+   | pigeonhole 4→3 | 253.9 | 45.7 | 6× |
+   | pigeonhole 5→4 | 2536.5 | 344.4 | 7× |
+   | **pigeonhole 6→5** | **34183** | **1779** | **19×** |
+
+   Predicted 10–30×; measured 6–19× on `refute`, and `ms/link` fell from 3.8–7.0 to 0.39–1.04. The
+   estimate was in band for once — worth noting after §1b's law and item 3's micro-benchmark both
+   missed by an order of magnitude. What made the difference is that this one was interpolating
+   between two things that had been *measured*, not extrapolating from one.
+
+   **One kernel fix was needed along the way**, and it is the sort that only shows up on contact:
+   `Formula.Argument` reports a conjunctive antecedent as the whole conjunction PLUS its parts, so a
+   two-premise theorem `(P ∧ Q) ⇒ R` asks for `P ∧ Q` *itself* — present only if the goal conjoins
+   them in exactly that order. Every prior `Deduce` caller passed a single-premise theorem, so
+   nothing had exercised it. `is_covered` now splits conjunctions recursively (sound in the obvious
+   direction: `A ⊨ P` and `A ⊨ Q` give `A ⊨ P ∧ Q`), and it does not loosen the guard on the leaves —
+   the existing "names the missing antecedent conjunct" test still passes unchanged.
+
+   **`Cnf.to_cnf` is now the whole story on ordinary goals** — 83% of chain 32's total and 67% of
+   chain 8's. §5.5 is no longer a minor item; it is the next one.
 2. **Shrink `A` to the clauses the refutation actually uses.** The cheap version of item 1, needing
    no new kernel capability: the LRAT antecedents already name the used clauses, so prove
    `A_used ⇒ F` and weaken to `A ⇒ F` once at the end. It cuts `clauses` and `|A|` together, and the
