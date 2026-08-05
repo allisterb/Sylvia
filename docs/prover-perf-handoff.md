@@ -197,22 +197,29 @@ Two `-- phases` runs, for the shares rather than the absolute times (which drift
 Shares, three runs, after BOTH §5.1 (the `Establish` rewiring) and §5.5 (schema-wrapping `Cnf`'s
 lemmas):
 
-| goal | to_cnf | refute | AC bridge | total ms |
-|---|--:|--:|--:|--:|
-| chain 8 | 59–60% | 22% | 18–19% | 10 |
-| chain 16 | 57–59% | 36–38% | 5% | 15–16 |
-| chain 24 | 61–62% | 34% | 4% | 25 |
-| chain 32 | 63–67% | 28–33% | 4–5% | 38–58 |
-| pigeonhole 4→3 | 34–38% | 59–64% | 3% | 50–67 |
-| pigeonhole 5→4 | 9–14% | 85–90% | 1–2% | 231–295 |
+Median of three runs, after §5.1 (the `Establish` rewiring) and §5.5 (`Cnf`):
 
-**The picture inverted twice.** `refute` was 54–96% before §5.1; removing the carried antecedent
-dropped it to 7–14% on chains and left `Cnf.to_cnf` at 84–88%. Schema-wrapping `Cnf`'s lemmas then
-took `to_cnf` down 3–7×, landing both phases in the same range on chains. Dense goals remain
-replay-bound (85–90%), and chains — what real callers actually hit — are now split roughly 60/30
-between conversion and replay, with **whole-pipeline totals down ~2.5–3×**.
+| goal | to_cnf | refute | everything else | total ms | was |
+|---|--:|--:|--:|--:|--:|
+| chain 8 | 24% | 22% | 54% | **10** | 26–34 |
+| chain 16 | 34% | 29% | 37% | **14** | 40–41 |
+| chain 24 | 35% | 34% | 31% | **24** | 61–100 |
+| chain 32 | 42% | 36% | 22% | **48** | 110–131 |
+| pigeonhole 4→3 | 18% | 66% | 16% | **67** | 111–114 |
+| pigeonhole 5→4 | 12% | 85% | 3% | **287** | 249–279 |
 
-`ms/link` in the replay is now 0.27–0.75 across every shape, where before §5.1 it tracked `|A|`.
+**The picture inverted twice and then flattened.** `refute` was 54–96% before §5.1; removing the
+carried antecedent dropped it to 7–14% on chains and left `Cnf.to_cnf` at 84–88%; §5.5 then took
+`to_cnf` down 4–8×. **On chains no single phase dominates any more** — conversion, replay and the
+remaining plumbing (`dedup`, the AC bridge, the closing `Contradiction`) are each a fifth to a third.
+Dense goals stay replay-bound at 85%.
+
+Whole-pipeline totals fell ~2.5–3× on chains. `ms/link` in the replay is 0.27–0.75 across every
+shape, where before §5.1 it tracked `|A|`.
+
+Note what this promotes: the `close` step (the final `Contradiction`) is now **24% of chain 8** and
+`dedup_cnf` 12% of chain 16 — both were rounding errors when replay cost seconds, and neither has
+ever been looked at.
 
 ---
 
@@ -461,13 +468,33 @@ respectively; the rest carry over.
    chain 24 **47–79 → 11.3**, chain 32 **89–107 → 15–26**, pigeonhole 4→3 **56–61 → 15**. Whole-pipeline
    totals fell ~2.5–3× on chains. Gate 135/135, sweep ALL CLEAR, all eight examples green.
 
-   **A caution for whoever picks this up**: the per-lemma micro-benchmark said 16–77×, the end-to-end
-   result is 3–7×. `implEq` was not the whole per-clause cost — that is the third time a
-   micro-benchmark has overstated an end-to-end win in this document. What remains is `transEq` /
-   `congAnd` / `congOr` / `congNot`, one or more per node, each over the subformula at that node.
-   They take **Theorems** rather than Props, so their statements depend on their arguments' statements
-   and there is no fixed schema to instantiate — a different and harder problem than the one just
-   fixed.
+   **A caution**: the per-lemma micro-benchmark said 16–77×, the end-to-end result was 3–7×. `implEq`
+   was not the whole per-clause cost — the third time a micro-benchmark has overstated an end-to-end
+   win in this document.
+
+   **Then the Theorem-argument functions** (`transEq` / `congAnd` / `congOr` / `congNot`), which take
+   Theorems rather than Props and so have no fixed schema to instantiate. They got a different fix:
+   **most subformulas of a real goal convert to THEMSELVES**, so their proofs are reflexivities, and
+   composing anything with a reflexivity is a no-op that still costs a kernel proof over the whole
+   subformula. An implication chain is the pure case — every disjunction under `¬goal` is already a
+   clause. `transEq` now returns its other argument when either side is an `e == e`, and `congBin` /
+   `congNot` fall back to `refl` when every operand is. Worth a further **14–26%** on chains.
+
+   Combined, `to_cnf`: chain 8 **17.5–24 → 2.4**, chain 16 **30.4 → 4.8**, chain 24 **47–79 → 8.4**,
+   chain 32 **89–107 → 20–23**, pigeonhole 4→3 **56–61 → 12** — call it **4–8×**. The hermetic
+   `dense43` gate confirms it end to end and independently: **311 → 39.5 ms**, allocations
+   **645 MB → 51.5 MB**.
+
+   **What is left is structural, and I would measure before believing it is worth attacking.** The
+   remaining cost is the `congAnd` chain over the top-level conjunction: `conjoin` lifts each
+   conjunct's equality through a congruence whose statement is the whole *remaining* formula, so a
+   right-nested conjunction of n clauses costs Σ O(k) = **O(n²)** in statement size. Measured, one
+   `congAnd` is 179 µs at 8 clauses and 634 µs at 32, and summing that chain accounts for most of
+   what `to_cnf` still costs on chain 32.
+   An untested idea: the association is inherited from the input formula's shape, and a **balanced**
+   conjunction tree would make the same total O(n log n). `clauses_of` flattens the result so
+   association should not matter to it, and `SatProof`'s AC bridge would absorb the difference — but
+   both of those are assumptions, and the output shape is part of this function's contract.
 6. **Named candidates not yet tested** (carried over): an allocation-free `specific_call` (was 5.4%
    self CPU), `traverse` without `ExprShape` (4.8%), and the source of `FSharpExpr.Deserialize40`
    (3.7%, not located — the `EquationalLogic` templates are already hoisted and `Term.(==)` was a red

@@ -66,8 +66,25 @@ module Cnf =
     /// in 12 / 46 us. See the note beside the rewrite lemmas for why memoization does not apply.
     let private refl = Tactics.Schema.p1 "cnf_refl" refl_impl
 
+    /// Is this theorem an `e == e`? Most subformulas of a real goal convert to THEMSELVES — every
+    /// literal, and every disjunction already in clause form — so their proofs are reflexivities, and
+    /// composing anything with a reflexivity is a no-op that still costs a kernel proof over the
+    /// whole subformula. The three functions below short-circuit on it.
+    ///
+    /// The saving is not incidental. An implication chain's `¬goal` is a conjunction of clauses, so
+    /// EVERY disjunction under it converts to itself: measured, `congOr` on two reflexivities is
+    /// 51 us and the `transEq` that follows is 35 us, both pure waste, once per link.
+    let private isRefl (t: Theorem) =
+        match t.Stmt with
+        | Equals(l, r) -> sequal l r
+        | _ -> false
+
     /// `x == y` and `y == z`  ⟼  `x == z`  (rewrite the LHS through both).
     let private transEq (p1: Theorem) (p2: Theorem) : Theorem =
+        // `y == z` with y ≡ z structurally means `x == z` IS `x == y`, so p1 already proves it.
+        if isRefl p2 then p1
+        elif isRefl p1 then p2
+        else
         match p1.Stmt, p2.Stmt with
         | Equals(x, _), Equals(_, z) ->
             theorem prop_calculus (pOf x == pOf z) [ Ident p1 |> apply_left; Ident p2 |> apply_left ]
@@ -77,15 +94,21 @@ module Cnf =
     let private congBin (mk: Prop -> Prop -> Prop) (pa: Theorem) (pb: Theorem) : Theorem =
         match pa.Stmt, pb.Stmt with
         | Equals(x, cx), Equals(y, cy) ->
-            theorem prop_calculus (mk (pOf x) (pOf y) == mk (pOf cx) (pOf cy))
-                [ Ident pa |> at [ left_branch; left_branch ]; Ident pb |> at [ left_branch; right_branch ] ]
+            // Both sides unchanged ⟹ the congruence is itself a reflexivity, and `refl` builds it in
+            // 12 us against `congBin`'s 51 us at literals and 634 us at a 32-clause conjunction.
+            if isRefl pa && isRefl pb then refl (mk (pOf x) (pOf y))
+            else
+                theorem prop_calculus (mk (pOf x) (pOf y) == mk (pOf cx) (pOf cy))
+                    [ Ident pa |> at [ left_branch; left_branch ]; Ident pb |> at [ left_branch; right_branch ] ]
         | _ -> failwith "Cnf.congBin: not equalities"
     let private congAnd = congBin (fun x y -> x * y)
     let private congOr = congBin (fun x y -> x + y)
 
     let private congNot (pe: Theorem) : Theorem =
         match pe.Stmt with
-        | Equals(x, cx) -> theorem prop_calculus ((- pOf x) == (- pOf cx)) [ Ident pe |> at [ left_branch ] ]
+        | Equals(x, cx) ->
+            if isRefl pe then refl (- pOf x)
+            else theorem prop_calculus ((- pOf x) == (- pOf cx)) [ Ident pe |> at [ left_branch ] ]
         | _ -> failwith "Cnf.congNot: not an equality"
 
     (* ---- one-step equality lemmas, as Theorems (so they compose with transEq) ---- *)
