@@ -282,16 +282,38 @@ divides — so it needs a solver, and it prints a skip message rather than faili
 Reordered after the §1b reprofile. Items 1 and 4 of the previous list are DONE and REFUTED
 respectively; the rest carry over.
 
-1. **Get `A` out of the obligations.** The deepest lever, and the only one that hits both halves of
-   `refute` at once: `A` is in the statement of every setup implication *and* every link's obligation,
-   so it is the single quantity that matters whether a goal is setup-bound or loop-bound. Working
+1. **Get `A` out of the obligations.** The deepest lever, and after item 3 was closed into it, the
+   ONLY one that addresses either half of `refute`. `A` is in the statement of every setup implication
+   *and* every link's obligation, so it is the single quantity that matters whether a goal is
+   setup-bound or loop-bound; and instantiation cost is priced by statement size (item 3). Working
    with bare clauses under an assumption and discharging once would replace `|A|` with clause width —
    on pigeonhole 6→5 that is 180 against a mean width near 2.
+   **The ceiling is measured, not extrapolated** (`-- ceiling`). `resolveStep` is the entire A-free
+   half of a link — the actual resolution inference, at clause scale — and its arguments come out of
+   `rup_chain`, so it can be timed for every link of a real refutation without running the replay:
+
+   | goal | links | loop ms | A-free ms | A-free share | loop ceiling |
+   |---|--:|--:|--:|--:|--:|
+   | chain 16 | 16 | 89.6 | 26.6 | 30% | 3× |
+   | chain 32 | 32 | 96.8 | 6.0 | 6% | 16× |
+   | pigeonhole 4→3 | 59 | 191.7 | 13.8 | 7% | 14× |
+   | pigeonhole 5→4 | 332 | 2455.4 | 137.2 | **6%** | **18×** |
+
+   **~94% of a link is carrying `A`**, so the loop alone is worth roughly 15–20× (a scratch run of
+   the same thing gave 22–25×; treat it as an order of magnitude, not a figure). And setup does not
+   get faster under this change — it *disappears*, since with the clauses available as assumptions
+   there is nothing to eliminate. Both halves together put `refute` at **order 10–30×**.
+
+   I had estimated ~400× from item 3's micro-benchmark. That was an order of magnitude optimistic —
+   the second time extrapolation has misled here. Take the measured number.
+
    **This is a design job, not a drop-in.** `Deduce` / `Deduce'` in `Proof.fs` are substitution
    devices, not a hypothesis-discharge rule. The standard equational route is assuming `A` by
-   rewriting it to `true` and discharging at the end; it has to be built and its soundness argued.
-   Prototype it on ONE goal of each shape before committing — §1b's fitted law failed precisely
-   because it was asked to extrapolate rather than to compare two measured things.
+   rewriting it to `true` and discharging at the end. Two risks to settle before writing code: the
+   deduction theorem in *equational* logic carries side conditions on substitution and Leibniz
+   rewriting (the same family that makes `Tactics.Instantiate` refuse binders), and discharge must
+   verify the body used only the declared assumptions — which needs the proof object to record which
+   axioms fired.
 2. **Shrink `A` to the clauses the refutation actually uses.** The cheap version of item 1, needing
    no new kernel capability: the LRAT antecedents already name the used clauses, so prove
    `A_used ⇒ F` and weaken to `A ⇒ F` once at the end. It cuts `clauses` and `|A|` together, and the
@@ -300,12 +322,24 @@ respectively; the rest carry over.
    benchmark shapes. It pays on goals carrying irrelevant hypotheses, which is what a real
    Sledgehammer-style call with a fact list looks like. `SAT.Native` already exposes assumption cores
    (`sc_failed`) and would hand over the minimized set for free; not yet surfaced on `ISatBackend`.
-3. **Attack `conj_elim_all` on its own.** Independent of items 1–2, much smaller in scope, and the
-   best value for *ordinary* goals: measured fresh it is **95% of `refute` on chain 32** and 53% on
-   chain 16, against 4% on pigeonhole 6→5. Chains are what real callers hit; pigeonholes are what the
-   benchmark hits. It is one `O(clauses)` pass that already shares its peel-chain, so whether the cost
-   is the `chain_imp` calls themselves or the `A`-sized statements they carry has not been separated —
-   that separation is the first experiment.
+3. ~~**Attack `conj_elim_all` on its own.**~~ **Tried and closed — it is not independently fixable,
+   it IS item 1.** It looked like the best value for ordinary goals: measured fresh it is 95% of
+   `refute` on chain 32 and 53% on chain 16 (against 4% on pigeonhole 6→5), and chains are what real
+   callers hit while pigeonholes are what the benchmark hits. Two probes closed it:
+   - **The repeated `rest j` term building is ~1% of it.** `rest j` is called ~2n times and each
+     rebuilds an O(|A|) conjunction, so the function is O(n²) in term construction despite its
+     docstring's "ONE O(n) pass" (which is true of `chain_imp` calls only). Measured: 0.21 ms of
+     34.0 on chain 16, 1.79 of 285.6 on pigeonhole 5→4. Not the cost. Do not bother precomputing it.
+   - **The cost is the schema instantiations, and each is LINEAR in the size of the statement it
+     produces.** A `Tactics.Schema.p2` instantiation goes 18.9 µs → 678.2 µs as its result grows from
+     1 to 128 conjuncts: ~15 µs fixed plus **~4.4 µs per conjunct**, flat from k=8 to k=128. So "the
+     `chain_imp` calls" and "the `A`-sized statements they carry" were never two hypotheses; they are
+     one. Reproduce with `-- conjelim`.
+
+   The structural conclusion is the useful part: **`conj_elim_all` emits `n` theorems whose statements
+   each contain `A`, so its output alone is Ω(n·|A|)** — it cannot be made faster without changing
+   *what it produces*. Under item 1 it would not exist: with the clauses available as assumptions
+   there is nothing to eliminate, and the whole phase disappears rather than getting cheaper.
 4. **Cut links.** `rup_chain` unfolds every LRAT hint chain into binary resolutions — 48 steps become
    332 links on pigeonhole 5→4. Fewer, larger kernel steps would cut the multiplier directly, but
    needs a resolution rule that consumes a whole propagation chain at once.

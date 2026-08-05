@@ -100,5 +100,7 @@ let main argv =
     | [| "model" |] -> Profile.runModel None
     // One goal per process: measurements contaminate each other badly (see Profile.runModel).
     | [| "model"; g |] -> Profile.runModel (Some g)
+    | [| "conjelim" |] -> Profile.runConjElim ()
+    | [| "ceiling" |] -> Profile.runCeiling ()
     | _ -> runMicro (); runReconstruction ()
     0

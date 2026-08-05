@@ -280,3 +280,174 @@ module Profile =
 
         printfn "\nrefute ≈ |A| × (%.3f × clauses + %.3f × links). Both terms carry |A|." K_SETUP K_LINK
         Proof.LogLevel <- 1
+
+    (* ---------------------------------------------------------------------- *)
+    (* Inside conj_elim_all                                                    *)
+    (* ---------------------------------------------------------------------- *)
+
+    /// Why `conj_elim_all` costs what it does. Both probes here returned NEGATIVE results that closed
+    /// handoff §5.3 — keep them so nobody re-opens it.
+    ///
+    ///   A. A `Tactics.Schema` instantiation is priced by the SIZE OF THE STATEMENT it produces, not
+    ///      by a fixed per-call overhead. So "the chain_imp calls" and "the A-sized statements they
+    ///      carry" were never competing explanations; they are one.
+    ///   B. The repeated `rest j` conjunction building — ~2n calls, each O(|A|), so O(n²) in term
+    ///      construction despite the docstring's "ONE O(n) pass" — is ~1% of the total. Precomputing
+    ///      it buys nothing.
+    ///
+    /// Together: `conj_elim_all` emits `n` theorems whose statements each contain `A`, so its output
+    /// alone is Ω(n·|A|). It cannot be made faster without changing what it produces.
+    let runConjElim () =
+        Proof.LogLevel <- 0
+        let msN n (f: unit -> 'a) =
+            quiet f |> ignore
+            let sw = Diagnostics.Stopwatch.StartNew()
+            for _ in 1 .. n do quiet f |> ignore
+            sw.Stop()
+            sw.Elapsed.TotalMilliseconds / float n
+
+        printfn "A. Schema instantiation vs the size of the statement it produces"
+        printfn "%10s %12s %16s" "conjuncts" "us/call" "us per conjunct"
+        printfn "%s" (String.replicate 40 "-")
+        let probe = Tactics.Schema.p2 "profile_probe_sa" strengthen_and
+        for k in [ 1; 2; 4; 8; 16; 32; 64; 128 ] do
+            let cls =
+                [ for i in 1 .. k ->
+                    (boolvar (sprintf "c%d_%d" k i) :> Prop) + (boolvar (sprintf "d%d_%d" k i) :> Prop) ]
+            let big = List.reduce ( * ) cls
+            let one = boolvar (sprintf "z%d" k) :> Prop
+            let t = msN 200 (fun () -> probe one big) * 1000.0
+            printfn "%10d %12.1f %16.3f" k t (t / float k)
+
+        match backend () with
+        | None -> printfn "\nNo SAT backend — skipping part B."
+        | Some sat ->
+
+        printfn "\nB. conj_elim_all: total vs the `rest j` term building alone"
+        printfn "%-14s %5s %8s %14s %14s %8s" "goal" "cls" "|A|" "conj_elim ms" "rest-only ms" "rest%"
+        printfn "%s" (String.replicate 68 "-")
+
+        // conj_elim_all's exact `rest` call pattern, with no theorem building at all.
+        let restOnly (arr: Prop[]) () =
+            let n = arr.Length
+            let rest j = arr.[j..] |> Array.reduceBack (fun a b -> a * b)
+            let mutable acc = 0
+            if n > 1 then
+                acc <- acc + (rest 1).GetHashCode()
+                for j in 2 .. n - 1 do acc <- acc + (rest j).GetHashCode()
+                for i in 0 .. n - 2 do acc <- acc + (rest (i + 1)).GetHashCode()
+            acc
+
+        let row (label: string) (mk: string -> Prop) =
+            let inputsOf (tag: string) =
+                let g = mk tag
+                let (cnfProp, _) = quiet (fun () -> Cnf.to_cnf !!g)
+                let cnf = SatProof.clauses_of g cnfProp
+                cnf, (cnf.Clauses |> List.map (clause_prop cnf))
+            let cnfR, inputsR = inputsOf "r"
+            let tTotal = msN 1 (fun () -> SatProof.conj_elim_all inputsR)
+            let _, inputsS = inputsOf "s"
+            let tRest = msN 20 (restOnly (Array.ofList inputsS))
+            printfn "%-14s %5d %8d %14.1f %14.2f %7.0f%%"
+                    label cnfR.Clauses.Length (cnfR.Clauses |> List.sumBy List.length)
+                    tTotal tRest (100.0 * tRest / tTotal)
+
+        row "chain 16" (fun t -> chain t 16)
+        row "chain 32" (fun t -> chain t 32)
+        row "php 5→4" (fun t -> pigeonhole t 5 4)
+        printfn "\nBoth negative. See the docstring, and handoff §5.3."
+        Proof.LogLevel <- 1
+
+    (* ---------------------------------------------------------------------- *)
+    (* The ceiling on removing A                                               *)
+    (* ---------------------------------------------------------------------- *)
+
+    /// How much of a link is the actual inference, and how much is carrying `A`?
+    ///
+    /// `SatProof.resolveUnder` does two things per link. `resolveStep` is the A-FREE half — the real
+    /// resolution, at clause scale. Everything else (`conj`, `combine_implies`, `mp`,
+    /// `Calc.chain_imp`) is over statements containing the whole input conjunction. `resolveStep`'s
+    /// arguments come straight out of `rup_chain`, so the A-free half can be timed for every link of
+    /// a real refutation WITHOUT running the replay, and whatever fraction it is bounds the win from
+    /// handoff §5.1.
+    ///
+    /// TRAP, and it cost a completely wrong answer first time: `SatProof` SHADOWS `resolve` with
+    /// `Tactics.Schema.p3 "sat_resolve" resolve`, so its `resolveStep` instantiates a pre-derived
+    /// schema. Calling `PropCalculus.resolve` here instead measures the full memoized derivation —
+    /// a different and far more expensive function, which put the A-free share at 100–140% of the
+    /// loop (i.e. impossible, which is the only reason it got caught).
+    let runCeiling () =
+        match backend () with
+        | None -> printfn "No SAT backend available. Skipping."
+        | Some sat ->
+
+        Proof.LogLevel <- 0
+        let resolveS = Tactics.Schema.p3 "profile_resolve" resolve
+        // Verbatim from SatProof, with the shadowed `resolve` restored.
+        let acEq (l: Prop) (r: Prop) : Rule = ident prop_calculus (l == r) [ simp ]
+        let resolveStep (cnf: CnfProblem) apos aneg (pv: int) out =
+            let cL = apos |> List.filter (fun l -> l <> pv)
+            let dL = aneg |> List.filter (fun l -> l <> -pv)
+            let cp lits = clause_prop cnf lits
+            let C, D, v = cp cL, cp dL, cnf.AtomOfVar.[pv]
+            theorem prop_calculus (cp apos * cp aneg ==> cp out) [
+                acEq (cp apos) (C + v) |> at [ left_branch; left_branch ]
+                acEq (cp aneg) (-v + D) |> at [ left_branch; right_branch ]
+                acEq (cp out) (C + D) |> at [ right_branch ]
+                resolveS C D v |> Taut |> apply ]
+
+        printfn "%-14s %6s %8s %11s %11s %10s %11s"
+                "goal" "links" "|A|" "loop ms" "A-free ms" "A-free%" "loop ceiling"
+        printfn "%s" (String.replicate 76 "-")
+
+        let row (label: string) (mk: string -> Prop) =
+            quiet (fun () -> SatProof.prove_with sat (chain "warm" 6)) |> ignore
+            let prep (tag: string) =
+                let g = mk tag
+                let (cnfProp, _) = quiet (fun () -> Cnf.to_cnf !!g)
+                let cnf = SatProof.clauses_of g cnfProp
+                cnf, sat.Run cnf
+            let cnfS, _ = prep "s"
+            let _, tSetup = ms (fun () -> SatProof.conj_elim_all (cnfS.Clauses |> List.map (clause_prop cnfS)))
+            let cnfR, runR = prep "r"
+            let _, tRefute = ms (fun () -> SatProof.refute cnfR runR.Originals runR.Steps)
+
+            // Walk the trace on a third copy, timing only resolveStep.
+            let cnfF, runF = prep "f"
+            let lits = Collections.Generic.Dictionary<int, int list>()
+            match runF.Originals with
+            | [] -> cnfF.Clauses |> List.iteri (fun i c -> lits.[i + 1] <- c)
+            | os -> for (id, c) in os do lits.[id] <- c
+            let clauseOf id = match lits.TryGetValue id with | true, c -> Some c | _ -> None
+            let mutable links = 0
+            let mutable tFree = 0.0
+            for st in runF.Steps do
+                match st with
+                | Delete _ -> ()
+                | Add(id, cl, hints) ->
+                    match rup_chain clauseOf cl hints with
+                    | Error _ -> ()
+                    | Ok ch ->
+                        let mutable cur = lits.[ch.Start]
+                        for l in ch.Links do
+                            // rup_chain reports Pivot as abs u; resolveUnder orders the two clauses
+                            // by which one carries the POSITIVE literal.
+                            let ys = lits.[l.Antecedent]
+                            let apos, aneg = if List.contains l.Pivot cur then cur, ys else ys, cur
+                            let _, t = ms (fun () -> resolveStep cnfF apos aneg l.Pivot l.Result)
+                            tFree <- tFree + t
+                            links <- links + 1
+                            cur <- l.Result
+                    lits.[id] <- cl
+            let loop = tRefute - tSetup
+            printfn "%-14s %6d %8d %11.1f %11.1f %9.0f%% %10.0fx"
+                    label links (cnfR.Clauses |> List.sumBy List.length) loop tFree
+                    (100.0 * tFree / loop) (loop / tFree)
+
+        row "chain 16" (fun t -> chain t 16)
+        row "chain 32" (fun t -> chain t 32)
+        row "php 4→3" (fun t -> pigeonhole t 4 3)
+        row "php 5→4" (fun t -> pigeonhole t 5 4)
+        printfn "\nChains look poor only because they are SETUP-bound; setup does not get faster"
+        printfn "under §5.1, it disappears. See the handoff for the combined estimate."
+        Proof.LogLevel <- 1
