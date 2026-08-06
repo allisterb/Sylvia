@@ -3,10 +3,49 @@
 Entry point for the next session on prover/reconstruction speed. Read this, then
 [`prover-sat-reconstruction.md`](prover-sat-reconstruction.md) §7 for the design detail.
 
-§§1–7 as written on 2026-07-30 are committed through `6a6dbf4`. **§1b is a 2026-08-04 addition** and
-supersedes two items of the original §5: the reprofile it asked for is done, and the clause-width
-hypothesis it named is refuted. §3, §4 §5 and §6 were amended the same day; the numbers in §1 are
-unchanged and still stand.
+§§1–7 as written on 2026-07-30 are committed through `6a6dbf4`. **Everything marked 2026-08-04 is a
+later session** which rewrote most of §5; §1's original numbers are left in place as the "before"
+column and are no longer current.
+
+### State at the end of 2026-08-04
+
+**The original target is met** (§1 "Against the original target"). Chains hold under a second to 200
+atoms; dense refutations to ~20–25. Roughly one of the two orders of magnitude separating us from
+HOL4/Isabelle-class reconstruction has been closed.
+
+Five things landed, in the order they were found:
+
+| | |
+|---|---|
+| **Native CaDiCaL** (`SAT.Native`, `bin/sylvia_cadical.dll`) | removed a fixed **18.5 ms per solve** of process spawn and DIMACS/LRAT file I/O; solving is now 0.26 ms and a rounding error. Also runs without MSYS2 on PATH. |
+| **`Rule.Establish`** (kernel) + `refute` rewired | the antecedent `A` is no longer carried through every replay step. **7.5–42× on `refute`**, and `ms/link` went from tracking `\|A\|` to flat. |
+| **`Cnf`'s lemmas schema-wrapped** | nine per-node lemmas were replaying their derivations per call. **3–7×** on `to_cnf`. |
+| **Reflexivity short-circuits in `Cnf`** | most subformulas convert to themselves; composing with a reflexivity was a no-op that still built a proof. A further **14–26%**. |
+| **Two kernel-loop fixes** | the O(n²) `state @ [x]` append and `is_covered` scanning conjuncts before Δ. **94.7 → 70.5 s** on pigeonhole 7→6. |
+
+End to end: **~13–20× on chains, 9–20× on dense goals**; the hermetic `dense43` gate went 311 → 47 ms
+with allocations 645 MB → 50 MB.
+
+### Outstanding, in priority order
+
+§5 is the full list with evidence. In brief:
+
+1. **§5.0 — the kernel's per-step proof machinery.** Now the biggest single cost and the only item
+   that benefits *every* proof Sylvia builds, not just the autoprovers. First pass done; what remains
+   is the axiom recognition itself, `ApplyRule`, and the super-linear growth past ~32 conjuncts.
+2. **§5.5 — `Cnf`'s `congAnd` chain**, O(n²) in statement size. A balanced conjunction tree would make
+   it O(n log n), but the association is part of the function's output contract.
+3. **§5.3 — `close` / `dedup_cnf` / the AC bridge**, together 20–25% of a chain and never examined.
+   They were rounding errors when replay cost seconds.
+4. **§5.2 — shrink `A` to the clauses actually used.** Nothing on the benchmark shapes, real on goals
+   carrying irrelevant hypotheses. `SAT.Native` already exposes assumption cores for it.
+
+Closed this session and not worth revisiting: clause width (§3), the AC-`normalize` bridge (§3),
+`conj_elim_all` as an independent target (§5.3), a quantitative cost model (§1b), term nets (§5.8),
+and lazy conjunct collection (§5.0).
+
+**Read §1b's "measurement trap" before profiling anything here.** One goal per fresh process, warmed
+on a *different* goal, or the numbers are worthless — that cost this session two wrong conclusions.
 
 > **Since this handoff was written (same day, uncommitted at the time of writing).** Two things
 > happened that a reader of §5 should know about, both found by *using* the now-faster pipeline rather
@@ -332,8 +371,56 @@ divides — so it needs a solver, and it prints a skip message rather than faili
 
 ## 5. What to try next, ranked
 
-Reordered after the §1b reprofile. Items 1 and 4 of the previous list are DONE and REFUTED
-respectively; the rest carry over.
+Reordered twice: after the §1b reprofile, and again after items 1, 3 and 5 landed. The top item is
+now new, and it is the first one on this list that is **not** specific to reconstruction.
+
+0. **The kernel's per-step proof machinery. TOP ITEM, and it benefits every proof Sylvia builds.**
+
+   Everything above the kernel has now been optimised away, and what is left is the `Proof`
+   constructor's own loop. Measured on `resolveStep`, which after §5.1 is ~100% of `refute` on dense
+   goals (`-- ceiling` ratio 0.96–0.99):
+
+   | | µs |
+   |---|--:|
+   | `acEq` (AC match), 2 / 4 / 8-literal clause | 24 / 39 / 71 |
+   | `resolve` (schema instantiation) | 58 |
+   | **the four rule constructions together** | **~200** |
+   | **one link, measured** | **~820** |
+
+   So **~75% of a link is the enclosing four-step proof itself**, not the rules it runs. Per step the
+   loop does: destructure `_state` as an `Argument` (which walks the antecedent — O(|A|) *per step*,
+   whatever the rule), the rule-legality check, `ApplyRule`, the lazy message, then `theory |- _state`
+   AND `logic |- _state` — two `AxEquiv` calls on the whole statement, and the cache is keyed by
+   REFERENCE so a rewrite that produces a new `Expr` always misses.
+
+   This is the old "O(|expr|) per kernel step" concern, correctly located at last. §3 records that
+   *rule application* is 0.4–0.8% of CPU, and that remains true — the cost was never the rewriting.
+
+   **First pass done (2026-08-04).** Timing a k-step proof over an s-conjunct statement, varying each
+   independently (`/tmp` scripts, not yet in the harness):
+
+   - **~58 µs per step at a fixed statement size**, plus ~66 µs fixed per proof. Flat in k.
+   - **Strongly size-dependent**: 26 µs per step at 2 conjuncts, 57 at 8, 230 at 32, **814 at 64** —
+     super-linear at the top.
+   - **`AxEquiv` is most of it, and the loop calls it TWICE per step** (`theory |- state` then
+     `logic |- state`). Within `AxEquiv`, `expand` is **27–75%** and its share rises with size.
+
+   **Fixed: one shared, reference-keyed expansion cache** on `Theory`. The two calls hit different
+   per-instance axiom caches, so a freshly-rewritten state missed both and paid `expand` twice on the
+   same object. Controlled measurement: 32-conjunct step **230 → 188 µs**, 64-conjunct **814 → 521 µs**.
+   **End-to-end on every current payload it measured ZERO** — chains and pigeonholes have small
+   per-step statements, so they never reach the sizes where it shows. Kept because it is a strict
+   reduction in work at no risk, but read that honestly: it is not yet a demonstrated pipeline win.
+
+   **Rejected on evidence: making the `Argument` destructure lazy.** The loop collects the
+   antecedent's conjuncts on every step, work only `Deduce`/`Establish` consume, so an implication
+   goal ought to cost more per step than an equality goal of the same size. Measured across 4–64
+   conjuncts the difference ranged −82% to +2% — pure noise, no signal. Do not implement it.
+
+   Still unattributed: the axiom recognition itself (the non-`expand` half of `AxEquiv`), `ApplyRule`
+   and the tree rebuild, and whatever makes per-step cost super-linear beyond ~32 conjuncts. Also
+   fixed earlier while measuring §1's target table: the O(n²) `state @ [x]` append and `is_covered`
+   scanning conjuncts before Δ, together 94.7 → 70.5 s on pigeonhole 7→6.
 
 1. **Get `A` out of the obligations.** The deepest lever, and after item 3 was closed into it, the
    ONLY one that addresses either half of `refute`. `A` is in the statement of every setup implication
@@ -520,9 +607,20 @@ respectively; the rest carry over.
    self CPU), `traverse` without `ExprShape` (4.8%), and the source of `FSharpExpr.Deserialize40`
    (3.7%, not located — the `EquationalLogic` templates are already hoisted and `Term.(==)` was a red
    herring). All three are in the "asking quotations what they are" family.
-7. **`state <- state @ [(_state, msg)]`** in the `Proof` step loop is an O(n) append per step, so
-   O(n²) per proof. Harmless for the 1–4-step proofs the replay builds; would bite a long derivation.
-8. **Schema coverage.** Böhme & Weber wrap 230+ schematic theorems, covering 76% of their `rewrite`
+7. ~~**`state <- state @ [(_state, msg)]`**~~ **DONE.** It was an O(n) append per step, so O(n²) per
+   proof — harmless while proofs were 1-4 steps, and it duly bit the moment §5.1 started building one
+   proof with an `Establish` per resolution link. Now a `ResizeArray`. Worth ~12% on pigeonhole 7→6
+   (15,284 steps); invisible below ~2000.
+8. **Term nets: considered and NOT applicable here.** Böhme & Weber store 230+ schematic theorems in
+   a term net, and it is tempting to copy. It solves a problem we do not have. They need it for
+   SEARCH — Z3's `rewrite` steps arrive as bare equalities with no indication of which lemma
+   justifies them, so reconstruction must match against a database. Our trace labels every inference:
+   `resolveStep` knows it wants `resolve`, `toCnfRec` dispatches on syntactic form. There is nothing
+   to search, and even `acEq`'s `simp` is a single `Admit` rule rather than a rule search. (Their
+   second use, retrieval-by-matching as a cache, they report gains little once schemas exist.)
+   **It becomes exactly the right idea on the Z3 route**, where the obligations ARE opaque — see
+   `prover-z3-reconstruction.md`.
+9. **Schema coverage.** Böhme & Weber wrap 230+ schematic theorems, covering 76% of their `rewrite`
    obligations; we wrap six (five in `SatProof`, plus `trans_implies` in `Calc`). `Tactics.Schema` was
    the single biggest win to date, so more of it is tempting — but the cost model says per-link cost
    is dominated by `|A|`, not by how a link's lemma is obtained, so measure before investing.

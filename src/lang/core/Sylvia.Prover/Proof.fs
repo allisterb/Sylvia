@@ -20,6 +20,20 @@ type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =
     // different axioms. Weak keys, so nothing is retained.
     let axCache = System.Runtime.CompilerServices.ConditionalWeakTable<Expr, obj>()
 
+    /// The `expand` half of `AxEquiv`, shared across ALL theories and keyed by reference.
+    ///
+    /// The `Proof` step loop asks `theory |- state` and then `logic |- state` after every step — two
+    /// `AxEquiv` calls on the SAME object. The axiom caches above are per-instance (different theories
+    /// recognize different axioms), so a step's freshly-rewritten state misses both and pays `expand`
+    /// over the whole statement TWICE. Measured, `expand` is 27–75% of `AxEquiv` and its share grows
+    /// with statement size, so the second call is pure waste.
+    ///
+    /// Safe to share and to key by reference: expansion is a pure function of the term, and quotations
+    /// are immutable. Weak, so nothing is retained.
+    static let expandCache = System.Runtime.CompilerServices.ConditionalWeakTable<Expr, Expr>()
+    static member private ExpandOnce (a: Expr) : Expr =
+        expandCache.GetValue(a, System.Runtime.CompilerServices.ConditionalWeakTable<Expr, Expr>.CreateValueCallback(expand))
+
     member val Axioms = axioms
     member val Rules = rules
     member val PrintFormula = defaultArg formula_printer Display.print_formula
@@ -27,7 +41,7 @@ type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =
         match axCache.TryGetValue a with
         | true, cached -> unbox<bool> cached
         | _ ->
-            let r = a |> expand |> x.Axioms |> Option.isSome
+            let r = Theory.ExpandOnce a |> x.Axioms |> Option.isSome
             axCache.GetValue(a, System.Runtime.CompilerServices.ConditionalWeakTable<Expr, obj>.CreateValueCallback(fun _ -> box r)) |> ignore
             r
     static member (|-) ((c:Theory), a) = c.AxEquiv a
