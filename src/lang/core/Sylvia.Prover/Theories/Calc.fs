@@ -107,7 +107,7 @@ module Calc =
         | Implies(endE, startE) ->
             let ps, pe = pOf startE, pOf endE
             theorem prop_calculus (conseqP ps pe) [
-                id_ax prop_calculus ((conseqP ps pe) == (pe ==> ps)) |> apply
+                ax_ident prop_calculus ((conseqP ps pe) == (pe ==> ps)) |> apply
                 Taut t |> apply ]
         | _ -> failwithf "calc: imp_to_conseq expected an implication, got %s" (src t.Stmt)
 

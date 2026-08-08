@@ -912,10 +912,10 @@ module Proof =
     let logical_ident steps (e:Prop) = ident Proof.Logic e steps
     
     /// An identity that is axiomatically true in a theory
-    let id_ax theory (e:Prop) = ident theory e []
+    let ax_ident theory (e:Prop) = ident theory e []
     
     /// An identity that is axiomatically true in the proof's logical theory
-    let log_id_ax (e:Prop) = id_ax Proof.Logic e
+    let log_ax_ident (e:Prop) = ax_ident Proof.Logic e
     
     (* Deductions *)
     let deduce (p:Theorem) = p|> Deduce

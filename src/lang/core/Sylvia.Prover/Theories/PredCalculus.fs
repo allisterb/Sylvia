@@ -57,7 +57,7 @@ module PredCalculus =
     (* Derived rules *)
 
     /// (∀x|N:P) = (∀x|: N⇒P)   (Gries 9.2, Trading)
-    let trade_forall_implies (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) = id_ax pred_calculus (forall (x, N, P) == forall' (x, N ==> P))
+    let trade_forall_implies (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) = ax_ident pred_calculus (forall (x, N, P) == forall' (x, N ==> P))
 
     /// (∀x|Q∧N:P) = (∀x|Q: N⇒P)   (Gries 9.4a)
     let trade_forall_and_implies (x:TermVar<'t>) (Q:Pred<'t>) (N:Pred<'t>) (P:Pred<'t>) = ident pred_calculus (forall(x, Q * N, P) == (forall (x, Q, N ==> P))) [
@@ -74,10 +74,10 @@ module PredCalculus =
     ]
 
     /// P ∨ (∀x|N:Q) = (∀x|N: P∨Q)   (Gries 9.5). P is an x-free proposition (¬occurs(x,P)).
-    let distrib_or_forall' (x:TermVar<'t>) (N:Pred<'t>) (P:Prop) (Q:Pred<'t>) = id_ax pred_calculus ((P + forall(x, N, Q)) == qall x N[x] (P + Q[x]))
+    let distrib_or_forall' (x:TermVar<'t>) (N:Pred<'t>) (P:Prop) (Q:Pred<'t>) = ax_ident pred_calculus ((P + forall(x, N, Q)) == qall x N[x] (P + Q[x]))
 
     /// (∀x|N1∨N2:P) = ((∀x|N1:P) ∧ (∀x|N2:P))   (Gries 8.18, range split)
-    let split_range_forall' (x:TermVar<'t>) (N1:Pred<'t>) (N2:Pred<'t>) (P:Pred<'t>) = id_ax pred_calculus (forall (x, (N1 + N2), P) == ((forall(x, N1, P) * (forall (x, N2, P)))))
+    let split_range_forall' (x:TermVar<'t>) (N1:Pred<'t>) (N2:Pred<'t>) (P:Pred<'t>) = ax_ident pred_calculus (forall (x, (N1 + N2), P) == ((forall(x, N1, P) * (forall (x, N2, P)))))
 
     (* Universal instantiation (Gries 9.13) *)
 
@@ -93,7 +93,7 @@ module PredCalculus =
 
     /// ((∀x|N:P) ∧ (∀x|N:Q)) = (∀x|N: P∧Q)   (Gries 8.15, distributivity of ∀ over ∧)
     let collect_forall_and' (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) =
-        id_ax pred_calculus (((forall(x,N,P)) * (forall(x,N,Q))) == forall(x, N, P * Q))
+        ax_ident pred_calculus (((forall(x,N,P)) * (forall(x,N,Q))) == forall(x, N, P * Q))
 
     /// (∀x|N: P∧Q) = ((∀x|N:P) ∧ (∀x|N:Q))
     let distrib_forall_and' (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) = collect_forall_and' x N P Q |> Commute
@@ -119,7 +119,7 @@ module PredCalculus =
 
     /// (∃x|N:P) = ¬(∀x|N:¬P)   (Gries 9.17, Generalized De Morgan)
     let ident_exists_not_forall (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) =
-        id_ax pred_calculus (exists(x, N, P) == (-(forall(x, N, -P))))
+        ax_ident pred_calculus (exists(x, N, P) == (-(forall(x, N, -P))))
 
     /// ¬(∃x|N:¬P) = (∀x|N:P)   (Gries 9.18a)
     let ident_not_exists_forall (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) =
@@ -147,14 +147,14 @@ module PredCalculus =
 
     /// ((∃x|N:P) ∨ (∃x|N:Q)) = (∃x|N: P∨Q)   (Gries 8.15, distributivity of ∃ over ∨)
     let collect_exists_or' (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) =
-        id_ax pred_calculus (((exists(x,N,P)) + (exists(x,N,Q))) == exists(x, N, P + Q))
+        ax_ident pred_calculus (((exists(x,N,P)) + (exists(x,N,Q))) == exists(x, N, P + Q))
 
     /// (∃x|N: P∨Q) = ((∃x|N:P) ∨ (∃x|N:Q))
     let distrib_exists_or' (x:TermVar<'t>) (N:Pred<'t>) (P:Pred<'t>) (Q:Pred<'t>) = collect_exists_or' x N P Q |> Commute
 
     /// (∃x|N1∨N2:P) = ((∃x|N1:P) ∨ (∃x|N2:P))   (Gries 8.18, range split)
     let split_range_exists' (x:TermVar<'t>) (N1:Pred<'t>) (N2:Pred<'t>) (P:Pred<'t>) =
-        id_ax pred_calculus (exists(x, (N1 + N2), P) == ((exists(x,N1,P)) + (exists(x,N2,P))))
+        ax_ident pred_calculus (exists(x, (N1 + N2), P) == ((exists(x,N1,P)) + (exists(x,N2,P))))
 
     (* Existential quantification: trading (Gries 9.19–9.20) *)
 
@@ -322,7 +322,7 @@ module PredCalculus =
     /// it to true. The range-nonempty assumption is supplied by `Deduce`.
     let trade_exists_or (x:TermVar<'t>) (R:Pred<'t>) (P:Prop) (Q:Pred<'t>) =
         // ((∃x|R:P) ∨ (∃x|R:Q)) = (∃x|R: P∨Q) with the left body x-free (structural QuantifierCollect axiom).
-        let collect_mixed = id_ax pred_calculus (((qex x R[x] P) + exists(x,R,Q)) == qex x R[x] (P + Q[x]))
+        let collect_mixed = ax_ident pred_calculus (((qex x R[x] P) + exists(x,R,Q)) == qex x R[x] (P + Q[x]))
         theorem pred_calculus (exists'(x, R) ==> ((qex x R[x] (P + Q[x])) == (P + exists(x,R,Q)))) [
             collect_mixed |> Commute |> at [right_branch; left_branch]                             // ∃x R (P∨Q) → (∃x R P) ∨ (∃x R Q)
             distrib_and_exists x R P |> at [right_branch; left_branch; left_branch]                // ∃x R P → P ∧ (∃x|:R)
@@ -358,7 +358,7 @@ module PredCalculus =
     /// P∨false = P. The empty-range test is discharged to false by `Deduce'` and the local lemma.
     let distrib_forall_and_cond (x:TermVar<'t>) (R:Pred<'t>) (P:Prop) (Q:Pred<'t>) =
         // (∀x|R:P) ∧ (∀x|R:Q) = (∀x|R: P∧Q) with the left body x-free (structural QuantifierCollect axiom, 8.15).
-        let collect_mixed = id_ax pred_calculus (((qall x R[x] P) * forall(x,R,Q)) == qall x R[x] (P * Q[x]))
+        let collect_mixed = ax_ident pred_calculus (((qall x R[x] P) * forall(x,R,Q)) == qall x R[x] (P * Q[x]))
         // ¬B ⇒ (B = false) for B = (∀x|:¬R): under the range-nonempty assumption the empty-range test is false.
         let empty_is_false =
             let B = forall'(x, -R)

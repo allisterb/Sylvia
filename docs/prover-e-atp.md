@@ -38,13 +38,13 @@ are not cosmetic — they tell you where to route a goal.
 
 | Engine | Kind | Core | Strong on | Weak on |
 |--------|------|------|-----------|---------|
-| **`metaset` / `metasubset`** (in-kernel) | Decision procedure | Equational, membership-route + complete ANF prop prover | The Boolean set-algebra fragment (`∪ ∩ ~ ∅ U`, `=`/`⊆`): instant, complete, human-readable | Anything outside that fragment |
+| **`meta_set_ident` / `meta_subset`** (in-kernel) | Decision procedure | Equational, membership-route + complete ANF prop prover | The Boolean set-algebra fragment (`∪ ∩ ~ ∅ U`, `=`/`⊆`): instant, complete, human-readable | Anything outside that fragment |
 | **`Sylvia.Solver.Z3`** | SMT **solver** | DPLL(T), theory decision procedures + model finding | Arithmetic, arrays, bitvectors, quantifier-free theory combinations; counterexamples | General FOL proof search (not refutation-complete) |
 | **`Sylvia.ATP.E`** | **ATP** | Superposition / paramodulation, refutation-complete for FOL= | Quantified / relational goals over uninterpreted symbols and equality | Background theories (arithmetic); and — see §6 — the set-identity encoding |
 
 The key point: **E earns its keep exactly where Sylvia's own decision procedures stop** — quantified,
 relational first-order goals (e.g. subset-hypothesis reasoning, transitivity/antisymmetry chains,
-`∀/∃` chaining). On the decidable Boolean fragment, `metaset` is strictly better (guaranteed
+`∀/∃` chaining). On the decidable Boolean fragment, `meta_set_ident` is strictly better (guaranteed
 termination, a checked and readable proof); E is not needed there and in fact struggles with it (§6).
 
 "Is Z3 really a solver rather than an ATP?" — keeping the distinction is the accurate choice. Z3 is an
@@ -160,7 +160,7 @@ still times out — so it is a *search / encoding* problem, not a fork/schedulin
 faster or native build would not fix it. E does solve many TPTP `SET`-domain problems, so a better
 encoding exists (orienting the membership definitions as directed rewrites, or the formulations those
 problems use); that is Phase-1 R&D. In the meantime this is a feature, not a bug: **the identity fragment
-is precisely what `metaset` already decides completely and readably.** Point E at the goals beyond it.
+is precisely what `meta_set_ident` already decides completely and readably.** Point E at the goals beyond it.
 
 ## 7. The reconstruction (Sledgehammer) loop
 

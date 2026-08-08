@@ -469,7 +469,7 @@ module PropCalculus =
     
     /// T = (p = p)  (Gries 3.3)
     [<DerivedRule "T = (p = p)">]
-    let def_true (p:Prop) = id_ax prop_calculus (T == (p == p))  
+    let def_true (p:Prop) = ax_ident prop_calculus (T == (p == p))  
         
     /// F = (¬p = p)  (Gries 3.15)
     [<DerivedRule "F = (¬p = p)">]
@@ -495,7 +495,7 @@ module PropCalculus =
 
     /// (p = q) = r = p = (q = r)  (Gries 3.1)
     [<DerivedRule "(p = q) = r = p = (q = r)">]
-    let right_assoc_eq (p:Prop) (q:Prop) (r:Prop) = id_ax prop_calculus (((p == q) == r) == (p == (q == r)))
+    let right_assoc_eq (p:Prop) (q:Prop) (r:Prop) = ax_ident prop_calculus (((p == q) == r) == (p == (q == r)))
 
     /// ¬F = T  (Gries 3.13)
     [<DerivedRule "¬F = T">]
@@ -545,7 +545,7 @@ module PropCalculus =
 
     /// p ∨ q = q ∨ p  (Gries 3.24)
     [<DerivedRule "p ∨ q = q ∨ p">]
-    let commute_or (p:Prop) (q:Prop) = id_ax prop_calculus ((p + q) == (q + p))
+    let commute_or (p:Prop) (q:Prop) = ax_ident prop_calculus ((p + q) == (q + p))
  
     /// p ∨ (q ∨ r) = p ∨ q ∨ r  (Gries 3.25)
     [<DerivedRule "p ∨ (q ∨ r) = p ∨ q ∨ r">]
@@ -564,7 +564,7 @@ module PropCalculus =
 
     /// p ∨ (q = r) = (p ∨ q) = (p ∨ r)  (Gries 3.27)
     [<DerivedRule "p ∨ (q = r) = (p ∨ q) = (p ∨ r)">]
-    let distrib_or_eq (p:Prop) (q:Prop) (r:Prop) = id_ax prop_calculus ((p + (q == r)) == ((p + q) == (p + r)))
+    let distrib_or_eq (p:Prop) (q:Prop) (r:Prop) = ax_ident prop_calculus ((p + (q == r)) == ((p + q) == (p + r)))
 
     /// (p ∨ q) = (p ∨ r) = p ∨ (q ∨ r)  (Gries 3.27)
     [<DerivedRule "(p ∨ q) = (p ∨ r) = p ∨ (q ∨ r)">]
@@ -572,7 +572,7 @@ module PropCalculus =
 
     /// (p ∨ p) = p  (Gries 3.26)
     [<DerivedRule "(p ∨ p) = p">]
-    let idemp_or p =  id_ax prop_calculus ((p + p) == p) 
+    let idemp_or p =  ax_ident prop_calculus ((p + p) == p) 
   
     /// (p and p) = p  (Gries 3.38)
     [<DerivedRule "(p and p) = p">]
@@ -711,7 +711,7 @@ module PropCalculus =
     
     /// p ∧ q = ((p = q) = (p ∨ q))  (Gries 3.35)
     [<DerivedRule "p ∧ q = ((p = q) = (p ∨ q))">]
-    let golden_rule' (p:Prop) (q:Prop) = id_ax prop_calculus ((p * q) == (p == q == (p + q)))
+    let golden_rule' (p:Prop) (q:Prop) = ax_ident prop_calculus ((p * q) == (p == q == (p + q)))
 
     // NB (applies to this and the derivations below): every SUBSTITUTION step is addressed to the
     // exact node it rewrites. A substitution rule (`idemp_or p`, an `Ident` of a theorem) rewrites
@@ -1023,7 +1023,7 @@ module PropCalculus =
 
     /// p ⇒ q = (p ∨ q = q)  (Gries 3.57)
     [<DerivedRule "p ⇒ q = (p ∨ q = q)">]
-    let def_implies' (p:Prop) (q:Prop) = id_ax prop_calculus ( (p ==> q) == (p + q == q) )
+    let def_implies' (p:Prop) (q:Prop) = ax_ident prop_calculus ( (p ==> q) == (p + q == q) )
 
     /// p ⇒ q = (¬p ∨ q)  (Gries 3.59)
     [<DerivedRule "p ⇒ q = (¬p ∨ q)">]

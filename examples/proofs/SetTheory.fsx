@@ -111,7 +111,7 @@ printfn "\n===== (F) A worked cross-layer theorem: Gries 11.7   e ∈ {x | R} = 
 // One-Point 8.14) collapses the ∃. Exercises BOTH foundations in one proof.
 let proven (f: unit -> 'a) = try f () |> ignore; true with _ -> false
 let e_in    = <@ %e.Expr |?| set_comp %x.Expr %(R.[x].Expr) %x.Expr @>            // e ∈ {x | R x : x}
-let memRule = id_ax st (Prop <@ %e_in = exists_expr %x.Expr %(R.[x].Expr) (%e.Expr = %x.Expr) @>)
+let memRule = ax_ident st (Prop <@ %e_in = exists_expr %x.Expr %(R.[x].Expr) (%e.Expr = %x.Expr) @>)
 let bodyEq  = Pred<int>(func = <@ fun (z:int) -> %e.Expr = z @>)                   // fun z -> e = z
 ok "11.7  e ∈ {x|R} = R e  proven" (proven (fun () ->
     ident st (Prop <@ %e_in = %(R.[e].Expr) @>) [
@@ -133,7 +133,7 @@ let yinC = <@ %y.Expr |?| %comp @>                         // y ∈ {x | x∈S :
 let Rmem = Pred<int>(func = <@ fun (z:int) -> z |?| %sS.Expr @>)   // (·∈S) as a predicate
 let bodyEqY = Pred<int>(func = <@ fun (z:int) -> %y.Expr = z @>)
 // inner lemma = 11.7 at e:=y, R:=(·∈S):  y ∈ {x|x∈S:x} = y∈S
-let memRuleY = id_ax st (Prop <@ %yinC = exists_expr %x.Expr %xinS (%y.Expr = %x.Expr) @>)
+let memRuleY = ax_ident st (Prop <@ %yinC = exists_expr %x.Expr %xinS (%y.Expr = %x.Expr) @>)
 let inner117 =
     ident st (Prop <@ %yinC = %yinS @>) [
         memRuleY |> at_left
@@ -141,7 +141,7 @@ let inner117 =
         commute_and (Prop <@ %xinS @>) (Prop <@ %y.Expr = %x.Expr @>) |> at [left_branch; select_body]
         trade_exists_and x bodyEqY Rmem |> Commute |> at_left
     ]
-let extRule = id_ax st (Prop <@ (%sS.Expr = %comp) = forall_expr %y.Expr %T.Expr ((%yinS:bool) = %yinC) @>)
+let extRule = ax_ident st (Prop <@ (%sS.Expr = %comp) = forall_expr %y.Expr %T.Expr ((%yinS:bool) = %yinC) @>)
 ok "11.5  S = {x | x∈S : x}  proven" (proven (fun () ->
     ident st (Prop <@ %sS.Expr = %comp @>) [
         extRule                                                    // → (∀y|: y∈S = y∈{x|x∈S:x})
@@ -172,8 +172,8 @@ printfn "\n===== (I) A worked set-algebra law via the membership route: Gries 11
 // Extensionality reduces S∪S=S to (∀v|: v∈(S∪S) = v∈S); the Union axiom (11.20) unfolds v∈(S∪S) to
 // v∈S ∨ v∈S; ∨-idempotency collapses it; reflexivity and (∀v|:true)=true close it.
 let SuS   = sS |+| sS
-let extU  = id_ax st ((SuS == sS) == qall v T ((v |?| SuS) == (v |?| sS)))
-let unionU = id_ax st ((v |?| SuS) == (vinS + vinS))
+let extU  = ax_ident st ((SuS == sS) == qall v T ((v |?| SuS) == (v |?| sS)))
+let unionU = ax_ident st ((v |?| SuS) == (vinS + vinS))
 ok "11.28  S ∪ S = S  proven" (proven (fun () ->
     ident st (SuS == sS) [
         extU                                               // → (∀v|: v∈(S∪S) = v∈S)
@@ -192,12 +192,12 @@ let SuT      : SetTerm<int> = sS |+| sT
 let negSuT   : SetTerm<int> = neg SuT              // ~(S ∪ T)
 let nSinT    : SetTerm<int> = nS |*| nsT           // ~S ∩ ~T
 let memv (t:SetTerm<int>) = v |?| t
-let compUnion = id_ax st ((memv negSuT) == (!! (memv SuT)))       // v∈~(S∪T) = ¬(v∈(S∪T))
-let unionR    = id_ax st ((memv SuT)    == (vinS + vinT))         // v∈(S∪T)  = v∈S ∨ v∈T
-let interR    = id_ax st ((memv nSinT)  == ((memv nS) * (memv nsT)))  // v∈(~S∩~T) = v∈~S ∧ v∈~T
-let compS     = id_ax st ((memv nS)     == (!! vinS))             // v∈~S = ¬(v∈S)
-let compT     = id_ax st ((memv nsT)    == (!! vinT))             // v∈~T = ¬(v∈T)
-let extDM = id_ax st ((negSuT == nSinT) == qall v T ((v |?| negSuT) == (v |?| nSinT)))
+let compUnion = ax_ident st ((memv negSuT) == (!! (memv SuT)))       // v∈~(S∪T) = ¬(v∈(S∪T))
+let unionR    = ax_ident st ((memv SuT)    == (vinS + vinT))         // v∈(S∪T)  = v∈S ∨ v∈T
+let interR    = ax_ident st ((memv nSinT)  == ((memv nS) * (memv nsT)))  // v∈(~S∩~T) = v∈~S ∧ v∈~T
+let compS     = ax_ident st ((memv nS)     == (!! vinS))             // v∈~S = ¬(v∈S)
+let compT     = ax_ident st ((memv nsT)    == (!! vinT))             // v∈~T = ¬(v∈T)
+let extDM = ax_ident st ((negSuT == nSinT) == qall v T ((v |?| negSuT) == (v |?| nSinT)))
 ok "11.42a  ~(S∪T) = ~S ∩ ~T  proven" (proven (fun () ->
     ident st (negSuT == nSinT) [
         extDM                                                      // (∀v|: v∈~(S∪T) = v∈(~S∩~T))
@@ -211,7 +211,7 @@ ok "11.42a  ~(S∪T) = ~S ∩ ~T  proven" (proven (fun () ->
         ident_forall_true' v                                       // (∀v|: true) → true
     ]))
 
-printfn "\n===== (K) Metatheorem 11.25(a): `SetTheory.metaset` mechanizes the set-algebra laws ====="
+printfn "\n===== (K) Metatheorem 11.25(a): `SetTheory.meta_set_ident` mechanizes the set-algebra laws ====="
 // Gries' Metatheorem (11.25a) says a set identity  Es = Fs  is valid iff its propositional
 // translation  Ep = Fp  (Definition 11.24: ∅↦false, U↦true, ~↦¬, ∪↦∨, ∩↦∧, set variable S ↦ its
 // membership proposition v∈S) is valid. Rather than adding it as a new trusted primitive, it is
@@ -226,7 +226,7 @@ printfn "\n===== (K) Metatheorem 11.25(a): `SetTheory.metaset` mechanizes the se
 //
 // This all now lives in the THEORY (`src/math/Sylvia.AbstractAlgebra/Theories/SetTheory.fs`), not in
 // this script: `translate` (Definition 11.24), `unfold` (the membership-reduction recursion),
-// `metaset`, `metasubset` and `powerset_member`, plus the named laws of §11.3 — and generic over the
+// `meta_set_ident`, `meta_subset` and `powerset_member`, plus the named laws of §11.3 — and generic over the
 // element type rather than pinned to `int` as the script-local versions were. What follows exercises
 // the library versions; the script keeps only the checking harness.
 open SetTheory
@@ -242,9 +242,9 @@ let private why (what: string) (e: exn) =
         printfn "      %s refused: %s" what (e.Message.Split('\n').[0])
     false
 let proves (what: string) (f: unit -> Theorem) = try (f ()).Proof.Complete with e -> why what e
-let metaproven (l: SetTerm<int>) (r: SetTerm<int>) = proves "metaset" (fun () -> metaset l r)
+let metaproven (l: SetTerm<int>) (r: SetTerm<int>) = proves "meta_set_ident" (fun () -> meta_set_ident l r)
 
-// The named Gries laws 11.26–11.42 — each proved with a single `metaset` call.
+// The named Gries laws 11.26–11.42 — each proved with a single `meta_set_ident` call.
 ok "11.26 Symmetry of ∪        S∪T = T∪S"              (metaproven (sS |+| sT) (sT |+| sS))
 ok "11.27 Associativity of ∪   (S∪T)∪U = S∪(T∪U)"      (metaproven ((sS |+| sT) |+| sU) (sS |+| (sT |+| sU)))
 ok "11.28 Idempotency of ∪     S∪S = S"                (metaproven (sS |+| sS) sS)
@@ -268,7 +268,7 @@ printfn "\n===== (L) Metatheorem 11.25(b): subset via implication  Es ⊆ Fs ↔
 // `unfold` lemmas to reach the body `Ep ⇒ Fp`; discharge that tautology with `decide` folded
 // via `Taut` (a proven proposition → true); close with `(∀v|:true) = true`.
 
-let subproven (l: SetTerm<int>) (r: SetTerm<int>) = proves "metasubset" (fun () -> metasubset l r)
+let subproven (l: SetTerm<int>) (r: SetTerm<int>) = proves "meta_subset" (fun () -> meta_subset l r)
 
 ok "11.58 Reflexivity          S ⊆ S"                  (subproven sS sS)
 ok "∩ lower bound              S∩T ⊆ S"                (subproven (sS |*| sT) sS)
@@ -282,8 +282,8 @@ ok "INVALID S∪T ⊆ S  rejected"                        (not (subproven (sS |+
 
 printfn "\n===== (M) ∅ / U membership atoms: the identity, zero and complement laws ====="
 // With the constant-membership axioms  v∈∅ = false  and  v∈U = true  (added to SetTheory.fs), the
-// `metaset` tactic now also covers every Gries law that mentions ∅ or U. Metatheorem 11.25(c)
-// (`Es = U` valid iff Ep valid) needs no separate tactic — it is just `metaset Es U`, whose body
+// `meta_set_ident` tactic now also covers every Gries law that mentions ∅ or U. Metatheorem 11.25(c)
+// (`Es = U` valid iff Ep valid) needs no separate tactic — it is just `meta_set_ident Es U`, whose body
 // reduces to `Ep = true`.
 ok "v∈∅ = false  recognized (Empty axiom)"            (st.AxEquiv ((v |?| emptyT) == F).Expr)
 ok "v∈U = true   recognized (Universe axiom)"         (st.AxEquiv ((v |?| uT) == T).Expr)

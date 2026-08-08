@@ -229,7 +229,7 @@ the axiom functions in `BooleanAlgebra`/`Integers`/`RealNumbers` (in the generic
 | replace_expr large | 173 ms | 0.198 ms | 0.145 ms | ~1190x |
 
 Validation: prover suite 97/97 with `SYLVIA_SEQUAL_CHECK=1`; `PropCalculus.fsx` and
-`SetTheory.fsx` (ALL PASS, exercises the BooleanAlgebra/metaset paths) both clean against
+`SetTheory.fsx` (ALL PASS, exercises the BooleanAlgebra/meta_set_ident paths) both clean against
 rebuilt Debug DLLs — note the example scripts' `Include.fsx` references **Debug** binaries,
 so Debug must be rebuilt before fsi validation counts.
 

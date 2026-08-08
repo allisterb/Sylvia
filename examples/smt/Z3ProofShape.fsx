@@ -101,7 +101,7 @@ let goals : (string * (Context -> BoolExpr[])) list =
         let p, q, r = c.MkBoolConst "p", c.MkBoolConst "q", c.MkBoolConst "r"
         [| c.MkImplies(p, q); c.MkImplies(q, r); c.MkNot(c.MkImplies(p, r)) |])
 
-      // The propositional body `metaset` produces for a set identity (Gries 11.42a), at two sizes.
+      // The propositional body `meta_set_ident` produces for a set identity (Gries 11.42a), at two sizes.
       // If these stay flat as the variable count grows, set-theory goals are cheap to reconstruct.
       "set body De Morgan", (fun (c: Context) ->
         let p, q = c.MkBoolConst "p", c.MkBoolConst "q"

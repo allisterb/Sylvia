@@ -20,7 +20,7 @@ open FsExpr
 /// equational kernel can then build a human-readable, kernel-checked proof.
 ///
 /// E complements Sylvia's own automation: the equational decision procedures (e.g. the set-algebra
-/// `metaset`/`metasubset` tactics) own the decidable Boolean fragment, while E handles the quantified /
+/// `meta_set_ident`/`meta_subset` tactics) own the decidable Boolean fragment, while E handles the quantified /
 /// relational FOL goals beyond it. It is distinct from `Sylvia.Solver.Z3` (an SMT *solver*, strong on
 /// background theories and model finding); E is an *ATP*, strong on general FOL and equality.
 module ATP =

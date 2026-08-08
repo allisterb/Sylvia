@@ -107,7 +107,7 @@ let bodyLemma (p: Prop) (r: Prop) (q: Prop) =
 
 // The GIVEN simpler axiom (distributivity over a true range only):
 let trueRange (x: TermVar<'t>) (P: Prop) (B: Pred<'t>) =
-    id_ax pred_calculus ((P + forall'(x, B)) == qall x T (P + B[x]))
+    ax_ident pred_calculus ((P + forall'(x, B)) == qall x T (P + B[x]))
 
 printfn "9.1  general (9.5) from true-range: pp ∨ (∀x|R:Q) = (∀x|R: pp∨Q)"
 let ex_9_1 = ident pred_calculus ((P' + forall(x, R, Q)) == qall x R[x] (P' + Q[x])) [
@@ -142,7 +142,7 @@ let ex_9_27 = ident pred_calculus (((exists(x,R,P)) ==> Q') == qall x R[x] (P[x]
 // Exercise 9.20 → Trading ∨ out of ∃ (9.23), a CONDITIONAL identity discharged with a `Deduce`
 // on the range-nonempty assumption:  (∃x|:R) ⇒ ((∃x|R:pp∨Q) = pp ∨ (∃x|R:Q))   (pp x-free).
 let collectMixed (x: TermVar<'t>) (R: Pred<'t>) (P: Prop) (Q: Pred<'t>) =
-    id_ax pred_calculus (((qex x R[x] P) + exists(x,R,Q)) == qex x R[x] (P + Q[x]))
+    ax_ident pred_calculus (((qex x R[x] P) + exists(x,R,Q)) == qex x R[x] (P + Q[x]))
 
 printfn "9.23 trade ∨ out of ∃ (conditional): (∃x|:R) ⇒ ((∃x|R:pp∨Q) = pp∨(∃x|R:Q))"
 let ex_9_23 = theorem pred_calculus (exists'(x, R) ==> ((qex x R[x] (P' + Q[x])) == (P' + exists(x,R,Q)))) [

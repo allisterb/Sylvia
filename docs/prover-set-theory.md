@@ -10,7 +10,7 @@ Runnable foundation check: `dotnet fsi examples/proofs/SetTheory.fsx` (**133/133
 **Status.** Chapter 11 is covered apart from Size (11.12): the foundational layer (Membership 11.3,
 Extensionality 11.4), every operator definition (Subset 11.13, Complement 11.18, Union 11.20,
 Intersection 11.21, Difference 11.22, Power set 11.23, and `∅`/`U` membership), the Boolean-algebra
-layer, and Metatheorem 11.25(a)/(b)/(c) mechanized as the `metaset` / `metasubset` tactics. Size needs
+layer, and Metatheorem 11.25(a)/(b)/(c) mechanized as the `meta_set_ident` / `meta_subset` tactics. Size needs
 a Σ quantifier — see §4d.
 
 All of it now lives in the **library** (`Theories/SetTheory.fs`), not in the example script — see §6.
@@ -154,11 +154,11 @@ Check (C) confirms the corrected polarity is recognized and the inverted forms a
   on the `|+|`/`|*|` operators in *both* the algebra and the membership axioms, so one `S |+| T`
   expression matches both routes, and `S ⊆ T` is now a proposition. See `examples/proofs/SetTheory.fsx`
   checks H–J.
-- **Metatheorem (11.25a/b/c) tactics.** ✅ Done. `metaset` (a) mechanizes the membership-route proof
+- **Metatheorem (11.25a/b/c) tactics.** ✅ Done. `meta_set_ident` (a) mechanizes the membership-route proof
   for *any* set identity over `{∪, ∩, ~, ∅, U, variables}` (each named law 11.26–11.42 in one call,
   now including the ∅/U identity/zero/excluded-middle/contradiction laws via the `EmptyMember`/
-  `UniverseMember` axioms); `metasubset` (b) proves `Es ⊆ Fs` via `Ep ⇒ Fp` (reflexivity 11.58, the
-  ∩/∪ bound laws, …); (c) `Es = U` is just `metaset Es U`. See §4c and `examples/proofs/SetTheory.fsx`
+  `UniverseMember` axioms); `meta_subset` (b) proves `Es ⊆ Fs` via `Ep ⇒ Fp` (reflexivity 11.58, the
+  ∩/∪ bound laws, …); (c) `Es = U` is just `meta_set_ident Es U`. See §4c and `examples/proofs/SetTheory.fsx`
   sections K–M.
 - **Difference (11.22) and Power set (11.23).** ✅ Done — sections O and P. **Size (11.12) remains the
   one gap in the chapter**, and it is a real one: `#S = (Σx | x∈S : 1)` needs a Σ quantifier the pure
@@ -189,7 +189,7 @@ extensionality; the complement/union/intersection axioms reduce each membership;
 De Morgan (`distrib_not_or`, `¬(p∨q) = ¬p ∧ ¬q`) equates the sides; then reflexivity and
 `(∀v|:true) = true`. It exercises all three Boolean operators together in one proof.
 
-## 4c. Metatheorem 11.25(a) — the `metaset` tactic
+## 4c. Metatheorem 11.25(a) — the `meta_set_ident` tactic
 
 Metatheorem (11.25a): a set identity `Es = Fs` is valid **iff** its propositional translation
 `Ep = Fp` is valid, where Definition (11.24) maps `∅↦false, U↦true, ~↦¬, ∪↦∨, ∩↦∧`, and each set
@@ -203,16 +203,16 @@ kernel-checked `Theorem` built only from the already-recognized axioms. The tact
    variables (`∪↦+`, `∩↦*`, `~↦!!`).
 2. **`unfold : SetTerm → Rule`** — a rewrite `(v∈s) = translate s`, built by recursion that mirrors
    the operator axioms: at each node apply the Union/Intersection/Complement membership axiom
-   (`id_ax`), then recurse into any *compound* operand (a bare variable is already an atom, so its
+   (`ax_ident`), then recurse into any *compound* operand (a bare variable is already an atom, so its
    step is skipped — avoids a no-op rewrite).
-3. **`metaset lhs rhs : Theorem`** — apply **Extensionality** to get `(∀v|: v∈Es = v∈Fs)`; rewrite
+3. **`meta_set_ident lhs rhs : Theorem`** — apply **Extensionality** to get `(∀v|: v∈Es = v∈Fs)`; rewrite
    each side with its `unfold` lemma to reach the body `Ep = Fp`; prove `Ep = Fp` with
    `PropCalculus.decide` and fold it in with `Taut'` (replaces the body with `true`); close with
    `ident_forall_true'`.
 
-`metaset` proves exactly the valid identities over `{∪, ∩, ~, variables}` and **rejects** invalid
+`meta_set_ident` proves exactly the valid identities over `{∪, ∩, ~, variables}` and **rejects** invalid
 ones (the discharge throws): section K checks both `S∪T = S∩T` and `~(S∪T) = ~S∪~T` are rejected.
-Named laws proved by a single `metaset` call: **11.26/11.36** symmetry, **11.27** associativity,
+Named laws proved by a single `meta_set_ident` call: **11.26/11.36** symmetry, **11.27** associativity,
 **11.28** idempotency, **11.40/11.41** distributivity, **11.42a/b** De Morgan, absorption,
 **11.19** double complement. This is the object-level payoff of §11.3 — the algebra laws "for free".
 
@@ -236,10 +236,10 @@ Named laws proved by a single `metaset` call: **11.26/11.36** symmetry, **11.27*
 > atoms, so every goal mentioning a truth constant was reported a non-theorem. The ∅/U laws translate
 > to bodies containing exactly those constants. See `docs/prover-sat-reconstruction.md` §7 item 7.
 
-### Metatheorem 11.25(b) — subset via implication (`metasubset`)
+### Metatheorem 11.25(b) — subset via implication (`meta_subset`)
 
 Gries (11.56) states that `Es ⊆ Fs` iff the characteristic predicate of `Es` *implies* that of `Fs`
-— i.e. Metatheorem 11.25(b): `Es ⊆ Fs` valid iff `Ep ⇒ Fp` valid. `metasubset` (section L) mechanizes
+— i.e. Metatheorem 11.25(b): `Es ⊆ Fs` valid iff `Ep ⇒ Fp` valid. `meta_subset` (section L) mechanizes
 it. The goal `Es ⊆ Fs` is a bare proposition (not an equality), so we reduce it to `true`:
 
 1. **Subset (11.13)** rewrites `Es ⊆ Fs` to `(∀v | v∈Es : v∈Fs)`.
@@ -265,17 +265,17 @@ value is in the universe). They match the *structured* forms `NewUnionCase Empty
 `PropertyGet U` — so a `∅`/`U` SetTerm must be built inside a quotation (`SetTerm<int>(<@ Set.Empty @>)`);
 writing `Set.Empty` outside one evaluates it to an opaque value that no axiom matches. With these,
 `translate` gains `∅ ↦ false`, `U ↦ true`, and `unfold` gains the terminal cases `v∈∅ → false`,
-`v∈U → true`, so `metaset` now covers every Gries law mentioning `∅` or `U`: **11.29/11.30** identity
+`v∈U → true`, so `meta_set_ident` now covers every Gries law mentioning `∅` or `U`: **11.29/11.30** identity
 of ∪ and zero, **11.34/11.35** identity of ∩ and zero, **11.32** excluded middle `S∪~S = U`, **11.39**
 contradiction `S∩~S = ∅` (section M). **Metatheorem 11.25(c)** (`Es = U` valid iff `Ep` valid) needs
-*no* separate tactic — it is just `metaset Es U`, whose body reduces to `Ep = true`.
+*no* separate tactic — it is just `meta_set_ident Es U`, whose body reduces to `Ep = true`.
 
 ## 4d. Difference (11.22) and Power set (11.23)
 
 These are the last two operators of the chapter, and they land on opposite sides of the metatheorem —
 which is the interesting part.
 
-**Difference `S − T` (11.22, `v ∈ S−T = v∈S ∧ v∉T`) extends `metaset`.** New: `SetOps.difference` and
+**Difference `S − T` (11.22, `v ∈ S−T = v∈S ∧ v∉T`) extends `meta_set_ident`.** New: `SetOps.difference` and
 the `SetTerm.(|-|)` overloads in `Definitions/Set.fs` (`Set<'t>` already had `|-|`; `SetTerm<'t>`, the
 *symbolic* type theories are written against, did not), the `DifferenceMember` axiom, and an `SDiff`
 case in the example's classifier / `translate` (`− ↦ ∧¬`) / `unfold`. In `unfold` the right operand
@@ -353,13 +353,13 @@ writes `SetTheory.de_morgan_union S T` instead of restating the identity and re-
 | `empty_set<'t>` / `universe<'t>` | `∅` / `U` as structured `SetTerm`s (they must be built inside a quotation, or no axiom matches) |
 | `translate v s` | Definition 11.24, structurally |
 | `unfold v s` | the rewrite rule `(v ∈ s) = translate v s` |
-| `metaset l r` | Metatheorem 11.25(a) — and (c) is `metaset Es universe` |
-| `metasubset l r` | Metatheorem 11.25(b) |
+| `meta_set_ident l r` | Metatheorem 11.25(a) — and (c) is `meta_set_ident Es universe` |
+| `meta_subset l r` | Metatheorem 11.25(b) |
 | `powerset_member t s` | 11.23 composed down onto 11.25(b) |
 | named laws | 11.19, 11.26–11.30, 11.32, 11.34–11.36, 11.39–11.42, absorption, the ∩/∪ bounds, 11.58, the difference laws, the power-set memberships |
 
 `set_theory<'t>` used to be a plain generic `let` value, which F# re-evaluates on **every access** — so
-every `id_ax` inside a tactic built a fresh `Theory` and threw away its per-instance axiom cache
+every `ax_ident` inside a tactic built a fresh `Theory` and threw away its per-instance axiom cache
 (`Proof.fs`). It is now a static member of a private generic class, i.e. one instance per element
 type, initialized once.
 
