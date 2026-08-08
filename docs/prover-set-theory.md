@@ -5,13 +5,15 @@ Schneider, *A Logical Approach to Discrete Math*, **Chapter 11**. Companion to
 [`prover-predicate-calculus.md`](prover-predicate-calculus.md) and
 [`prover-automation.md`](prover-automation.md).
 
-Runnable foundation check: `dotnet fsi examples/proofs/SetTheory.fsx` (**89/89**).
+Runnable foundation check: `dotnet fsi examples/proofs/SetTheory.fsx` (**133/133**).
 
 **Status.** Chapter 11 is covered apart from Size (11.12): the foundational layer (Membership 11.3,
 Extensionality 11.4), every operator definition (Subset 11.13, Complement 11.18, Union 11.20,
 Intersection 11.21, Difference 11.22, Power set 11.23, and `∅`/`U` membership), the Boolean-algebra
 layer, and Metatheorem 11.25(a)/(b)/(c) mechanized as the `metaset` / `metasubset` tactics. Size needs
 a Σ quantifier — see §4d.
+
+All of it now lives in the **library** (`Theories/SetTheory.fs`), not in the example script — see §6.
 
 ## 1. What Chapter 11 actually builds
 
@@ -161,6 +163,9 @@ Check (C) confirms the corrected polarity is recognized and the inverted forms a
 - **Difference (11.22) and Power set (11.23).** ✅ Done — sections O and P. **Size (11.12) remains the
   one gap in the chapter**, and it is a real one: `#S = (Σx | x∈S : 1)` needs a Σ quantifier the pure
   fragment does not have. See §4d.
+- **Step 5 — promotion into the theory.** ✅ Done (2026-08-08). The tactics and the named laws moved
+  out of the example script into `Theories/SetTheory.fs`, generic over the element type; the script
+  keeps the foundation checks, the hand proofs, and the harness. See §6.
 
 ## 4a. Two coherence issues — resolved
 
@@ -192,7 +197,7 @@ variable `S` becomes its membership proposition `v∈S`. Rather than add this as
 primitive (which would import an out-of-kernel translation + validity oracle into the trusted base),
 we **mechanize** the hand proof used for 11.28 / De Morgan, so every result is an ordinary
 kernel-checked `Theorem` built only from the already-recognized axioms. The tactic
-(`examples/proofs/SetTheory.fsx` section K) has three parts:
+(`Theories/SetTheory.fs`; exercised in `examples/proofs/SetTheory.fsx` section K) has three parts:
 
 1. **`translate : SetTerm → Prop`** — Definition 11.24, structurally, keeping `v∈S` atoms for
    variables (`∪↦+`, `∩↦*`, `~↦!!`).
@@ -297,7 +302,8 @@ tactics: let 11.23 take the goal **down** to a subset obligation, then discharge
 That is `powerset_member` in section P, and it proves `∅ ∈ 𝒫S`, `S ∈ 𝒫S`, `S∩T ∈ 𝒫S`, `S−T ∈ 𝒫S`
 while refusing `S∪T ∈ 𝒫S`.
 
-Example is now **89/89**.
+Example is now **133/133** — the 89 checks described above, plus section Q, which proves every named
+law through the library exports listed in §6 (including two at element types other than `int`).
 
 **Size (11.12) is the one thing left in ch.11**, and it is genuinely out of reach rather than merely
 unstarted: `#S = (Σx | x∈S : 1)` needs a Σ quantifier, i.e. a quantified fold over a numeric codomain.
@@ -328,7 +334,50 @@ Verified: full prover suite 85/85 (no regression), and both set-theory smoke tes
 - `src/math/Sylvia.AbstractAlgebra/Theories/SetAlgebra.fs` — `∪/∩/~/∅/U` instantiation of
   `BooleanAlgebra<Set<'t>>` (§11.3).
 - `src/math/Sylvia.AbstractAlgebra/Theories/SetTheory.fs` — membership/extensionality recognizer
-  patterns, the two-foundation `SetTheory` type.
+  patterns, the two-foundation `SetTheory` type, **the metatheorem tactics and the named laws** (§6).
 - `src/math/Sylvia.AbstractAlgebra/Definitions/Set.fs` — the `Set<'t>` data type and runtime
   operators / comprehension constructors.
 - `examples/proofs/SetTheory.fsx` — runnable foundation verification (also a regression guard).
+
+## 6. The library API
+
+Until 2026-08-08 the metatheorem tactics existed only inside `examples/proofs/SetTheory.fsx`, pinned
+to `int`, so nothing outside that script could cite a set-theoretic law. They are now part of the
+theory, generic over the element type, in the same shape `PredCalculus` uses for the ch.8/9 theorems:
+each named law is a **function of its set arguments returning a `Theorem`**, so a proof elsewhere
+writes `SetTheory.de_morgan_union S T` instead of restating the identity and re-proving it.
+
+| Export | Meaning |
+|---|---|
+| `set_theory<'t>` | the theory instance, now **cached per element type** (see below) |
+| `empty_set<'t>` / `universe<'t>` | `∅` / `U` as structured `SetTerm`s (they must be built inside a quotation, or no axiom matches) |
+| `translate v s` | Definition 11.24, structurally |
+| `unfold v s` | the rewrite rule `(v ∈ s) = translate v s` |
+| `metaset l r` | Metatheorem 11.25(a) — and (c) is `metaset Es universe` |
+| `metasubset l r` | Metatheorem 11.25(b) |
+| `powerset_member t s` | 11.23 composed down onto 11.25(b) |
+| named laws | 11.19, 11.26–11.30, 11.32, 11.34–11.36, 11.39–11.42, absorption, the ∩/∪ bounds, 11.58, the difference laws, the power-set memberships |
+
+`set_theory<'t>` used to be a plain generic `let` value, which F# re-evaluates on **every access** — so
+every `id_ax` inside a tactic built a fresh `Theory` and threw away its per-instance axiom cache
+(`Proof.fs`). It is now a static member of a private generic class, i.e. one instance per element
+type, initialized once.
+
+### An F# trap worth knowing: silent loss of genericity
+
+Two of these functions compiled cleanly while being **not generic at all** — `'t` had been quietly
+solved as `obj`, which only shows up when a caller tries to use them at a concrete element type:
+
+- `<@ fun (z:'t) -> z |?| %s.Expr @>` (the membership predicate). With a rigid `'t` the compiler
+  cannot rule out that `'t` is itself a `Term<_>`, so `|?|` is ambiguous between the `('t, Set<'t>)`
+  and `(Term<'t>, Set<'t>)` overloads.
+- `t |?| s.Powerset`. `SetTerm<'t>` **is** a `Term<Set<'t>>`, so both the `(Term<'u>, SetTerm<'u>)`
+  and the `(SetTerm<'u>, SetTerm<Set<'u>>)` overloads apply.
+
+Both are fixed by building the call explicitly (or upcasting one operand to pick an overload); both
+build the same expression either way, so nothing about the proofs changes. Two things make this easy
+to miss: warning **FS0064 is reported at the CALLER**, not at the definition that lost its type
+variable, and a degenerate function is perfectly usable from other degenerate code — the example
+script never noticed because everything in it was `int`. When generalizing a theory over its element
+type, check the compiled signatures (`m.IsGenericMethodDefinition`) rather than trusting a clean
+build.

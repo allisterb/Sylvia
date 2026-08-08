@@ -437,7 +437,7 @@ type SetTerm<'t when 't: equality>(expr:Expr<Set<'t>>) =
 
     static member (|/|) (l:ISet<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.complement<'t>, Expr.Value l.Set, r.Expr) |> expand_as<Set<'t>> |> SetTerm
 
-    static member (~-) (l:SetTerm<'t>) = unary_call(None, SetOps.absoluteComplement<'t>, l.Expr) |> expand_as<Set<'t>> |> SetTerm
+    static member (~-) (l:SetTerm<'t>) :SetTerm<'t> = unary_call(None, SetOps.absoluteComplement<'t>, l.Expr) |> expand_as<Set<'t>> |> SetTerm
 
     // Difference S − T (Gries 11.22). Distinct from `|/|`, whose operands are the other way round
     // (`a.Complement b` = `b.Difference a`) — `|-|` is the one that reads as it is written.

@@ -59,7 +59,9 @@ printfn "\ndecide backend: %s"
 // with the truth constant `T`.
 let sS = setvar<int> "S"
 let sT = setvar<int> "T"
-let neg (s:SetTerm<int>) : SetTerm<int> = -s      // ~s, annotated to fix the operator's return type
+// ~s. `SetTerm.(~-)` declares its return type, so `-s` is usable directly (and is what the theory's
+// own laws are written with); `neg` survives here only because it reads as the `~` of the text.
+let neg (s: SetTerm<int>) = -s
 
 let sa = SetAlgebra.set_algebra<int>
 
@@ -209,11 +211,11 @@ ok "11.42a  ~(S∪T) = ~S ∩ ~T  proven" (proven (fun () ->
         ident_forall_true' v                                       // (∀v|: true) → true
     ]))
 
-printfn "\n===== (K) Metatheorem 11.25(a): a tactic that mechanizes the set-algebra laws ====="
+printfn "\n===== (K) Metatheorem 11.25(a): `SetTheory.metaset` mechanizes the set-algebra laws ====="
 // Gries' Metatheorem (11.25a) says a set identity  Es = Fs  is valid iff its propositional
 // translation  Ep = Fp  (Definition 11.24: ∅↦false, U↦true, ~↦¬, ∪↦∨, ∩↦∧, set variable S ↦ its
-// membership proposition v∈S) is valid. Rather than adding it as a new trusted primitive, we
-// MECHANIZE the membership-route proof used by hand for 11.28 / De Morgan (sections I/J): apply
+// membership proposition v∈S) is valid. Rather than adding it as a new trusted primitive, it is
+// MECHANIZED as the membership-route proof used by hand for 11.28 / De Morgan (sections I/J): apply
 // Extensionality; recursively unfold every membership through the operator axioms (which literally
 // implement 11.24); discharge the resulting propositional body  Ep = Fp  with the COMPLETE decider
 // `decide`; and close with `(∀v|:true) = true`. The result is a genuine, kernel-checked
@@ -221,71 +223,17 @@ printfn "\n===== (K) Metatheorem 11.25(a): a tactic that mechanizes the set-alge
 // is complete for (and only for) propositional tautologies on both of its routes, the tactic proves
 // exactly the valid set identities over {∪, ∩, ~, variables} and REJECTS invalid ones — an invalid
 // body is refused by the ANF prover and comes back SAT (hence raises) from the solver route.
-
-open FSharp.Quotations.Patterns
-
-// Classify a set expression's head: operator (∪ / ∩ / ~), the constants ∅ / U, else an atom (a set
-// variable). ∅ (`NewUnionCase Empty`) and U (`PropertyGet U`) stay structured because the SetTerm is
-// built inside a quotation (writing `Set.Empty` outside one embeds it as an opaque value).
-let (|SUnion|SInter|SDiff|SCompl|SEmpty|SUniv|SAtom|) (s: SetTerm<int>) =
-    match expand s.Expr with
-    | Call(None, mi, [a; b]) when mi.Name = "op_BarPlusBar"     -> SUnion(SetTerm<int>(Expr.Cast a), SetTerm<int>(Expr.Cast b))
-    | Call(None, mi, [a; b]) when mi.Name = "op_BarMultiplyBar" -> SInter(SetTerm<int>(Expr.Cast a), SetTerm<int>(Expr.Cast b))
-    | Call(None, mi, [a; b]) when mi.Name = "op_BarMinusBar"    -> SDiff(SetTerm<int>(Expr.Cast a), SetTerm<int>(Expr.Cast b))
-    | Call(None, mi, [a])    when mi.Name = "op_UnaryNegation"  -> SCompl(SetTerm<int>(Expr.Cast a))
-    | NewUnionCase(uc, _)       when uc.Name = "Empty" -> SEmpty
-    | PropertyGet(None, pi, []) when pi.Name  = "U"     -> SUniv
-    | _ -> SAtom
-
-// Definition 11.24: ∪↦∨, ∩↦∧, ~↦¬, ∅↦false, U↦true, and each set variable ↦ its membership atom v∈S.
 //
-// `−` is NOT in 11.24's grammar (`{set variables, ∅, U, ~, ∪, ∩}`) — this is a deliberate, and
-// conservative, EXTENSION of the definition. It is sound for the same reason Gries can remark that
-// `~S = U − S`: difference is definable from the operators that ARE in the grammar, `S − T = S ∩ ~T`,
-// so translating it to `p ∧ ¬q` adds no expressive power and Metatheorem 11.25 continues to apply to
-// the translated body. Section N proves that defining identity itself, via `metaset`, which is the
-// check that the extension agrees with the definition rather than merely compiling.
-let rec translate (s: SetTerm<int>) : Prop =
-    match s with
-    | SUnion(a, b) -> (translate a) + (translate b)          // ∪ ↦ ∨
-    | SInter(a, b) -> (translate a) * (translate b)          // ∩ ↦ ∧
-    | SDiff(a, b)  -> (translate a) * !!(translate b)        // − ↦ ∧¬  (Gries 11.22)
-    | SCompl a     -> !! (translate a)                       // ~ ↦ ¬
-    | SEmpty       -> F                                      // ∅ ↦ false
-    | SUniv        -> T                                      // U ↦ true
-    | SAtom        -> memv s
-
-// A rewrite rule  (v ∈ s) = translate s, built by recursion mirroring the operator axioms
-// (11.18/11.20/11.21) and the constant-membership axioms (v∈∅ = false, v∈U = true).
-let rec unfold (s: SetTerm<int>) : Rule =
-    let sub (x: SetTerm<int>) addr = match x with SAtom -> [] | _ -> [ unfold x |> at addr ]   // skip atoms
-    match s with
-    | SAtom       -> id_ax st ((memv s) == (memv s))                                            // reflexivity
-    | SEmpty      -> id_ax st ((memv s) == F)                                                   // v∈∅ = false
-    | SUniv       -> id_ax st ((memv s) == T)                                                   // v∈U = true
-    | SCompl a    -> ident st ((memv s) == (translate s))
-                        ((id_ax st ((memv s) == (!! (memv a))) |> at_left) :: sub a [left_branch; apply_unary])
-    | SUnion(a, b)-> ident st ((memv s) == (translate s))
-                        ((id_ax st ((memv s) == ((memv a) + (memv b))) |> at_left) :: sub a [left_branch; left_branch] @ sub b [left_branch; right_branch])
-    | SInter(a, b)-> ident st ((memv s) == (translate s))
-                        ((id_ax st ((memv s) == ((memv a) * (memv b))) |> at_left) :: sub a [left_branch; left_branch] @ sub b [left_branch; right_branch])
-    // Difference's right operand sits under the ¬ introduced by 11.22, hence the extra `apply_unary`
-    // — the same descent the complement case makes.
-    | SDiff(a, b) -> ident st ((memv s) == (translate s))
-                        ((id_ax st ((memv s) == ((memv a) * !!(memv b))) |> at_left) :: sub a [left_branch; left_branch] @ sub b [left_branch; right_branch; apply_unary])
-
-// The tactic: prove a set identity  Es = Fs  via Metatheorem 11.25(a).
-let metaset (lhs: SetTerm<int>) (rhs: SetTerm<int>) : Theorem =
-    let goal = lhs == rhs
-    let ext  = id_ax st (goal == qall v T ((v |?| lhs) == (v |?| rhs)))
-    let stepL = match lhs with SAtom -> [] | _ -> [ unfold lhs |> at [select_body; left_branch] ]
-    let stepR = match rhs with SAtom -> [] | _ -> [ unfold rhs |> at [select_body; right_branch] ]
-    let bodyRule = decide ((translate lhs) == (translate rhs)) |> Ident   // Ep = Fp (complete)
-    theorem st goal ([ ext ] @ stepL @ stepR @ [ Taut' bodyRule |> at [select_body]; ident_forall_true' v ])
+// This all now lives in the THEORY (`src/math/Sylvia.AbstractAlgebra/Theories/SetTheory.fs`), not in
+// this script: `translate` (Definition 11.24), `unfold` (the membership-reduction recursion),
+// `metaset`, `metasubset` and `powerset_member`, plus the named laws of §11.3 — and generic over the
+// element type rather than pinned to `int` as the script-local versions were. What follows exercises
+// the library versions; the script keeps only the checking harness.
+open SetTheory
 
 let sU = setvar<int> "U"
-let emptyT = SetTerm<int>(<@ Set.Empty @>)   // ∅ as a structured SetTerm (kept out of a value embedding)
-let uT     = SetTerm<int>(<@ Set.U @>)       // U, the universe
+let emptyT = empty_set<int>   // ∅ as a structured SetTerm (kept out of a value embedding)
+let uT     = universe<int>    // U, the universe
 // A rejected identity and a BROKEN tactic both surface as `false` here, which is exactly what makes
 // the soundness checks below meaningful — and exactly what hides a bug in the discharge route. Set
 // SYLVIA_DEBUG=1 to see why each `false` happened.
@@ -293,7 +241,8 @@ let private why (what: string) (e: exn) =
     if System.Environment.GetEnvironmentVariable "SYLVIA_DEBUG" = "1" then
         printfn "      %s refused: %s" what (e.Message.Split('\n').[0])
     false
-let metaproven (l: SetTerm<int>) (r: SetTerm<int>) = try (metaset l r).Proof.Complete with e -> why "metaset" e
+let proves (what: string) (f: unit -> Theorem) = try (f ()).Proof.Complete with e -> why what e
+let metaproven (l: SetTerm<int>) (r: SetTerm<int>) = proves "metaset" (fun () -> metaset l r)
 
 // The named Gries laws 11.26–11.42 — each proved with a single `metaset` call.
 ok "11.26 Symmetry of ∪        S∪T = T∪S"              (metaproven (sS |+| sT) (sT |+| sS))
@@ -315,22 +264,11 @@ printfn "\n===== (L) Metatheorem 11.25(b): subset via implication  Es ⊆ Fs ↔
 // — is exactly Metatheorem 11.25(b). We mechanize it like (a), but the goal `Es ⊆ Fs` is a bare
 // proposition (not an equality), so we reduce it to `true`: apply Subset (11.13) to get
 // `(∀v | v∈Es : v∈Fs)`; TRADE (9.2) to `(∀v |: v∈Es ⇒ v∈Fs)` (using the simple membership predicates,
-// so no recursion is needed for the trade); unfold each side of the implication with the section-K
+// so no recursion is needed for the trade); unfold each side of the implication with the theory's
 // `unfold` lemmas to reach the body `Ep ⇒ Fp`; discharge that tautology with `decide` folded
 // via `Taut` (a proven proposition → true); close with `(∀v|:true) = true`.
 
-let memPred (s: SetTerm<int>) : Pred<int> = Pred<int>(func = <@ fun (z:int) -> z |?| %s.Expr @>)
-
-let metasubset (lhs: SetTerm<int>) (rhs: SetTerm<int>) : Theorem =
-    let goal   = lhs |<| rhs
-    let subAx  = id_ax st (goal == qall v (v |?| lhs) (v |?| rhs))            // Subset 11.13
-    let trade  = trade_forall_implies v (memPred lhs) (memPred rhs)           // Trading 9.2: (∀v|N:P)=(∀v|:N⇒P)
-    let stepA  = match lhs with SAtom -> [] | _ -> [ unfold lhs |> at [select_body; left_branch] ]   // antecedent
-    let stepC  = match rhs with SAtom -> [] | _ -> [ unfold rhs |> at [select_body; right_branch] ]  // consequent
-    let bodyThm = decide ((translate lhs) ==> (translate rhs))   // Ep ⇒ Fp (complete)
-    theorem st goal ([ subAx; trade ] @ stepA @ stepC @ [ Taut bodyThm |> at [select_body]; ident_forall_true' v ])
-
-let subproven l r = try (metasubset l r).Proof.Complete with e -> why "metasubset" e
+let subproven (l: SetTerm<int>) (r: SetTerm<int>) = proves "metasubset" (fun () -> metasubset l r)
 
 ok "11.58 Reflexivity          S ⊆ S"                  (subproven sS sS)
 ok "∩ lower bound              S∩T ⊆ S"                (subproven (sS |*| sT) sS)
@@ -459,12 +397,9 @@ printfn "\n===== (P) Power set (Gries 11.23):  T ∈ 𝒫S = T ⊆ S ====="
 ok "11.23 Power set axiom recognized"    (st.AxEquiv ((sT |?| sS.Powerset) == (sT |<| sS)).Expr)
 ok "11.23 reversed subset rejected"      (not (st.AxEquiv ((sT |?| sS.Powerset) == (sS |<| sT)).Expr))
 
-/// `T ∈ 𝒫S`, by Power set (11.23) then Metatheorem 11.25(b) on the resulting `T ⊆ S`.
-let powerset_member (t: SetTerm<int>) (s: SetTerm<int>) : Theorem =
-    let goal = t |?| s.Powerset
-    theorem st goal [ id_ax st (goal == (t |<| s)) |> apply      // 11.23: down to a subset obligation
-                      Taut (metasubset t s) |> apply ]          // 11.25(b) discharges it
-let inpow t s = try (powerset_member t s).Proof.Complete with e -> why "powerset_member" e
+// `SetTheory.powerset_member t s` proves `T ∈ 𝒫S` by Power set (11.23) then Metatheorem 11.25(b) on
+// the resulting `T ⊆ S`.
+let inpow (t: SetTerm<int>) (s: SetTerm<int>) = proves "powerset_member" (fun () -> powerset_member t s)
 
 ok "∅ ∈ 𝒫S     (∅ ⊆ S)"                                (inpow emptyT sS)
 ok "S ∈ 𝒫S     (reflexivity 11.58)"                    (inpow sS sS)
@@ -472,6 +407,63 @@ ok "S∩T ∈ 𝒫S   (∩ lower bound)"                        (inpow (sS |*| s
 ok "S−T ∈ 𝒫S   (difference bound, from section O)"     (inpow (sS |-| sT) sS)
 // Soundness: S∪T is not a subset of S, so it is not a member of 𝒫S and the tactic must refuse.
 ok "INVALID S∪T ∈ 𝒫S  rejected"                        (not (inpow (sS |+| sT) sS))
+
+printfn "\n===== (Q) The named laws of §11.3, as theorems of the library ====="
+// Everything above states its goal inline and asks a tactic to prove it. This section checks the
+// laws Gries actually NAMES, in the form the theory exports them: each is a function of its set
+// arguments (the same shape `PredCalculus` uses for the ch.8/9 theorems), so a proof elsewhere can
+// cite `SetTheory.de_morgan_union S T` instead of restating the identity. Each returns a real
+// `Theorem`, so what is checked here is that the proof closes.
+let named (label: string) (f: unit -> Theorem) = ok label (proves label f)
+
+named "11.19  ~~S = S                      double_complement"      (fun () -> double_complement sS)
+named "11.26  S∪T = T∪S                    symm_union"             (fun () -> symm_union sS sT)
+named "11.27  (S∪T)∪U = S∪(T∪U)            assoc_union"            (fun () -> assoc_union sS sT sU)
+named "11.28  S∪S = S                      idemp_union"            (fun () -> idemp_union sS)
+named "11.29  S∪U = U                      zero_union"             (fun () -> zero_union sS)
+named "11.30  S∪∅ = S                      ident_union"            (fun () -> ident_union sS)
+named "11.32  S∪~S = U                     excluded_middle_union"  (fun () -> excluded_middle_union sS)
+named "11.34  S∩U = S                      ident_inter"            (fun () -> ident_inter sS)
+named "11.35  S∩∅ = ∅                      zero_inter"             (fun () -> zero_inter sS)
+named "11.36  S∩T = T∩S                    symm_inter"             (fun () -> symm_inter sS sT)
+named "       (S∩T)∩U = S∩(T∩U)            assoc_inter"            (fun () -> assoc_inter sS sT sU)
+named "       S∩S = S                      idemp_inter"            (fun () -> idemp_inter sS)
+named "11.39  S∩~S = ∅                     contradiction_inter"    (fun () -> contradiction_inter sS)
+named "11.40  S∩(T∪U) = (S∩T)∪(S∩U)        distrib_inter_union"    (fun () -> distrib_inter_union sS sT sU)
+named "11.41  S∪(T∩U) = (S∪T)∩(S∪U)        distrib_union_inter"    (fun () -> distrib_union_inter sS sT sU)
+named "11.42a ~(S∪T) = ~S∩~T               de_morgan_union"        (fun () -> de_morgan_union sS sT)
+named "11.42b ~(S∩T) = ~S∪~T               de_morgan_inter"        (fun () -> de_morgan_inter sS sT)
+named "       S∩(S∪T) = S                  absorb_inter_union"     (fun () -> absorb_inter_union sS sT)
+named "       S∪(S∩T) = S                  absorb_union_inter"     (fun () -> absorb_union_inter sS sT)
+named "11.58  S ⊆ S                        subset_refl"            (fun () -> subset_refl sS)
+named "       S∩T ⊆ S                      inter_lower_left"       (fun () -> inter_lower_left sS sT)
+named "       S∩T ⊆ T                      inter_lower_right"      (fun () -> inter_lower_right sS sT)
+named "       S ⊆ S∪T                      union_upper_left"       (fun () -> union_upper_left sS sT)
+named "       T ⊆ S∪T                      union_upper_right"      (fun () -> union_upper_right sS sT)
+named "       S∩T ⊆ S∪T                    inter_subset_union"     (fun () -> inter_subset_union sS sT)
+named "11.22  S−T = S∩~T                   def_difference"         (fun () -> def_difference sS sT)
+named "p.203  ~S = U−S                     complement_as_difference" (fun () -> complement_as_difference sS)
+named "       U−S = ~S                     difference_from_universe" (fun () -> difference_from_universe sS)
+named "       S−S = ∅                      self_difference"        (fun () -> self_difference sS)
+named "       S−∅ = S                      ident_difference"       (fun () -> ident_difference sS)
+named "       ∅−S = ∅                      zero_difference"        (fun () -> zero_difference sS)
+named "       S−(T∪U) = (S−T)∩(S−U)        de_morgan_difference_union" (fun () -> de_morgan_difference_union sS sT sU)
+named "       S−(T∩U) = (S−T)∪(S−U)        de_morgan_difference_inter" (fun () -> de_morgan_difference_inter sS sT sU)
+named "       (S∪T)−U = (S−U)∪(T−U)        distrib_difference_union" (fun () -> distrib_difference_union sS sT sU)
+named "       S∩(T−U) = (S∩T)−U            assoc_inter_difference" (fun () -> assoc_inter_difference sS sT sU)
+named "       S−T ⊆ S                      difference_subset"      (fun () -> difference_subset sS sT)
+named "       S−T ⊆ ~T                     difference_subset_complement" (fun () -> difference_subset_complement sS sT)
+named "11.23  ∅ ∈ 𝒫S                       empty_in_powerset"      (fun () -> empty_in_powerset sS)
+named "11.23  S ∈ 𝒫S                       self_in_powerset"       (fun () -> self_in_powerset sS)
+named "11.23  S∩T ∈ 𝒫S                     inter_in_powerset"      (fun () -> inter_in_powerset sS sT)
+named "11.23  S−T ∈ 𝒫S                     difference_in_powerset" (fun () -> difference_in_powerset sS sT)
+
+// The tactics are generic over the ELEMENT type — the script-local versions they replace were pinned
+// to `int`, and nothing here or in Gries depends on what the elements are. Two other element types:
+let cS, cT = setvar<char> "S", setvar<char> "T"
+let strS   = setvar<string> "S"
+named "generic  ~(S∩T) = ~S∪~T  over char"                         (fun () -> de_morgan_inter cS cT)
+named "generic  S∪S = S         over string"                      (fun () -> idemp_union strS)
 
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1
