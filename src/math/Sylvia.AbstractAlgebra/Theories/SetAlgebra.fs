@@ -8,9 +8,9 @@ open BooleanAlgebra
 module SetAlgebra =
         
     (* Symbols *)
-    do 
-        Symbols.BulitIn.Add(src <@ Empty @>, "\u2205")
-        Symbols.BulitIn.Add(src <@ Set.U @>, "\U0001D54C")
+    // The set notation (`\u2205 \ud835\udd4c \u222a \u2229 \u2212 \u2208 \u2286`) is registered with `Symbols.BulitIn` by `SetTerm`'s static
+    // initializer in `Definitions/Set.fs` \u2014 see the comment there for why it cannot live in a module
+    // `do` binding like this one.
     
     (* Formulas *)
 

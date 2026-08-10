@@ -171,8 +171,9 @@ Check (C) confirms the corrected polarity is recognized and the inverted forms a
 
 - **Union/intersection representation.** ✅ Fixed by unifying on the `|+|`/`|*|` operators. Both
   `SetAlgebra` (join/meet) and the Union/Intersection membership axioms now key on
-  `op_BarPlusBar`/`op_BarMultiplyBar`, so a single `S |+| T` expression written in the natural operator
-  notation is recognized by *both* the algebra laws and the membership axioms. The key insight: a
+  `op_BarPlusBar`/`op_BarMultiplyBar`, so a single union expression written in the natural operator
+  notation (today `S + T` — see §6) is recognized by *both* the algebra laws and the membership
+  axioms. The key insight: a
   *type-annotated bare operator quotation* `<@ (|+|) : Set<'t> -> Set<'t> -> Set<'t> @>` is a direct
   method reference that `SpecificCall` accepts (and it resolves generically over the element type). Only
   an explicit *lambda* `<@ fun a b -> a |+| b @>` fails — that was the earlier red herring. The axiom
@@ -346,6 +347,82 @@ to `int`, so nothing outside that script could cite a set-theoretic law. They ar
 theory, generic over the element type, in the same shape `PredCalculus` uses for the ch.8/9 theorems:
 each named law is a **function of its set arguments returning a `Theorem`**, so a proof elsewhere
 writes `SetTheory.de_morgan_union S T` instead of restating the identity and re-proving it.
+
+### Notation: the symbolic operators are arithmetic
+
+On `SetTerm<'t>` — the *symbolic* type theories are written against — union, intersection and
+difference are `+`, `*` and `-`, mirroring `Prop`'s `+` = ∨ and `*` = ∧. That is Definition (11.24)
+made syntactic: a set expression and the propositional body it translates to are written the same
+way. Unary `-` remains complement (F# keeps `~-` and binary `-` distinct), and `⊆` remains `|<|`,
+since a subset is a proposition rather than an algebraic operation.
+
+This is a **surface** rename. `SetTerm`'s operators still *build* `Set<'t>`'s `op_BarPlusBar` /
+`op_BarMultiplyBar` / `op_BarMinusBar`, so every axiom pattern, expression tree and proof is
+unaffected by which spelling the caller used. Renaming the underlying `Set<'t>` methods would **not**
+be equivalent, and the reasons are worth recording:
+
+- `Set<'t>` already spends `(*)` on the Cartesian product (`Set<'a> * Set<'b> -> Set<'a*'b>`).
+- The membership axioms match the method **name**, deliberately element-type-agnostically.
+  `op_BarPlusBar` is unique to sets in this tree; `op_Addition` is not.
+- `Formula.(|Add|_|)` and `FsExpr.(|Addition|_|)` / `(|Multiplication|_|)` are name-only patterns.
+- `Z3.fs` maps `op_Addition` to `MkAdd` — a set union reaching the arithmetic translator would
+  silently become integer addition.
+
+Consequently, inside a **quotation** the operands are `Set<'t>` *values*, not `SetTerm`s, so those
+sites keep `|+|` / `|*|`. There are two: `SetAlgebra`'s join/meet method references, which must name
+`Set`'s method by construction, and one identity check in the example script.
+
+What the change buys is precedence. `|+|` and `|*|` both begin with `|`, so F# gives them equal
+precedence and left-associates: `s |+| t |*| u` parsed as `(s ∪ t) ∩ u`, the opposite of the
+conventional reading, and ∩-binds-tighter was simply not expressible. `s + t * u` is `s ∪ (t ∩ u)`.
+
+### Rendering
+
+Two independent renderers show set expressions, and both now use Gries' notation:
+
+- **`SetOps.sprintset`** (`SetTerm.Display`/`ToString`) — `∪ ∩ − ~ ∅ 𝕌`, parenthesizing compound
+  operands, since the printed symbols carry no precedence of their own.
+- **`Display.print_formula`** (proof logs and step descriptions) — via **two** theory-agnostic
+  mechanisms, neither of which puts any mention of sets in `Sylvia.Prover`. A proof step now reads
+  `(S − T) ⊆ ~T`.
+
+**1. Structural, from `[<Symbol>]`.** `Display` gained `SymbolicUnary`/`SymbolicBinary` cases: a
+`Call` whose method declares a display symbol renders as that symbol rather than being decompiled.
+The set operators carry the attribute — `∪ ∩ − ∈ ⊆` on `Set<'t>`'s methods, and `~` on `(~-)`.
+Operands are bracketed unless *tight* (a leaf, or a prefix application, which binds tighter than any
+infix operator), so the output is `(S − T) ⊆ ~T` and `~(S ∪ T)`, never `~S ∪ T`.
+
+The unary case alone is **not** enough, and this is the part worth remembering: a term with no
+structural case is decompiled *whole* by `print_src`, so a complement nested inside a set expression
+is never reached and reverts to `-`. Rendering the infix operators structurally is what lets the
+recursion get down to it. This is also why `~` cannot be done as a text substitution at all: it
+decompiles to a bare `-`, and no substring rewrite can distinguish that from subtraction.
+
+**2. Textual, from `Symbols.BulitIn`.** `print_src` applies the table after its own private map, for
+terms that reach the fallback. `∅` and `𝕌` are rendered this way (a nullary union case and a property
+get, neither of which is a `Call`), and the operator spellings are registered too as a safety net for
+set *values* built outside `SetTerm`. Two constraints: the keys are what the **decompiler** emits
+(` |+| `, not the surface `+`), and the surrounding **spaces are load-bearing** — without them
+` ||+|| ` (LinearAlgebra's matrix/vector operator) contains ` |+| ` and would be mangled.
+`builtin_substitutions` also sorts longest-key-first so that holds for keys nobody anticipated.
+
+Registration lives in a `static let` on `SetTerm` that the instance constructor reads, **not** in a
+module `do` binding. F# runs a file's `do` bindings only on first access to a *value* in that file,
+and the type is `beforefieldinit` — measured, a module `do` (in either `Set.fs` or `SetAlgebra.fs`)
+and a bare `static do` all left the table unregistered through `setvar`, `s + t`, and a full set
+proof. `Display` also invalidates its render cache when the table's size changes, so anything
+rendered before a theory registered its notation is not left cached and wrong.
+
+**Cost.** Rendering set formulas got **~5× faster**, because the structural path skips the Unquote
+decompilation it used to pay: a 40-term set formula renders cold in ~1.0 ms against 5.24 ms before.
+The textual fallback that remains is 0.072 µs of substitution against a 25.5 µs decompile (0.29%);
+a hypothetical 128-entry table is ~2%. The propositional path is untouched — it matches on the
+boolean connectives well before these cases — and pays only one `Symbols.BulitIn.Count` read per
+top-level render.
+
+> Whole-formula A/B is useless on this machine: the *propositional* payload, which none of this can
+> affect, was measured at 0.63 / 0.33 / 0.31 / 0.18 ms across four runs. Anything under ~3× on these
+> payloads is noise; the set result is 5× and the substitution cost was measured in isolation.
 
 | Export | Meaning |
 |---|---|

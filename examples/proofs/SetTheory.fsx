@@ -53,10 +53,12 @@ printfn "\ndecide backend: %s"
     (if satBackend then sprintf "SAT refutation via %s (set identities have no variable ceiling)" cadicalPath
      else sprintf "none — %s not found; bodies fall back to autoproof_anf (<= %d set variables)" cadicalPath autoproof_max_atoms)
 
-// Symbolic set variables S, T : Set<int>. Set operations are the SetTerm operators ∪ = `|+|`,
-// ∩ = `|*|`, ~ = `-`, ⊆ = `|<|` — the SAME symbols the theory keys on for both the algebra laws
-// and the membership axioms (so one expression is usable by both routes). `sS`/`sT` avoid clashing
-// with the truth constant `T`.
+// Symbolic set variables S, T : Set<int>. Set operations on the symbolic `SetTerm` type are the
+// arithmetic operators — ∪ = `+`, ∩ = `*`, − = `-`, ~ = unary `-` — mirroring `Prop`'s `+` = ∨ and
+// `*` = ∧, which is Definition 11.24 made syntactic. They still build the SAME `Set<'t>` methods the
+// theory keys on for both the algebra laws and the membership axioms, so one expression is usable by
+// both routes. Subset is still `|<|` (it is not an algebraic operation but a proposition).
+// `sS`/`sT` avoid clashing with the truth constant `T`.
 let sS = setvar<int> "S"
 let sT = setvar<int> "T"
 // ~s. `SetTerm.(~-)` declares its return type, so `-s` is usable directly (and is what the theory's
@@ -66,22 +68,25 @@ let neg (s: SetTerm<int>) = -s
 let sa = SetAlgebra.set_algebra<int>
 
 printfn "\n===== (B) Inherited Boolean-algebra axioms recognized after composition ====="
-ok "Idempotency      S ∪ S = S"              (sa.AxEquiv ((sS |+| sS) == sS).Expr)
-ok "Symmetry         S ∩ T = T ∩ S"          (sa.AxEquiv ((sS |*| sT) == (sT |*| sS)).Expr)
+ok "Idempotency      S ∪ S = S"              (sa.AxEquiv ((sS + sS) == sS).Expr)
+ok "Symmetry         S ∩ T = T ∩ S"          (sa.AxEquiv ((sS * sT) == (sT * sS)).Expr)
+// NB `|+|`, not `+`: inside a quotation the operands are `Set<int>` VALUES, and the arithmetic
+// operators are the SYMBOLIC (`SetTerm`) spelling. `Set<'t>` keeps `|+|`/`|*|` — it has to, since it
+// already spends `(*)` on the Cartesian product, and its method names are what the axioms key on.
 ok "Identity of ∪     S ∪ ∅ = S"              (sa.AxEquiv <@ (%sS.Expr |+| Set.Empty) = %sS.Expr @>)
 
 printfn "\n===== (C) Complement law recognized with correct polarity (Gries 11.32/11.39) ====="
-ok "Excluded middle  S ∪ ~S = U  recognized"    (sa.AxEquiv <@ %((sS |+| (neg sS)).Expr) = Set.U @>)
-ok "Contradiction    S ∩ ~S = ∅  recognized"    (sa.AxEquiv <@ %((sS |*| (neg sS)).Expr) = Set.Empty @>)
-ok "S ∪ ~S = ∅  rejected (was wrongly accepted)" (not (sa.AxEquiv <@ %((sS |+| (neg sS)).Expr) = Set.Empty @>))
-ok "S ∩ ~S = U  rejected (was wrongly accepted)" (not (sa.AxEquiv <@ %((sS |*| (neg sS)).Expr) = Set.U @>))
+ok "Excluded middle  S ∪ ~S = U  recognized"    (sa.AxEquiv <@ %((sS + (neg sS)).Expr) = Set.U @>)
+ok "Contradiction    S ∩ ~S = ∅  recognized"    (sa.AxEquiv <@ %((sS * (neg sS)).Expr) = Set.Empty @>)
+ok "S ∪ ~S = ∅  rejected (was wrongly accepted)" (not (sa.AxEquiv <@ %((sS + (neg sS)).Expr) = Set.Empty @>))
+ok "S ∩ ~S = U  rejected (was wrongly accepted)" (not (sa.AxEquiv <@ %((sS * (neg sS)).Expr) = Set.U @>))
 
 printfn "\n===== (A) Injected axioms compose through the theory chain (previously dropped) ====="
-let marker = <@ %((sS |+| sT).Expr) = Set.U @>    // not a Boolean-algebra axiom on its own
+let marker = <@ %((sS + sT).Expr) = Set.U @>    // not a Boolean-algebra axiom on its own
 let extra : Axioms = fun e -> if sequal e (expand marker) then Descriptions.axiom_name "Marker" "Marker" |> Some else None
 let sa2 = SetAlgebra.SetAlgebra<int>(axioms = extra)
 ok "injected marker axiom recognized in sa2"     (sa2.AxEquiv marker)
-ok "base axiom still recognized in sa2"          (sa2.AxEquiv ((sS |+| sS) == sS).Expr)
+ok "base axiom still recognized in sa2"          (sa2.AxEquiv ((sS + sS) == sS).Expr)
 ok "marker NOT recognized in plain set_algebra"  (not (sa.AxEquiv marker))
 
 printfn "\n===== (D) Predicate-calculus base available under set_theory ====="
@@ -154,24 +159,24 @@ printfn "\n===== (H) Operator membership-reduction axioms (Gries 11.13-11.21) ==
 let v = intvar "v"
 let vinS = v |?| sS      // membership is now a Prop directly (SetTerm's `|?|` returns Prop)
 let vinT = v |?| sT
-// The SAME `|+|`/`|*|` operator expressions match both the membership axioms here AND the
+// The SAME `+`/`*` operator expressions match both the membership axioms here AND the
 // Boolean-algebra laws (checks B/C); subset `|<|` is now a proposition.
 ok "11.20 Union       v∈S∪T = v∈S ∨ v∈T"
-    (st.AxEquiv ((v |?| (sS |+| sT)) == (vinS + vinT)).Expr)
+    (st.AxEquiv ((v |?| (sS + sT)) == (vinS + vinT)).Expr)
 ok "11.21 Intersection v∈S∩T = v∈S ∧ v∈T"
-    (st.AxEquiv ((v |?| (sS |*| sT)) == (vinS * vinT)).Expr)
+    (st.AxEquiv ((v |?| (sS * sT)) == (vinS * vinT)).Expr)
 ok "11.18 Complement  v∈~S = ¬(v∈S)"
     (st.AxEquiv ((v |?| (neg sS)) == (!! vinS)).Expr)
 ok "11.13 Subset      S⊆T = (∀x|x∈S:x∈T)"
     (st.AxEquiv ((sS |<| sT) == qall x (x |?| sS) (x |?| sT)).Expr)
-// coherence: the SAME |+| expression is also recognized by the Boolean-algebra layer
-ok "coherence: S∪T (|+|) matches algebra idempotency S∪S=S"
-    ((SetAlgebra.set_algebra<int>).AxEquiv ((sS |+| sS) == sS).Expr)
+// coherence: the SAME + expression is also recognized by the Boolean-algebra layer
+ok "coherence: S∪T (+) matches algebra idempotency S∪S=S"
+    ((SetAlgebra.set_algebra<int>).AxEquiv ((sS + sS) == sS).Expr)
 
 printfn "\n===== (I) A worked set-algebra law via the membership route: Gries 11.28  S ∪ S = S ====="
 // Extensionality reduces S∪S=S to (∀v|: v∈(S∪S) = v∈S); the Union axiom (11.20) unfolds v∈(S∪S) to
 // v∈S ∨ v∈S; ∨-idempotency collapses it; reflexivity and (∀v|:true)=true close it.
-let SuS   = sS |+| sS
+let SuS   = sS + sS
 let extU  = ax_ident st ((SuS == sS) == qall v T ((v |?| SuS) == (v |?| sS)))
 let unionU = ax_ident st ((v |?| SuS) == (vinS + vinS))
 ok "11.28  S ∪ S = S  proven" (proven (fun () ->
@@ -188,9 +193,9 @@ printfn "\n===== (J) De Morgan via the membership route: Gries 11.42a  ~(S∪T) 
 // intersection); the propositional De Morgan (¬(p∨q) = ¬p∧¬q) equates the two sides; close as usual.
 let nS  : SetTerm<int> = neg sS
 let nsT : SetTerm<int> = neg sT
-let SuT      : SetTerm<int> = sS |+| sT
+let SuT      : SetTerm<int> = sS + sT
 let negSuT   : SetTerm<int> = neg SuT              // ~(S ∪ T)
-let nSinT    : SetTerm<int> = nS |*| nsT           // ~S ∩ ~T
+let nSinT    : SetTerm<int> = nS * nsT           // ~S ∩ ~T
 let memv (t:SetTerm<int>) = v |?| t
 let compUnion = ax_ident st ((memv negSuT) == (!! (memv SuT)))       // v∈~(S∪T) = ¬(v∈(S∪T))
 let unionR    = ax_ident st ((memv SuT)    == (vinS + vinT))         // v∈(S∪T)  = v∈S ∨ v∈T
@@ -245,19 +250,19 @@ let proves (what: string) (f: unit -> Theorem) = try (f ()).Proof.Complete with 
 let metaproven (l: SetTerm<int>) (r: SetTerm<int>) = proves "meta_set_ident" (fun () -> meta_set_ident l r)
 
 // The named Gries laws 11.26–11.42 — each proved with a single `meta_set_ident` call.
-ok "11.26 Symmetry of ∪        S∪T = T∪S"              (metaproven (sS |+| sT) (sT |+| sS))
-ok "11.27 Associativity of ∪   (S∪T)∪U = S∪(T∪U)"      (metaproven ((sS |+| sT) |+| sU) (sS |+| (sT |+| sU)))
-ok "11.28 Idempotency of ∪     S∪S = S"                (metaproven (sS |+| sS) sS)
-ok "11.36 Symmetry of ∩        S∩T = T∩S"              (metaproven (sS |*| sT) (sT |*| sS))
-ok "11.40 Distributivity ∩/∪   S∩(T∪U) = (S∩T)∪(S∩U)"  (metaproven (sS |*| (sT |+| sU)) ((sS |*| sT) |+| (sS |*| sU)))
-ok "11.41 Distributivity ∪/∩   S∪(T∩U) = (S∪T)∩(S∪U)"  (metaproven (sS |+| (sT |*| sU)) ((sS |+| sT) |*| (sS |+| sU)))
-ok "11.42a De Morgan          ~(S∪T) = ~S∩~T"          (metaproven (neg (sS |+| sT)) ((neg sS) |*| (neg sT)))
-ok "11.42b De Morgan          ~(S∩T) = ~S∪~T"          (metaproven (neg (sS |*| sT)) ((neg sS) |+| (neg sT)))
-ok "Absorption                S∩(S∪T) = S"             (metaproven (sS |*| (sS |+| sT)) sS)
+ok "11.26 Symmetry of ∪        S∪T = T∪S"              (metaproven (sS + sT) (sT + sS))
+ok "11.27 Associativity of ∪   (S∪T)∪U = S∪(T∪U)"      (metaproven ((sS + sT) + sU) (sS + (sT + sU)))
+ok "11.28 Idempotency of ∪     S∪S = S"                (metaproven (sS + sS) sS)
+ok "11.36 Symmetry of ∩        S∩T = T∩S"              (metaproven (sS * sT) (sT * sS))
+ok "11.40 Distributivity ∩/∪   S∩(T∪U) = (S∩T)∪(S∩U)"  (metaproven (sS * (sT + sU)) ((sS * sT) + (sS * sU)))
+ok "11.41 Distributivity ∪/∩   S∪(T∩U) = (S∪T)∩(S∪U)"  (metaproven (sS + (sT * sU)) ((sS + sT) * (sS + sU)))
+ok "11.42a De Morgan          ~(S∪T) = ~S∩~T"          (metaproven (neg (sS + sT)) ((neg sS) * (neg sT)))
+ok "11.42b De Morgan          ~(S∩T) = ~S∪~T"          (metaproven (neg (sS * sT)) ((neg sS) + (neg sT)))
+ok "Absorption                S∩(S∪T) = S"             (metaproven (sS * (sS + sT)) sS)
 ok "Double complement 11.19   ~~S = S"                 (metaproven (neg (neg sS)) sS)
 // Soundness: the tactic must REJECT invalid identities (the complete ANF prover refuses non-tautologies).
-ok "INVALID S∪T = S∩T  rejected"                       (not (metaproven (sS |+| sT) (sS |*| sT)))
-ok "INVALID ~(S∪T) = ~S∪~T  rejected"                  (not (metaproven (neg (sS |+| sT)) ((neg sS) |+| (neg sT))))
+ok "INVALID S∪T = S∩T  rejected"                       (not (metaproven (sS + sT) (sS * sT)))
+ok "INVALID ~(S∪T) = ~S∪~T  rejected"                  (not (metaproven (neg (sS + sT)) ((neg sS) + (neg sT))))
 
 printfn "\n===== (L) Metatheorem 11.25(b): subset via implication  Es ⊆ Fs ↔ Ep ⇒ Fp ====="
 // Gries (11.56) — one set is a subset of another iff its characteristic predicate IMPLIES the other's
@@ -271,14 +276,14 @@ printfn "\n===== (L) Metatheorem 11.25(b): subset via implication  Es ⊆ Fs ↔
 let subproven (l: SetTerm<int>) (r: SetTerm<int>) = proves "meta_subset" (fun () -> meta_subset l r)
 
 ok "11.58 Reflexivity          S ⊆ S"                  (subproven sS sS)
-ok "∩ lower bound              S∩T ⊆ S"                (subproven (sS |*| sT) sS)
-ok "∩ lower bound              S∩T ⊆ T"                (subproven (sS |*| sT) sT)
-ok "∪ upper bound              S ⊆ S∪T"                (subproven sS (sS |+| sT))
-ok "∪ upper bound              T ⊆ S∪T"                (subproven sT (sS |+| sT))
-ok "monotone                   S∩T ⊆ S∪T"             (subproven (sS |*| sT) (sS |+| sT))
+ok "∩ lower bound              S∩T ⊆ S"                (subproven (sS * sT) sS)
+ok "∩ lower bound              S∩T ⊆ T"                (subproven (sS * sT) sT)
+ok "∪ upper bound              S ⊆ S∪T"                (subproven sS (sS + sT))
+ok "∪ upper bound              T ⊆ S∪T"                (subproven sT (sS + sT))
+ok "monotone                   S∩T ⊆ S∪T"             (subproven (sS * sT) (sS + sT))
 // Soundness: a non-subset must be REJECTED (the implication Ep ⇒ Fp is not a tautology).
-ok "INVALID S ⊆ S∩T  rejected"                        (not (subproven sS (sS |*| sT)))
-ok "INVALID S∪T ⊆ S  rejected"                        (not (subproven (sS |+| sT) sS))
+ok "INVALID S ⊆ S∩T  rejected"                        (not (subproven sS (sS * sT)))
+ok "INVALID S∪T ⊆ S  rejected"                        (not (subproven (sS + sT) sS))
 
 printfn "\n===== (M) ∅ / U membership atoms: the identity, zero and complement laws ====="
 // With the constant-membership axioms  v∈∅ = false  and  v∈U = true  (added to SetTheory.fs), the
@@ -287,16 +292,16 @@ printfn "\n===== (M) ∅ / U membership atoms: the identity, zero and complement
 // reduces to `Ep = true`.
 ok "v∈∅ = false  recognized (Empty axiom)"            (st.AxEquiv ((v |?| emptyT) == F).Expr)
 ok "v∈U = true   recognized (Universe axiom)"         (st.AxEquiv ((v |?| uT) == T).Expr)
-ok "11.30 Identity of ∪       S∪∅ = S"                (metaproven (sS |+| emptyT) sS)
-ok "11.34 Identity of ∩       S∩U = S"                (metaproven (sS |*| uT) sS)
-ok "11.29 Zero of ∪           S∪U = U"                (metaproven (sS |+| uT) uT)
-ok "11.35 Zero of ∩           S∩∅ = ∅"                (metaproven (sS |*| emptyT) emptyT)
-ok "11.32 Excluded middle     S∪~S = U"               (metaproven (sS |+| (neg sS)) uT)
-ok "11.39 Contradiction       S∩~S = ∅"               (metaproven (sS |*| (neg sS)) emptyT)
-ok "11.25(c) via Es=U         (S∪~S)∪∅ = U"           (metaproven ((sS |+| (neg sS)) |+| emptyT) uT)
+ok "11.30 Identity of ∪       S∪∅ = S"                (metaproven (sS + emptyT) sS)
+ok "11.34 Identity of ∩       S∩U = S"                (metaproven (sS * uT) sS)
+ok "11.29 Zero of ∪           S∪U = U"                (metaproven (sS + uT) uT)
+ok "11.35 Zero of ∩           S∩∅ = ∅"                (metaproven (sS * emptyT) emptyT)
+ok "11.32 Excluded middle     S∪~S = U"               (metaproven (sS + (neg sS)) uT)
+ok "11.39 Contradiction       S∩~S = ∅"               (metaproven (sS * (neg sS)) emptyT)
+ok "11.25(c) via Es=U         (S∪~S)∪∅ = U"           (metaproven ((sS + (neg sS)) + emptyT) uT)
 // Soundness with the constants:
-ok "INVALID S∪∅ = U  rejected"                        (not (metaproven (sS |+| emptyT) uT))
-ok "INVALID S∩U = ∅  rejected"                        (not (metaproven (sS |*| uT) emptyT))
+ok "INVALID S∪∅ = U  rejected"                        (not (metaproven (sS + emptyT) uT))
+ok "INVALID S∩U = ∅  rejected"                        (not (metaproven (sS * uT) emptyT))
 
 printfn "\n===== (N) Past the 5-variable ceiling: metatheorem bodies discharged by SAT refutation ====="
 // Sections K-M all mention at most 3 set variables, so their propositional bodies route to the
@@ -315,10 +320,10 @@ let okt label (f: unit -> bool) =
     sw.Stop()
     ok (sprintf "%-46s (%dms)" label sw.ElapsedMilliseconds) r
 
-let union6  = ((((((sS |+| sT) |+| sU) |+| sW) |+| sX) |+| sY))
-let inter6  = ((((((sS |*| sT) |*| sU) |*| sW) |*| sX) |*| sY))
-let compl6i = ((((((neg sS) |*| (neg sT)) |*| (neg sU)) |*| (neg sW)) |*| (neg sX)) |*| (neg sY))
-let compl6u = ((((((neg sS) |+| (neg sT)) |+| (neg sU)) |+| (neg sW)) |+| (neg sX)) |+| (neg sY))
+let union6  = ((((((sS + sT) + sU) + sW) + sX) + sY))
+let inter6  = ((((((sS * sT) * sU) * sW) * sX) * sY))
+let compl6i = ((((((neg sS) * (neg sT)) * (neg sU)) * (neg sW)) * (neg sX)) * (neg sY))
+let compl6u = ((((((neg sS) + (neg sT)) + (neg sU)) + (neg sW)) + (neg sX)) + (neg sY))
 
 if not satBackend then
     printfn "  -  SKIPPED (no solver: %s not found)" cadicalPath
@@ -330,14 +335,14 @@ else
         (fun () -> metaproven (neg inter6) compl6u)
     // An ∪/∩ shuffle: same six variables, every bracket and every order changed.
     okt "assoc+symm shuffle, 6 vars"
-        (fun () -> metaproven union6 (sY |+| (sX |+| (sW |+| (sU |+| (sT |+| sS))))))
+        (fun () -> metaproven union6 (sY + (sX + (sW + (sU + (sT + sS))))))
     // Distributivity fanned out over five disjuncts (6 vars, and a much wider CNF).
     okt "11.40 Distributivity ∩/∪, 6 vars"
-        (fun () -> metaproven (sS |*| ((((sT |+| sU) |+| sW) |+| sX) |+| sY))
-                              ((((((sS |*| sT) |+| (sS |*| sU)) |+| (sS |*| sW)) |+| (sS |*| sX)) |+| (sS |*| sY))))
+        (fun () -> metaproven (sS * ((((sT + sU) + sW) + sX) + sY))
+                              ((((((sS * sT) + (sS * sU)) + (sS * sW)) + (sS * sX)) + (sS * sY))))
     // With the constants ∅ / U in the mix, so the body carries T/F as well as six atoms.
     okt "11.30/11.35 with constants, 6 vars  (S∪…∪Y)∩U∪∅"
-        (fun () -> metaproven (((union6 |*| uT) |+| emptyT)) union6)
+        (fun () -> metaproven (((union6 * uT) + emptyT)) union6)
     // Metatheorem 11.25(b) past the ceiling too — a 6-variable subset obligation.
     okt "11.25(b) subset, 6 vars   S∩…∩Y ⊆ S∪…∪Y"
         (fun () -> subproven inter6 union6)
@@ -366,26 +371,26 @@ printfn "\n===== (O) Difference (Gries 11.22):  v ∈ S−T = v∈S ∧ v∉T ==
 // the defining identity `S − T = S ∩ ~T` through the very translation being justified, so if the
 // `SDiff` case disagreed with 11.22 this would fail rather than quietly prove the wrong thing.
 ok "11.22 Difference axiom recognized"
-   (st.AxEquiv ((v |?| (sS |-| sT)) == ((v |?| sS) * !!(v |?| sT))).Expr)
+   (st.AxEquiv ((v |?| (sS - sT)) == ((v |?| sS) * !!(v |?| sT))).Expr)
 ok "11.22 wrong polarity rejected"
-   (not (st.AxEquiv ((v |?| (sS |-| sT)) == ((v |?| sS) * (v |?| sT))).Expr))
+   (not (st.AxEquiv ((v |?| (sS - sT)) == ((v |?| sS) * (v |?| sT))).Expr))
 
-ok "defining identity        S−T = S∩~T"               (metaproven (sS |-| sT) (sS |*| (neg sT)))
-ok "Gries p.203              ~S = U−S"                 (metaproven (neg sS) (uT |-| sS))
-ok "self-difference          S−S = ∅"                  (metaproven (sS |-| sS) emptyT)
-ok "identity                 S−∅ = S"                  (metaproven (sS |-| emptyT) sS)
-ok "zero                     ∅−S = ∅"                  (metaproven (emptyT |-| sS) emptyT)
-ok "difference from U        U−S = ~S"                 (metaproven (uT |-| sS) (neg sS))
-ok "De Morgan over ∪         S−(T∪U) = (S−T)∩(S−U)"    (metaproven (sS |-| (sT |+| sU)) ((sS |-| sT) |*| (sS |-| sU)))
-ok "De Morgan over ∩         S−(T∩U) = (S−T)∪(S−U)"    (metaproven (sS |-| (sT |*| sU)) ((sS |-| sT) |+| (sS |-| sU)))
-ok "∪ distributes            (S∪T)−U = (S−U)∪(T−U)"    (metaproven ((sS |+| sT) |-| sU) ((sS |-| sU) |+| (sT |-| sU)))
-ok "∩ associates through     S∩(T−U) = (S∩T)−U"        (metaproven (sS |*| (sT |-| sU)) ((sS |*| sT) |-| sU))
-ok "11.25(b) bound           S−T ⊆ S"                  (subproven (sS |-| sT) sS)
-ok "11.25(b) disjoint        S−T ⊆ ~T"                 (subproven (sS |-| sT) (neg sT))
+ok "defining identity        S−T = S∩~T"               (metaproven (sS - sT) (sS * (neg sT)))
+ok "Gries p.203              ~S = U−S"                 (metaproven (neg sS) (uT - sS))
+ok "self-difference          S−S = ∅"                  (metaproven (sS - sS) emptyT)
+ok "identity                 S−∅ = S"                  (metaproven (sS - emptyT) sS)
+ok "zero                     ∅−S = ∅"                  (metaproven (emptyT - sS) emptyT)
+ok "difference from U        U−S = ~S"                 (metaproven (uT - sS) (neg sS))
+ok "De Morgan over ∪         S−(T∪U) = (S−T)∩(S−U)"    (metaproven (sS - (sT + sU)) ((sS - sT) * (sS - sU)))
+ok "De Morgan over ∩         S−(T∩U) = (S−T)∪(S−U)"    (metaproven (sS - (sT * sU)) ((sS - sT) + (sS - sU)))
+ok "∪ distributes            (S∪T)−U = (S−U)∪(T−U)"    (metaproven ((sS + sT) - sU) ((sS - sU) + (sT - sU)))
+ok "∩ associates through     S∩(T−U) = (S∩T)−U"        (metaproven (sS * (sT - sU)) ((sS * sT) - sU))
+ok "11.25(b) bound           S−T ⊆ S"                  (subproven (sS - sT) sS)
+ok "11.25(b) disjoint        S−T ⊆ ~T"                 (subproven (sS - sT) (neg sT))
 // Soundness at the new operator: difference is NOT symmetric, and is not intersection.
-ok "INVALID S−T = T−S  rejected"                       (not (metaproven (sS |-| sT) (sT |-| sS)))
-ok "INVALID S−T = S∩T  rejected"                       (not (metaproven (sS |-| sT) (sS |*| sT)))
-ok "INVALID S ⊆ S−T  rejected"                         (not (subproven sS (sS |-| sT)))
+ok "INVALID S−T = T−S  rejected"                       (not (metaproven (sS - sT) (sT - sS)))
+ok "INVALID S−T = S∩T  rejected"                       (not (metaproven (sS - sT) (sS * sT)))
+ok "INVALID S ⊆ S−T  rejected"                         (not (subproven sS (sS - sT)))
 
 printfn "\n===== (P) Power set (Gries 11.23):  T ∈ 𝒫S = T ⊆ S ====="
 // The power set is the first operator in this chapter that does NOT fit the metatheorem. Membership
@@ -403,10 +408,10 @@ let inpow (t: SetTerm<int>) (s: SetTerm<int>) = proves "powerset_member" (fun ()
 
 ok "∅ ∈ 𝒫S     (∅ ⊆ S)"                                (inpow emptyT sS)
 ok "S ∈ 𝒫S     (reflexivity 11.58)"                    (inpow sS sS)
-ok "S∩T ∈ 𝒫S   (∩ lower bound)"                        (inpow (sS |*| sT) sS)
-ok "S−T ∈ 𝒫S   (difference bound, from section O)"     (inpow (sS |-| sT) sS)
+ok "S∩T ∈ 𝒫S   (∩ lower bound)"                        (inpow (sS * sT) sS)
+ok "S−T ∈ 𝒫S   (difference bound, from section O)"     (inpow (sS - sT) sS)
 // Soundness: S∪T is not a subset of S, so it is not a member of 𝒫S and the tactic must refuse.
-ok "INVALID S∪T ∈ 𝒫S  rejected"                        (not (inpow (sS |+| sT) sS))
+ok "INVALID S∪T ∈ 𝒫S  rejected"                        (not (inpow (sS + sT) sS))
 
 printfn "\n===== (Q) The named laws of §11.3, as theorems of the library ====="
 // Everything above states its goal inline and asks a tactic to prove it. This section checks the

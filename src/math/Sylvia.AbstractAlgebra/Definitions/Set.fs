@@ -247,6 +247,8 @@ with
         |Set _, _       
         |_, Set _ -> SetComprehension(<@ fun x -> l.HasElement x && r.HasElement x @>, (l.Cardinality + r.Cardinality)) |> Set    ///Set 'is element of' operator
     
+    /// Set 'is element of' operator.
+    [<Symbol "∈">]
     static member (|?|)(e:'t, l:Set<'t>) = l.HasElement e
 
     static member (|?|) (l:Term<'t>, r:Set<'t>) : Scalar<bool> = 
@@ -254,6 +256,7 @@ with
         binary_call(None, m, l.Expr, Expr.Value r) |> expand_as<bool> |> Scalar<bool>
     
     /// Set 'is subset of' operator.
+    [<Symbol "⊆">]
     static member (|<|) (l:Set<'t>, r:Set<'t>) = r.HasSubset l
 
     /// Set 'is subset of' operator.
@@ -272,6 +275,12 @@ with
     static member (|/|) (l:Set<'t>, r:Set<'t>) = l.Complement r
 
     /// Set absolute complement operator. -A = U \ A
+    ///
+    /// Carries Gries' `~` for display. The F# spelling has to be `-` (there is no prefix `~`
+    /// operator to overload), so without this the renderer decompiles it back to `-A`; the symbol
+    /// is what lets `Display` write it structurally instead. Unlike the infix operators this cannot
+    /// be done with a `Symbols.BulitIn` text substitution — a bare `-` would also hit subtraction.
+    [<Symbol "~">]
     static member (~-) (l:Set<'t>) = l.Complement Set.U
 
     /// Set create subset operator.
@@ -281,6 +290,7 @@ with
     static member (|>>|) (l:Set<'t>, r:Expr<Set<'t> -> bool>) = l.Powerset.Subset r
 
     /// Set difference operator
+    [<Symbol "−">]
     static member (|-|) (l:Set<'t>, r:Set<'t>) = l.Difference r
     
 /// Set Cartesian product.
@@ -369,37 +379,115 @@ module SetOps =
     let filterSubsets<'t when 't: equality> = typeof<Set<'t>>.GetMethod("op_BarGreaterGreaterBar", (FSharp.Core.Operators.(|||) BindingFlags.Public BindingFlags.Static), System.Type.DefaultBinder, 
                                                 [| typeof<Set<'t>>; typeof<Expr<Set<'t> -> bool>> |], [||])
 
-    let rec sprintset<'t when 't: equality> (x:Expr<Set<'t>>) = 
+    /// Render a set expression in Gries' notation: `∪`, `∩`, `−`, `~`, `∅`, `𝕌`.
+    ///
+    /// These print the OPERATION, not the F# spelling of the operator that built it — the symbolic
+    /// operators are `+`/`*`/`-` on `SetTerm` while the methods named in the tree are `Set<'t>`'s
+    /// `|+|`/`|*|`/`|-|`, and neither is what a reader of a proof wants to see.
+    ///
+    /// A compound operand is parenthesized. The printed forms carry no precedence of their own, so
+    /// `S ∪ (T ∩ U)` has to say so explicitly or it is indistinguishable from `(S ∪ T) ∩ U` — which
+    /// is exactly the ambiguity the `+`/`*` operators were adopted to remove from the source.
+    let rec sprintset<'t when 't: equality> (x:Expr<Set<'t>>) =
+        let isCompound (e: Expr) =
+            match e with
+            | Call (_, m, [_; _]) -> m.Name = union<'t>.Name || m.Name = intersection<'t>.Name || m.Name = difference<'t>.Name
+            | _ -> false
+        let operand (e: Expr) =
+            let s = (sprintset<'t> << expand_as<Set<'t>>) e in if isCompound e then "(" + s + ")" else s
+        let binop (sym: string) l r = sprintf "%s %s %s" (operand l) sym (operand r)
         match x with
         | List list -> "[" + (list |>  List.map (sprintset<'t> << expand_as<Set<'t>>) |> List.reduce (fun l r -> l + ", " + r)) + "]"
-        //| NewUnionCase (s, b) when s.
-        | Call (_, m, [l; r]) when m.Name = union<'t>.Name -> sprintf("%s |+| %s") ((sprintset << expand_as<Set<'t>>) l) ((sprintset << expand_as<Set<'t>>) r)
-        | _ -> src x 
+        | Call (_, m, [l; r]) when m.Name = union<'t>.Name        -> binop "∪" l r
+        | Call (_, m, [l; r]) when m.Name = intersection<'t>.Name -> binop "∩" l r
+        | Call (_, m, [l; r]) when m.Name = difference<'t>.Name   -> binop "−" l r
+        // Complement, ∅ and U need cases of their own even though they are not binary: without them
+        // the fallback decompiles the WHOLE subtree, so a single `~` over a union re-exposed the raw
+        // `|+|` spelling that the cases above exist to hide.
+        | Call (_, m, [l])    when m.Name = absoluteComplement<'t>.Name -> "~" + operand l
+        | NewUnionCase (uc, _)      when uc.Name = "Empty" -> "∅"
+        | PropertyGet (None, pi, []) when pi.Name = "U"    -> "𝕌"
+        | _ -> src x
 
 type SetTerm<'t when 't: equality>(expr:Expr<Set<'t>>) =
-    inherit Term<Set<'t>>(expr) 
-    
+    inherit Term<Set<'t>>(expr)
+
+    // Teach the prover's renderer the set notation WITHOUT the prover knowing about sets: `Display`
+    // applies `Symbols.BulitIn` to the decompiled text of any term it has no structural case for,
+    // which is exactly what a set expression is to it. Nothing in `Sylvia.Prover` mentions `∪`.
+    //
+    // The operator keys are what the DECOMPILER emits — ` |+| `, not `+`. The surface operators are
+    // `+`/`*`/`-`, but the tree names `Set<'t>`'s methods and those are what get decompiled. The
+    // surrounding SPACES are load-bearing: without them ` ||+|| ` (LinearAlgebra's matrix/vector
+    // operator) contains ` |+| ` and would be mangled to ` |∪| `. Unary complement is deliberately
+    // absent: it decompiles to a bare `-`, which no substring replacement can rewrite without also
+    // hitting subtraction.
+    //
+    // This lives on the TYPE, not in a module `do`, because F# runs a file's `do` bindings only on
+    // first access to a VALUE in that file — measured, neither `Definitions/Set.fs` (reached only
+    // through functions, union cases and static members) nor `Theories/SetAlgebra.fs` (reached by
+    // constructing `SetTheory<'t>`, which triggers the type's initializer and not the file's) fired
+    // for an ordinary set proof, so the symbols silently never registered. Every symbolic set
+    // expression calls a static member of this type, so this initializer cannot be missed.
+    //
+    // Idempotent assignment rather than `Add`: a generic type's initializer runs once PER
+    // INSTANTIATION (`SetTerm<int>`, `SetTerm<char>`, `SetTerm<Set<int>>`, …). Locked because
+    // `Dictionary` is not thread-safe and two instantiations can initialize on different threads.
+    //
+    // It has to be a static FIELD that the instance constructor reads, not a bare `static do`:
+    // the type is `beforefieldinit`, so the CLR is free to defer the initializer until a static
+    // field is actually touched — and calling a static member (which is how every operator here is
+    // reached) does not touch one. Measured: with a plain `static do`, `setvar`, `s + t` and a full
+    // set proof all left the table unregistered.
+    static let registered =
+        lock Symbols.BulitIn (fun () ->
+            let put k v = Symbols.BulitIn.[k] <- v
+            put (src <@ Empty : Set<'t> @>) "∅"
+            put (src <@ Set.U : Set<'t> @>) "\U0001D54C"
+            put " |+| " " ∪ "        // union
+            put " |*| " " ∩ "        // intersection
+            put " |-| " " − "        // difference
+            put " |?| " " ∈ "        // membership
+            put " |<| " " ⊆ ")       // subset
+        true
+
+    do ignore registered
+
     override a.Display = SetOps.sprintset a.Expr
 
-    static member (|+|) (l:SetTerm<'t>, r:Set<'t>) = binary_call(None, SetOps.union<'t>, l.Expr, Expr.Value r) |> expand_as<Set<'t>> |> SetTerm
+    // ∪ and ∩ on the SYMBOLIC type are the arithmetic operators, mirroring `Prop`'s `+` = ∨ and
+    // `*` = ∧ — which is exactly Definition 11.24's translation, so a set expression and the
+    // propositional body it translates to are written the same way.
+    //
+    // This is deliberately a SURFACE rename only: the call these build still names `Set<'t>`'s
+    // `op_BarPlusBar` / `op_BarMultiplyBar` (via `SetOps.union`/`intersection`), so every axiom
+    // pattern, every expression tree and every proof is unaffected. Renaming the underlying
+    // `Set<'t>` methods would not be equivalent — `op_Addition`/`op_Multiply` are matched by NAME
+    // alone in `Formula.(|Add|_|)`, `FsExpr.(|Addition|_|)` and `Z3.fs` (where `op_Addition` becomes
+    // `MkAdd`), and `Set<'t>` already spends `(*)` on the Cartesian product.
+    //
+    // The win is precedence: `|+|` and `|*|` both start with `|`, so F# gives them equal precedence
+    // and left-associates — `s |+| t |*| u` parses as `(s ∪ t) ∩ u`, the opposite of the conventional
+    // reading. `s + t * u` is `s ∪ (t ∩ u)`.
+    static member (+) (l:SetTerm<'t>, r:Set<'t>) = binary_call(None, SetOps.union<'t>, l.Expr, Expr.Value r) |> expand_as<Set<'t>> |> SetTerm
 
-    static member (|+|) (l:Set<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.union<'t>, Expr.Value l, r.Expr) |> expand_as<Set<'t>> |> SetTerm
+    static member (+) (l:Set<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.union<'t>, Expr.Value l, r.Expr) |> expand_as<Set<'t>> |> SetTerm
 
-    static member (|+|) (l:SetTerm<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.union<'t>, l.Expr, r.Expr) |> expand_as<Set<'t>> |> SetTerm
+    static member (+) (l:SetTerm<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.union<'t>, l.Expr, r.Expr) |> expand_as<Set<'t>> |> SetTerm
 
-    static member (|+|) (l:SetTerm<'t>, r:ISet<'t>) = binary_call(None, SetOps.union<'t>, l.Expr, Expr.Value r.Set) |> expand_as<Set<'t>> |> SetTerm
+    static member (+) (l:SetTerm<'t>, r:ISet<'t>) = binary_call(None, SetOps.union<'t>, l.Expr, Expr.Value r.Set) |> expand_as<Set<'t>> |> SetTerm
 
-    static member (|+|) (l:ISet<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.union<'t>, Expr.Value l.Set, r.Expr) |> expand_as<Set<'t>> |> SetTerm
+    static member (+) (l:ISet<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.union<'t>, Expr.Value l.Set, r.Expr) |> expand_as<Set<'t>> |> SetTerm
 
-    static member (|*|) (l:SetTerm<'t>, r:Set<'t>) = binary_call(None, SetOps.intersection<'t>, l.Expr, Expr.Value r) |> expand_as<Set<'t>> |> SetTerm
+    static member ( * ) (l:SetTerm<'t>, r:Set<'t>) = binary_call(None, SetOps.intersection<'t>, l.Expr, Expr.Value r) |> expand_as<Set<'t>> |> SetTerm
 
-    static member (|*|) (l:Set<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.intersection<'t>, Expr.Value(l), r.Expr) |> expand_as<Set<'t>> |> SetTerm
+    static member ( * ) (l:Set<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.intersection<'t>, Expr.Value(l), r.Expr) |> expand_as<Set<'t>> |> SetTerm
 
-    static member (|*|) (l:SetTerm<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.intersection<'t>, l.Expr, r.Expr) |> expand_as<Set<'t>> |> SetTerm
+    static member ( * ) (l:SetTerm<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.intersection<'t>, l.Expr, r.Expr) |> expand_as<Set<'t>> |> SetTerm
 
-    static member (|*|) (l:SetTerm<'t>, r:ISet<'t>) = binary_call(None, SetOps.intersection<'t>, l.Expr, Expr.Value r.Set) |> expand_as<Set<'t>> |> SetTerm
+    static member ( * ) (l:SetTerm<'t>, r:ISet<'t>) = binary_call(None, SetOps.intersection<'t>, l.Expr, Expr.Value r.Set) |> expand_as<Set<'t>> |> SetTerm
 
-    static member (|*|) (l:ISet<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.intersection<'t>, Expr.Value l.Set, r.Expr) |> expand_as<Set<'t>> |> SetTerm
+    static member ( * ) (l:ISet<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.intersection<'t>, Expr.Value l.Set, r.Expr) |> expand_as<Set<'t>> |> SetTerm
 
     static member (|?|) (l:Term<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.elementOf<'t>, l.Expr, r.Expr) |> expand_as<bool> |> Prop
 
@@ -439,17 +527,21 @@ type SetTerm<'t when 't: equality>(expr:Expr<Set<'t>>) =
 
     static member (~-) (l:SetTerm<'t>) :SetTerm<'t> = unary_call(None, SetOps.absoluteComplement<'t>, l.Expr) |> expand_as<Set<'t>> |> SetTerm
 
-    // Difference S − T (Gries 11.22). Distinct from `|/|`, whose operands are the other way round
-    // (`a.Complement b` = `b.Difference a`) — `|-|` is the one that reads as it is written.
-    static member (|-|) (l:SetTerm<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.difference<'t>, l.Expr, r.Expr) |> expand_as<Set<'t>> |> SetTerm
+    // Difference S − T (Gries 11.22), written as Gries writes it. Binary `-` and the unary `~-`
+    // above (complement) are distinct members, so `S - T` and `-S` coexist. Distinct from `|/|`,
+    // whose operands are the other way round (`a.Complement b` = `b.Difference a`).
+    //
+    // As with `+`/`*`, the emitted call still names `Set<'t>`'s `op_BarMinusBar`, so nothing that
+    // matches on `op_Subtraction` can see a set difference.
+    static member (-) (l:SetTerm<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.difference<'t>, l.Expr, r.Expr) |> expand_as<Set<'t>> |> SetTerm
 
-    static member (|-|) (l:SetTerm<'t>, r:Set<'t>) = binary_call(None, SetOps.difference<'t>, l.Expr, Expr.Value r) |> expand_as<Set<'t>> |> SetTerm
+    static member (-) (l:SetTerm<'t>, r:Set<'t>) = binary_call(None, SetOps.difference<'t>, l.Expr, Expr.Value r) |> expand_as<Set<'t>> |> SetTerm
 
-    static member (|-|) (l:Set<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.difference<'t>, Expr.Value l, r.Expr) |> expand_as<Set<'t>> |> SetTerm
+    static member (-) (l:Set<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.difference<'t>, Expr.Value l, r.Expr) |> expand_as<Set<'t>> |> SetTerm
 
-    static member (|-|) (l:SetTerm<'t>, r:ISet<'t>) = binary_call(None, SetOps.difference<'t>, l.Expr, Expr.Value r.Set) |> expand_as<Set<'t>> |> SetTerm
+    static member (-) (l:SetTerm<'t>, r:ISet<'t>) = binary_call(None, SetOps.difference<'t>, l.Expr, Expr.Value r.Set) |> expand_as<Set<'t>> |> SetTerm
 
-    static member (|-|) (l:ISet<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.difference<'t>, Expr.Value l.Set, r.Expr) |> expand_as<Set<'t>> |> SetTerm
+    static member (-) (l:ISet<'t>, r:SetTerm<'t>) = binary_call(None, SetOps.difference<'t>, Expr.Value l.Set, r.Expr) |> expand_as<Set<'t>> |> SetTerm
 
     /// 𝒫S, symbolically (Gries 11.23). The element type goes up a level — `𝒫S : set(set(t))` — so
     /// membership `T ∈ 𝒫S` is `(T: SetTerm<'t>) |?| S.Powerset`, using the `Term<'u>`-in-`SetTerm<'u>`

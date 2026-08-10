@@ -26,17 +26,19 @@ type Struct<'t, 'n when 't: equality and 'n :> Number>(set: ISet<'t>, ops: Ops<'
 
     static member (|+|) (l:ISet<'t>, r:Struct<'t, 'n>) = l.Set |+| r.Set
 
-    static member (|+|) (l:Struct<'t, 'n>, r:SetTerm<'t>) = l.Set |+| r
+    // The SetTerm-valued mixed forms go through `SetTerm`'s `+`/`*` (union/intersection); the
+    // ISet-valued ones above stay on `Set<'t>`'s `|+|`/`|*|`, which are unchanged.
+    static member (|+|) (l:Struct<'t, 'n>, r:SetTerm<'t>) = l.Set + r
 
-    static member (|+|) (l:SetTerm<'t>, r:Struct<'t, 'n>) = l |+| r.Set
-    
+    static member (|+|) (l:SetTerm<'t>, r:Struct<'t, 'n>) = l + r.Set
+
     static member (|*|) (l:Struct<'t, 'n>, r:ISet<'t>) = l.Set |*| r.Set
 
     static member (|*|) (l:ISet<'t>, r:Struct<'t, 'n>) = l.Set |*| r.Set
 
-    static member (|*|) (l:Struct<'t, 'n>, r:SetTerm<'t>) = l.Set |*| r
-    
-    static member (|*|) (l:SetTerm<'t>, r:Struct<'t, 'n>) = l |*| r.Set
+    static member (|*|) (l:Struct<'t, 'n>, r:SetTerm<'t>) = l.Set * r
+
+    static member (|*|) (l:SetTerm<'t>, r:Struct<'t, 'n>) = l * r.Set
 
     static member (|?|) (l:'t, r:Struct<'t, 'n>) = r.Set.HasElement l
 

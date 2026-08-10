@@ -78,10 +78,13 @@ module SetTheory =
         | _ -> None
 
     (* Operator definitions — each reduces membership in a compound set to a propositional/predicate
-       combination of memberships (Gries 11.13-11.23). All are keyed on the SetTerm OPERATOR methods
-       (∪ = op_BarPlusBar `|+|`, ∩ = op_BarMultiplyBar `|*|`, ~ = op_UnaryNegation `-`, ⊆ = op_BarLessBar
-       `|<|`) — the SAME methods the §11.3 Boolean-algebra layer (SetAlgebra) keys its join/meet/complement
-       on — so a single expression `S |+| T` is usable by BOTH the membership route and the algebra route.
+       combination of memberships (Gries 11.13-11.23). All are keyed on the `Set<'t>` OPERATOR methods
+       (∪ = op_BarPlusBar, ∩ = op_BarMultiplyBar, − = op_BarMinusBar, ~ = op_UnaryNegation,
+       ⊆ = op_BarLessBar) — the SAME methods the §11.3 Boolean-algebra layer (SetAlgebra) keys its
+       join/meet/complement on — so a single expression is usable by BOTH the membership route and the
+       algebra route. NB the SYMBOLIC spelling is arithmetic (`S + T` for ∪, `S * T` for ∩, `S - T` for
+       −): `SetTerm`'s operators are a surface notation that still BUILDS these `Set<'t>` methods, so
+       what the axioms match is unchanged by how the expression was written.
        (The method name is checked with the `Op "…"` name pattern rather than `Binary <@ (|+|) @>`,
        because `Binary`'s type guard would pin the axiom to one element type; the name check is
        element-type-agnostic.) *)
@@ -384,64 +387,64 @@ module SetTheory =
     let double_complement (s: SetTerm<'t>) : Theorem = meta_set_ident (-(-s)) s
 
     /// S ∪ T = T ∪ S   (Gries 11.26, symmetry of ∪)
-    let symm_union (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_set_ident (s |+| t) (t |+| s)
+    let symm_union (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_set_ident (s + t) (t + s)
 
     /// (S ∪ T) ∪ U = S ∪ (T ∪ U)   (Gries 11.27, associativity of ∪)
     let assoc_union (s: SetTerm<'t>) (t: SetTerm<'t>) (u: SetTerm<'t>) : Theorem =
-        meta_set_ident ((s |+| t) |+| u) (s |+| (t |+| u))
+        meta_set_ident ((s + t) + u) (s + (t + u))
 
     /// S ∪ S = S   (Gries 11.28, idempotency of ∪)
-    let idemp_union (s: SetTerm<'t>) : Theorem = meta_set_ident (s |+| s) s
+    let idemp_union (s: SetTerm<'t>) : Theorem = meta_set_ident (s + s) s
 
     /// S ∪ U = U   (Gries 11.29, zero of ∪)
-    let zero_union (s: SetTerm<'t>) : Theorem = meta_set_ident (s |+| universe<'t>) universe<'t>
+    let zero_union (s: SetTerm<'t>) : Theorem = meta_set_ident (s + universe<'t>) universe<'t>
 
     /// S ∪ ∅ = S   (Gries 11.30, identity of ∪)
-    let ident_union (s: SetTerm<'t>) : Theorem = meta_set_ident (s |+| empty_set<'t>) s
+    let ident_union (s: SetTerm<'t>) : Theorem = meta_set_ident (s + empty_set<'t>) s
 
     /// S ∪ ~S = U   (Gries 11.32, excluded middle)
-    let excluded_middle_union (s: SetTerm<'t>) : Theorem = meta_set_ident (s |+| (-s)) universe<'t>
+    let excluded_middle_union (s: SetTerm<'t>) : Theorem = meta_set_ident (s + (-s)) universe<'t>
 
     /// S ∩ U = S   (Gries 11.34, identity of ∩)
-    let ident_inter (s: SetTerm<'t>) : Theorem = meta_set_ident (s |*| universe<'t>) s
+    let ident_inter (s: SetTerm<'t>) : Theorem = meta_set_ident (s * universe<'t>) s
 
     /// S ∩ ∅ = ∅   (Gries 11.35, zero of ∩)
-    let zero_inter (s: SetTerm<'t>) : Theorem = meta_set_ident (s |*| empty_set<'t>) empty_set<'t>
+    let zero_inter (s: SetTerm<'t>) : Theorem = meta_set_ident (s * empty_set<'t>) empty_set<'t>
 
     /// S ∩ T = T ∩ S   (Gries 11.36, symmetry of ∩)
-    let symm_inter (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_set_ident (s |*| t) (t |*| s)
+    let symm_inter (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_set_ident (s * t) (t * s)
 
     /// (S ∩ T) ∩ U = S ∩ (T ∩ U)   (associativity of ∩, the dual of 11.27)
     let assoc_inter (s: SetTerm<'t>) (t: SetTerm<'t>) (u: SetTerm<'t>) : Theorem =
-        meta_set_ident ((s |*| t) |*| u) (s |*| (t |*| u))
+        meta_set_ident ((s * t) * u) (s * (t * u))
 
     /// S ∩ S = S   (idempotency of ∩, the dual of 11.28)
-    let idemp_inter (s: SetTerm<'t>) : Theorem = meta_set_ident (s |*| s) s
+    let idemp_inter (s: SetTerm<'t>) : Theorem = meta_set_ident (s * s) s
 
     /// S ∩ ~S = ∅   (Gries 11.39, contradiction)
-    let contradiction_inter (s: SetTerm<'t>) : Theorem = meta_set_ident (s |*| (-s)) empty_set<'t>
+    let contradiction_inter (s: SetTerm<'t>) : Theorem = meta_set_ident (s * (-s)) empty_set<'t>
 
     /// S ∩ (T ∪ U) = (S ∩ T) ∪ (S ∩ U)   (Gries 11.40, distributivity of ∩ over ∪)
     let distrib_inter_union (s: SetTerm<'t>) (t: SetTerm<'t>) (u: SetTerm<'t>) : Theorem =
-        meta_set_ident (s |*| (t |+| u)) ((s |*| t) |+| (s |*| u))
+        meta_set_ident (s * (t + u)) ((s * t) + (s * u))
 
     /// S ∪ (T ∩ U) = (S ∪ T) ∩ (S ∪ U)   (Gries 11.41, distributivity of ∪ over ∩)
     let distrib_union_inter (s: SetTerm<'t>) (t: SetTerm<'t>) (u: SetTerm<'t>) : Theorem =
-        meta_set_ident (s |+| (t |*| u)) ((s |+| t) |*| (s |+| u))
+        meta_set_ident (s + (t * u)) ((s + t) * (s + u))
 
     /// ~(S ∪ T) = ~S ∩ ~T   (Gries 11.42a, De Morgan)
     let de_morgan_union (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem =
-        meta_set_ident (-(s |+| t)) ((-s) |*| (-t))
+        meta_set_ident (-(s + t)) ((-s) * (-t))
 
     /// ~(S ∩ T) = ~S ∪ ~T   (Gries 11.42b, De Morgan)
     let de_morgan_inter (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem =
-        meta_set_ident (-(s |*| t)) ((-s) |+| (-t))
+        meta_set_ident (-(s * t)) ((-s) + (-t))
 
     /// S ∩ (S ∪ T) = S   (absorption)
-    let absorb_inter_union (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_set_ident (s |*| (s |+| t)) s
+    let absorb_inter_union (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_set_ident (s * (s + t)) s
 
     /// S ∪ (S ∩ T) = S   (absorption, dual)
-    let absorb_union_inter (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_set_ident (s |+| (s |*| t)) s
+    let absorb_union_inter (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_set_ident (s + (s * t)) s
 
     (* Inclusions — Metatheorem 11.25(b). *)
 
@@ -449,19 +452,19 @@ module SetTheory =
     let subset_refl (s: SetTerm<'t>) : Theorem = meta_subset s s
 
     /// S ∩ T ⊆ S   (∩ is a lower bound)
-    let inter_lower_left (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_subset (s |*| t) s
+    let inter_lower_left (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_subset (s * t) s
 
     /// S ∩ T ⊆ T   (∩ is a lower bound)
-    let inter_lower_right (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_subset (s |*| t) t
+    let inter_lower_right (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_subset (s * t) t
 
     /// S ⊆ S ∪ T   (∪ is an upper bound)
-    let union_upper_left (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_subset s (s |+| t)
+    let union_upper_left (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_subset s (s + t)
 
     /// T ⊆ S ∪ T   (∪ is an upper bound)
-    let union_upper_right (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_subset t (s |+| t)
+    let union_upper_right (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_subset t (s + t)
 
     /// S ∩ T ⊆ S ∪ T
-    let inter_subset_union (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_subset (s |*| t) (s |+| t)
+    let inter_subset_union (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_subset (s * t) (s + t)
 
     (* Difference (11.22). `−` is outside Definition 11.24's grammar, so `def_difference` is the law
        that EARNS the extension: it proves difference's defining identity through the very translation
@@ -469,45 +472,45 @@ module SetTheory =
        something else. *)
 
     /// S − T = S ∩ ~T   (Gries 11.22, difference as intersection with the complement)
-    let def_difference (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_set_ident (s |-| t) (s |*| (-t))
+    let def_difference (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_set_ident (s - t) (s * (-t))
 
     /// ~S = U − S   (Gries p.203)
-    let complement_as_difference (s: SetTerm<'t>) : Theorem = meta_set_ident (-s) (universe<'t> |-| s)
+    let complement_as_difference (s: SetTerm<'t>) : Theorem = meta_set_ident (-s) (universe<'t> - s)
 
     /// U − S = ~S
-    let difference_from_universe (s: SetTerm<'t>) : Theorem = meta_set_ident (universe<'t> |-| s) (-s)
+    let difference_from_universe (s: SetTerm<'t>) : Theorem = meta_set_ident (universe<'t> - s) (-s)
 
     /// S − S = ∅
-    let self_difference (s: SetTerm<'t>) : Theorem = meta_set_ident (s |-| s) empty_set<'t>
+    let self_difference (s: SetTerm<'t>) : Theorem = meta_set_ident (s - s) empty_set<'t>
 
     /// S − ∅ = S
-    let ident_difference (s: SetTerm<'t>) : Theorem = meta_set_ident (s |-| empty_set<'t>) s
+    let ident_difference (s: SetTerm<'t>) : Theorem = meta_set_ident (s - empty_set<'t>) s
 
     /// ∅ − S = ∅
-    let zero_difference (s: SetTerm<'t>) : Theorem = meta_set_ident (empty_set<'t> |-| s) empty_set<'t>
+    let zero_difference (s: SetTerm<'t>) : Theorem = meta_set_ident (empty_set<'t> - s) empty_set<'t>
 
     /// S − (T ∪ U) = (S − T) ∩ (S − U)   (De Morgan over difference)
     let de_morgan_difference_union (s: SetTerm<'t>) (t: SetTerm<'t>) (u: SetTerm<'t>) : Theorem =
-        meta_set_ident (s |-| (t |+| u)) ((s |-| t) |*| (s |-| u))
+        meta_set_ident (s - (t + u)) ((s - t) * (s - u))
 
     /// S − (T ∩ U) = (S − T) ∪ (S − U)   (De Morgan over difference)
     let de_morgan_difference_inter (s: SetTerm<'t>) (t: SetTerm<'t>) (u: SetTerm<'t>) : Theorem =
-        meta_set_ident (s |-| (t |*| u)) ((s |-| t) |+| (s |-| u))
+        meta_set_ident (s - (t * u)) ((s - t) + (s - u))
 
     /// (S ∪ T) − U = (S − U) ∪ (T − U)
     let distrib_difference_union (s: SetTerm<'t>) (t: SetTerm<'t>) (u: SetTerm<'t>) : Theorem =
-        meta_set_ident ((s |+| t) |-| u) ((s |-| u) |+| (t |-| u))
+        meta_set_ident ((s + t) - u) ((s - u) + (t - u))
 
     /// S ∩ (T − U) = (S ∩ T) − U
     let assoc_inter_difference (s: SetTerm<'t>) (t: SetTerm<'t>) (u: SetTerm<'t>) : Theorem =
-        meta_set_ident (s |*| (t |-| u)) ((s |*| t) |-| u)
+        meta_set_ident (s * (t - u)) ((s * t) - u)
 
     /// S − T ⊆ S
-    let difference_subset (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_subset (s |-| t) s
+    let difference_subset (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = meta_subset (s - t) s
 
     /// S − T ⊆ ~T   (a difference is disjoint from what was removed)
     let difference_subset_complement (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem =
-        meta_subset (s |-| t) (-t)
+        meta_subset (s - t) (-t)
 
     (* Power set (11.23). *)
 
@@ -518,7 +521,7 @@ module SetTheory =
     let self_in_powerset (s: SetTerm<'t>) : Theorem = powerset_member s s
 
     /// S ∩ T ∈ 𝒫S   (from the ∩ lower bound)
-    let inter_in_powerset (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = powerset_member (s |*| t) s
+    let inter_in_powerset (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = powerset_member (s * t) s
 
     /// S − T ∈ 𝒫S   (from the difference bound)
-    let difference_in_powerset (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = powerset_member (s |-| t) s
+    let difference_in_powerset (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = powerset_member (s - t) s
