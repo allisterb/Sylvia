@@ -9,6 +9,31 @@ open FSharp.Quotations.DerivedPatterns
 
 open Formula
 
+/// The shared semantic core of a SYMBOLIC VARIABLE, independent of what algebra its values live in.
+///
+/// A quantifier dummy needs exactly this — a name and the `Var` it binds — and nothing about the
+/// operators the variable's terms support. Separating the two is what lets a variable be BOTH: F#
+/// is single-inheritance, so `SetVar<'t>` must inherit `SetTerm<'t>` to keep `∪`/`∩`/`∈`/`⊆`, and
+/// therefore cannot also inherit `TermVar<Set<'t>>`. An interface it can implement alongside.
+///
+/// (The alternative — reparenting `SetVar` to `TermVar<Set<'t>>` and bridging back with an
+/// `op_Implicit` — does not work: F# never consults user-defined implicit conversions during
+/// OPERATOR overload resolution, so every `S ∪ T` would stop compiling. Verified, not assumed.)
+///
+/// Take it as a FLEXIBLE type in signatures — `(x: #ISymbolicVar<'t>)` — so callers pass a
+/// `ScalarVar`/`SetVar` directly; F# does not insert an interface upcast at a let-bound argument.
+type ISymbolicVar<'t when 't: equality> =
+    /// The variable's name, as bound.
+    abstract member Name: string
+    /// How the variable renders (its name, or a symbol when the name denotes one).
+    abstract member Symbol: string
+    /// The variable as an expression. Named `Expr` to match the property every `Term` already has,
+    /// so widening a signature from `TermVar<'t>` to `#ISymbolicVar<'t>` leaves the body untouched:
+    /// on a flexible type the member resolves through the constraint.
+    abstract member Expr: Expr<'t>
+    /// The quotation variable that a binder binds.
+    abstract member Var: Var
+
 [<AbstractClass; StructuredFormatDisplay("{Display}")>]
 type Term<'t when 't: equality> (expr:Expr<'t>, ?h:TermHistory) =
     member val Expr = expr
@@ -55,14 +80,19 @@ type Term<'t when 't: equality> (expr:Expr<'t>, ?h:TermHistory) =
         if typeof<'t> = typeof<bool> then Prop(Expr.Cast<bool>(mk_eq_bool l.Expr.Raw r.Expr.Raw))
         else <@ %l.Expr = %r.Expr @> |> Prop
     
-and [<AbstractClass>] TermVar<'t when 't: equality>(n: string) = 
+and [<AbstractClass>] TermVar<'t when 't: equality>(n: string) =
     inherit Term<'t>(Expr.Var(Var(n, typeof<'t>)) |> expand_as<'t>)
     let var = Var(n, typeof<'t>)
-    let name, symbol = Term<'t>.GetNameAndSymbol n          
+    let name, symbol = Term<'t>.GetNameAndSymbol n
     member val Name = name
     member val Symbol = symbol
     member val Var = var
     override x.Display = symbol
+    interface ISymbolicVar<'t> with
+        member x.Name = x.Name
+        member x.Symbol = x.Symbol
+        member x.Expr = x.Expr
+        member x.Var = x.Var
     
 and IndexVar(expr: Expr<int>) =
     inherit Term<int>(expr)

@@ -553,12 +553,22 @@ type SetTerm<'t when 't: equality>(expr:Expr<Set<'t>>) =
     
     static member (|>>|) (l:SetTerm<'t>, r:Expr<Set<'t>->bool>) = binary_call(None, SetOps.filterSubsets<'t>, l.Expr, r) |> expand_as<Set<Set<'t>>> |> SetTerm
 
-and SetVar<'t when 't: equality>(n: string) = 
+and SetVar<'t when 't: equality>(n: string) =
     inherit SetTerm<'t>(Expr.Var(Var(n, typeof<Set<'t>>)) |> expand_as<Set<'t>>)
     member x.Name = n
     member x.Var = match x.Expr with | Var v -> v | _ -> failwith ""
     member x.Item(i:IndexVar) = IndexedSetVar(x, i)
     member x.Item(i:int) = SetVar(x.Name + i.ToString())
+
+    // A set variable is a symbolic variable over `Set<'t>` AS WELL AS a set term. It cannot inherit
+    // `TermVar<Set<'t>>` — F# is single-inheritance and the `SetTerm` parent is what carries
+    // ∪/∩/−/∈/⊆ — so the variable-ness arrives as an interface instead. This is what lets a set
+    // variable be a QUANTIFIER DUMMY, which Gries (11.76) `(∪u | u ∈ S : u)` needs.
+    interface ISymbolicVar<Set<'t>> with
+        member x.Name = x.Name
+        member x.Symbol = x.Name
+        member x.Expr = x.Expr
+        member x.Var = x.Var
 
 and IndexedSetVar<'t when 't: equality>(var:SetVar<'t>, index:IndexVar) =
     inherit SetVar<'t>(var.Name + "_" + index.Name)

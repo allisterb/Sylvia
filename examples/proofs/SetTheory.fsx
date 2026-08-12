@@ -540,12 +540,17 @@ named "9.21    S∩(∪x|R:E) = (∪x|R:S∩E)   distrib_inter_family_union" (fu
 named "generic ~(∪k|R:E) = (∩k|R:~E) over char elements"
       (fun () -> de_morgan_family_union (intvar "k") (boolvar "Rc") (setvar<char> "Ec"))
 
-// A SET-typed dummy, i.e. Gries (11.76)'s own shape. `elem_var` is needed here: `SetVar` is a
-// `SetTerm` — a set-valued TERM — and only a `TermVar` can be a quantifier dummy.
-let fud : TermVar<Set<int>> = elem_var<Set<int>> "u"
+// A SET-typed dummy, i.e. Gries (11.76)'s own shape — written with a plain `SetVar`, which is BOTH
+// the dummy and the body. That works because variable-ness is an INTERFACE (`ISymbolicVar<'t>`)
+// rather than the `TermVar` base class: F# is single-inheritance, so `SetVar` must inherit `SetTerm`
+// to keep ∪/∩/−/∈/⊆, and could not also inherit `TermVar<Set<'t>>`. The quantifier builders take
+// `#ISymbolicVar<'t>`, so a `SetVar` and a `ScalarVar` are both acceptable dummies.
+let fud = setvar<int> "u"
 let fudinF : Prop = (fud :> Term<Set<int>>) |?| fFam
 named "(11.76) ~(∪u|u∈F:u) = (∩u|u∈F:~u)  over a family of sets"
-      (fun () -> de_morgan_family_union fud fudinF (SetTerm<int>(fud.Expr)))
+      (fun () -> de_morgan_family_union fud fudinF fud)
+named "(11.76) a set variable is a dummy AND a term: (∀u|u∈F: u ⊆ S)"
+      (fun () -> theorem st (qall fud fudinF (fud |<| sS) ==> qall fud fudinF (fud |<| sS)) [])
 
 // The empty-range law is worth noting twice: EMPTY RANGE (8.13) is one of the axioms that is NOT
 // generic over the quantified operator, so the proof only closes because 11.74 reaches an ∃ first.

@@ -293,7 +293,11 @@ module SetTheory =
     let universe<'t when 't: equality> : SetTerm<'t> = SetTerm<'t>(<@ Set.U @>)
 
     /// v ∈ s, as a proposition.
-    let private memb (v: TermVar<'t>) (s: SetTerm<'t>) : Prop = (v :> Term<'t>) |?| s
+    /// v ∈ s, as a proposition. Built directly rather than through the `|?|` operator: the dummy is
+    /// now only known to be an `ISymbolicVar<'t>`, which carries no `Term<'t>` parent to hand the
+    /// operator. This is the same call `SetTerm.(|?|)` makes.
+    let private memb (v: #ISymbolicVar<'t>) (s: SetTerm<'t>) : Prop =
+        binary_call(None, SetOps.elementOf<'t>, v.Expr, s.Expr) |> expand_as<bool> |> Prop
 
     /// The membership predicate `(· ∈ s)`. Used for Trading (9.2) in `meta_subset`, where the compound
     /// structure of `s` must stay untouched until the unfolding steps.
@@ -324,7 +328,7 @@ module SetTheory =
     /// translated body stays inside the fragment 11.25 talks about. `def_difference` below proves that
     /// defining identity THROUGH this translation, which is what distinguishes "the extension agrees
     /// with 11.22" from "the extension compiles".
-    let rec translate (v: TermVar<'t>) (s: SetTerm<'t>) : Prop =
+    let rec translate (v: #ISymbolicVar<'t>) (s: SetTerm<'t>) : Prop =
         match set_shape s with
         | SUnion(a, b) -> (translate v a) + (translate v b)          // ∪ ↦ ∨
         | SInter(a, b) -> (translate v a) * (translate v b)          // ∩ ↦ ∧
@@ -338,7 +342,7 @@ module SetTheory =
     /// (11.18/11.20/11.21/11.22) and the constant-membership axioms (`v∈∅ = false`, `v∈U = true`). At
     /// each node the membership axiom is applied, then the recursion descends into any COMPOUND operand
     /// (a bare atom is already translated, so its step is skipped — that would be a no-op rewrite).
-    let rec private unfold_in (th: Theory) (v: TermVar<'t>) (s: SetTerm<'t>) : Rule =
+    let rec private unfold_in (th: Theory) (v: #ISymbolicVar<'t>) (s: SetTerm<'t>) : Rule =
         let m (x: SetTerm<'t>) = memb v x
         let sub (x: SetTerm<'t>) addr = match set_shape x with | SAtom -> [] | _ -> [ unfold_in th v x |> at addr ]
         match set_shape s with
@@ -364,7 +368,7 @@ module SetTheory =
                     :: sub a [left_branch; left_branch] @ sub b [left_branch; right_branch; apply_unary])
 
     /// The rewrite rule `(v ∈ s) = translate v s` (see `translate`), in the set theory over 't.
-    let unfold (v: TermVar<'t>) (s: SetTerm<'t>) : Rule = unfold_in (set_theory<'t> :> Theory) v s
+    let unfold (v: #ISymbolicVar<'t>) (s: SetTerm<'t>) : Rule = unfold_in (set_theory<'t> :> Theory) v s
 
     /// Metatheorem (11.25a): prove a set identity `Es = Fs` via its propositional translation.
     ///
@@ -571,27 +575,27 @@ module SetTheory =
        `docs/prover-set-theory.md`).
        ------------------------------------------------------------------------------------------ *)
 
-    /// A dummy variable at an arbitrary element type — including a SET-typed one, which Gries
-    /// (11.76) needs for `(∪u | u ∈ S : u)`.
+    /// A dummy variable at an arbitrary element type. `ScalarVar`, the only other concrete
+    /// `TermVar`, is constrained to value types, so this is what a dummy over an arbitrary element
+    /// type has to be.
     ///
-    /// `SetVar<'t>` cannot be used for this: it is a `SetTerm`, i.e. a set-valued TERM, whereas a
-    /// quantifier dummy has to be a `TermVar`. And `ScalarVar`, the only other concrete `TermVar`,
-    /// is constrained to value types.
+    /// NOT needed for a SET-typed dummy: a plain `SetVar<'t>` implements `ISymbolicVar<Set<'t>>`, so
+    /// it is both a dummy and a set term, which is what Gries (11.76) `(∪u | u ∈ S : u)` wants.
     let elem_var<'t when 't : equality> (name: string) : TermVar<'t> = ElemVar<'t>(name) :> TermVar<'t>
 
     /// (∪x | R : E) — Gries (11.74). Range and body are given as a proposition / set term in `x`,
     /// mirroring `PredCalculus.qall`/`qex` rather than the `Pred`-based combinators.
-    let qunion (x: TermVar<'u>) (R: Prop) (E: SetTerm<'t>) : SetTerm<'t> =
+    let qunion (x: #ISymbolicVar<'u>) (R: Prop) (E: SetTerm<'t>) : SetTerm<'t> =
         SetTerm<'t>(<@ union %x.Expr %R.Expr %E.Expr @>)
 
     /// (∩x | R : E) — Gries (11.75).
-    let qinter (x: TermVar<'u>) (R: Prop) (E: SetTerm<'t>) : SetTerm<'t> =
+    let qinter (x: #ISymbolicVar<'u>) (R: Prop) (E: SetTerm<'t>) : SetTerm<'t> =
         SetTerm<'t>(<@ intersect %x.Expr %R.Expr %E.Expr @>)
 
     /// Abstract the dummy back out of a proposition written in it, giving the `Pred` that the
     /// predicate-calculus theorems take. Binds the `Var` OBJECT occurring in the body rather than a
     /// structurally-equal copy, so the application `P.[x]` beta-reduces back to exactly `p`.
-    let private pred_of<'u when 'u : equality> (x: TermVar<'u>) (p: Prop) : Pred<'u> =
+    let private pred_of<'u when 'u : equality> (x: ISymbolicVar<'u>) (p: Prop) : Pred<'u> =
         let body = expand p.Expr
         let xv = List.head (get_vars (expand x.Expr))
         let v = match get_vars body |> List.tryFind (fun w -> vequal w xv) with Some w -> w | None -> xv
@@ -602,7 +606,7 @@ module SetTheory =
     /// The ∃ introduced by (11.74) is turned into a ∀ by **Generalized De Morgan (9.17)**, which is
     /// an axiom of S — so this needs no `Pred` at all. 9.18b would say it in one step, but it is a
     /// derived theorem taking predicates, and the axiom plus a double negation is cheaper.
-    let de_morgan_family_union (x: TermVar<'u>) (R: Prop) (E: SetTerm<'t>) : Theorem =
+    let de_morgan_family_union (x: #ISymbolicVar<'u>) (R: Prop) (E: SetTerm<'t>) : Theorem =
         let th = set_theory<'t> :> Theory
         let v = membership_var<'t> [ expand R.Expr; expand E.Expr; expand x.Expr ]
         let lhs, rhs = -(qunion x R E), qinter x R (-E)
@@ -621,7 +625,7 @@ module SetTheory =
         ]
 
     /// ~(∩x | R : E) = (∪x | R : ~E)   (De Morgan over a family intersection).
-    let de_morgan_family_inter (x: TermVar<'u>) (R: Prop) (E: SetTerm<'t>) : Theorem =
+    let de_morgan_family_inter (x: #ISymbolicVar<'u>) (R: Prop) (E: SetTerm<'t>) : Theorem =
         let th = set_theory<'t> :> Theory
         let v = membership_var<'t> [ expand R.Expr; expand E.Expr; expand x.Expr ]
         let lhs, rhs = -(qinter x R E), qunion x R (-E)
@@ -641,7 +645,7 @@ module SetTheory =
 
     /// (∪x | false : E) = ∅   (empty range). Note Empty range (8.13) is one of the axioms that is
     /// NOT generic over the quantified operator, which is exactly why this has to reach an ∃ first.
-    let empty_range_union (x: TermVar<'u>) (E: SetTerm<'t>) : Theorem =
+    let empty_range_union (x: #ISymbolicVar<'u>) (E: SetTerm<'t>) : Theorem =
         let th = set_theory<'t> :> Theory
         let v = membership_var<'t> [ expand E.Expr; expand x.Expr ]
         let lhs = qunion x F E
@@ -658,7 +662,7 @@ module SetTheory =
 
     /// (∩x | false : E) = U   (empty range, dual). The ∀ with a false range is itself an axiom of S
     /// rather than an identity, so it is discharged with `Taut` instead of a rewrite.
-    let empty_range_inter (x: TermVar<'u>) (E: SetTerm<'t>) : Theorem =
+    let empty_range_inter (x: #ISymbolicVar<'u>) (E: SetTerm<'t>) : Theorem =
         let th = set_theory<'t> :> Theory
         let v = membership_var<'t> [ expand E.Expr; expand x.Expr ]
         let lhs = qinter x F E
@@ -678,7 +682,7 @@ module SetTheory =
     /// `S` must be x-free — that is the side condition on Gries 9.21, which this goes through. It is
     /// not checked here: an `S` mentioning `x` simply fails to match 9.21 and the proof does not
     /// close, which is a safe failure rather than a wrong theorem.
-    let distrib_inter_family_union (x: TermVar<'u>) (R: Prop) (S: SetTerm<'t>) (E: SetTerm<'t>) : Theorem =
+    let distrib_inter_family_union (x: #ISymbolicVar<'u>) (R: Prop) (S: SetTerm<'t>) (E: SetTerm<'t>) : Theorem =
         let th = set_theory<'t> :> Theory
         let v = membership_var<'t> [ expand R.Expr; expand E.Expr; expand S.Expr; expand x.Expr ]
         let lhs, rhs = S * (qunion x R E), qunion x R (S * E)
@@ -688,7 +692,7 @@ module SetTheory =
             ax_ident th (goal == qall v T ((memb v lhs) == (memb v rhs)))
             ax_ident th ((memb v lhs) == (vS * (memb v (qunion x R E))))  |> at [select_body; left_branch]
             ax_ident th ((memb v (qunion x R E)) == qex x R vE)           |> at [select_body; left_branch; right_branch]
-            distrib_and_exists_and x (pred_of x R) vS (pred_of x vE)      |> at [select_body; left_branch]
+            distrib_and_exists_and x (pred_of (x :> ISymbolicVar<'u>) R) vS (pred_of (x :> ISymbolicVar<'u>) vE)      |> at [select_body; left_branch]
             ax_ident th ((memb v rhs) == qex x R (memb v (S * E)))        |> at [select_body; right_branch]
             ax_ident th ((memb v (S * E)) == (vS * vE))                   |> at [select_body; right_branch; select_body]
             def_true (qex x R (vS * vE)) |> Commute                       |> at [select_body]

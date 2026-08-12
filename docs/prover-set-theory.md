@@ -5,7 +5,7 @@ Schneider, *A Logical Approach to Discrete Math*, **Chapter 11**. Companion to
 [`prover-predicate-calculus.md`](prover-predicate-calculus.md) and
 [`prover-automation.md`](prover-automation.md).
 
-Runnable foundation check: `dotnet fsi examples/proofs/SetTheory.fsx` (**152/152**).
+Runnable foundation check: `dotnet fsi examples/proofs/SetTheory.fsx` (**153/153**).
 
 **Status.** Chapter 11 is covered apart from Size (11.12): the foundational layer (Membership 11.3,
 Extensionality 11.4), every operator definition (Subset 11.13, Complement 11.18, Union 11.20,
@@ -307,7 +307,7 @@ tactics: let 11.23 take the goal **down** to a subset obligation, then discharge
 That is `powerset_member` in section P, and it proves `∅ ∈ 𝒫S`, `S ∈ 𝒫S`, `S∩T ∈ 𝒫S`, `S−T ∈ 𝒫S`
 while refusing `S∪T ∈ 𝒫S`.
 
-Example is now **152/152** — the 89 checks described above, plus section Q, which proves every named
+Example is now **153/153** — the 89 checks described above, plus section Q, which proves every named
 law through the library exports listed in §6 (including two at element types other than `int`).
 
 **Size (11.12) is the one thing left in ch.11.** `#S = (Σx | x∈S : 1)` needs a Σ quantifier.
@@ -432,9 +432,8 @@ worth recording:
 - **De Morgan needs no `Pred` at all.** 9.18b would say it in a single step but is a derived theorem
   taking predicates; Generalized De Morgan (9.17) `(∃x|R:P) = ¬(∀x|R:¬P)` is an *axiom of S*, so
   going through it plus a `double_negation` is both cheaper and avoids abstracting the dummy.
-- **`elem_var` had to be exported.** A set-typed dummy is exactly what (11.76) needs, and `SetVar` is
-  a `SetTerm` — a set-valued *term* — not a `TermVar`, so it cannot be a quantifier dummy.
-  `ScalarVar`, the only other concrete `TermVar`, is restricted to value types.
+- **`elem_var` is exported** for a dummy at an arbitrary element type (`ScalarVar` is restricted to
+  value types). It is no longer needed for a *set*-typed dummy — see §7.
 - **`pred_of`** (private) abstracts the dummy back out of a proposition for the laws that *do* go
   through predicate-calculus theorems taking `Pred`s — here, 9.21 for distributivity. It binds the
   `Var` **object** occurring in the body rather than a structurally-equal copy, so `P.[x]`
@@ -590,3 +589,72 @@ variable, and a degenerate function is perfectly usable from other degenerate co
 script never noticed because everything in it was `int`. When generalizing a theory over its element
 type, check the compiled signatures (`m.IsGenericMethodDefinition`) rather than trusting a clean
 build.
+
+## 7. `ISymbolicVar<'t>` — a variable that is also a term
+
+A set variable has to be two things at once: a **term** (so `∪ ∩ − ∈ ⊆` apply) and a **variable**
+(so it can be a quantifier dummy). F# is single-inheritance, and `SetVar<'t>` must inherit
+`SetTerm<'t>` to keep the operators — so it could not also inherit `TermVar<Set<'t>>`, and a
+set-typed dummy needed `elem_var<Set<'t>>` plus a manual `SetTerm<'t>(u.Expr)` wrap at every use.
+
+**Reparenting `SetVar` to `TermVar<Set<'t>>` and bridging back with an `op_Implicit` does not work.**
+Measured, in a faithful miniature where the element type is inferable from the source:
+
+| Position | Result |
+|---|---|
+| `a + b` (operator) | **refuted** — F# never consults user-defined implicit conversions during operator overload resolution |
+| let-bound function argument | **refuted** |
+| method argument | **refuted** — the conversion is declared on the base `Term<Set<'t>>`, and F# will not apply one declared on a supertype of the argument |
+
+Since the whole set DSL is operators, that route would have broken every `S ∪ T` in the codebase.
+
+Instead, variable-ness is an **interface**, `ISymbolicVar<'t>` (`Name`, `Symbol`, `Expr`, `Var`),
+implemented by `TermVar<'t>` and — separately, at `Set<'t>` — by `SetVar<'t>`. The quantifier
+builders take it as a **flexible type**, `(x: #ISymbolicVar<'t>)`, which matters: F# does not insert
+an interface upcast at a let-bound argument, so a plain `#` is what lets callers keep passing a
+`ScalarVar` or `SetVar` directly. The interface member is deliberately named `Expr`, matching the
+property every `Term` already has, so widening a signature leaves the *body* untouched — on a
+flexible type the member resolves through the constraint.
+
+Result: a `SetVar` is now both, and (11.76)'s shape is written with one variable serving as dummy
+and body —
+
+```fsharp
+let u = setvar<int> "u"
+de_morgan_family_union u (u |?| family) u        // ~(∪u | u∈F : u) = (∩u | u∈F : ~u)
+qall u (u |?| family) (u |<| S)                  // (∀u | u ∈ F : u ⊆ S)
+```
+
+Scope: 41 signatures in `PredCalculus.fs`, 16 in `SetTheory.fs`. Two bodies needed changes —
+`memb`, which used to upcast the dummy to `Term<'t>` to reach the `∈` operator and now builds the
+call directly, and `pred_of`, which takes the interface non-flexibly because passing one flexible
+type into another is ambiguous.
+
+**Pre-existing quirk this uncovered, unrelated to the change:** unary `-` does not work on a
+`SetVar`. F#'s `~-` is typed `^a -> ^a`, so it cannot return `SetTerm<int>` from a `SetVar<int>`
+operand; upcast first (`-(u :> SetTerm<int>)`), which is what the example's `neg` helper has always
+been doing. Binary `+`/`*`/`-` are unconstrained and work on variables directly.
+
+### Performance — no regression (A/B'd, `git stash` + rebuild, per §4 of the perf handoff)
+
+The concern was interface dispatch on `.Expr` in the widened builders. Measured, Release, warm:
+
+| Payload | before | after |
+|---|---|---|
+| pigeonhole 4→3 (warm, runs 2/3) | 38.7 / 40.3 ms | 39.0 / 40.3 ms |
+| pigeonhole 5→4 | 266.5 ms | 258.7 ms |
+| `trans_implies` (warm) | 3.162 ms | 3.083 ms |
+| `sequal` small / large | 0.162 / 45.35 µs | 0.159 / 45.83 µs |
+| `get_vars` large | 22.80 µs | 22.79 µs |
+| `replace_expr` large | 103.6 µs | 104.3 µs |
+| `PredCalculus.fsx` (min of 3) | 1.86 s | 1.85 s |
+
+All inside the ±5% the handoff says single samples cannot resolve. The **allocation** figures are the
+more informative half and they are essentially identical (49607.6 KB and 49927.8 KB on both sides;
+per-op bytes byte-for-byte equal) — so the interface added no boxing or extra allocation on these
+paths. `PredCalculus.fsx` is the load-bearing row: it is unchanged by this work and leans hard on the
+widened quantifier builders. The reconstruction payloads are propositional and barely touch them,
+which is why they were never the risk.
+
+Gate re-run clean: `SYLVIA_SEQUAL_CHECK=1` suite **135/135**, `AdversarialSweep.fsx` ALL CLEAR (only
+the documented `replace_eq` precondition), and the prop/pred/set examples all close.
