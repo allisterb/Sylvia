@@ -204,8 +204,16 @@ module Display =
         | ForAll(_, VarDisplay v, range, body) -> sprintf "(\u2200 %s | %s : %s)" v (print_formula_memo range) (print_formula_memo body)
         | Exists(_, VarDisplay v, Bool true, body) -> sprintf "(\u2203 %s | %s)" v (print_formula_memo body)
         | Exists(_, VarDisplay v, range, body) -> sprintf "(\u2203 %s | %s : %s)" v (print_formula_memo range) (print_formula_memo body)
+        // A generalized quantification `(★x | R : E)` (Gries §8.2) — `Formula.sum`/`product` at an
+        // arbitrary binary operator, e.g. the n-ary set ∪/∩ of §11.4. Rendered like ∀/∃ above,
+        // INCLUDING the range: it used to be matched and then dropped, so `(⋃i | 0≤i<n : S)` printed
+        // as `⋃ i S` — indistinguishable from the same body over any other range.
+        | SumTerm(_, SymbolDisplay symbol, VarDisplay bound, Bool true, body)
+        | ProductTerm(_, SymbolDisplay symbol, VarDisplay bound, Bool true, body) ->
+            sprintf "(%s %s |: %s)" symbol bound (print_formula_memo body)
         | SumTerm(_, SymbolDisplay symbol, VarDisplay bound, range, body)
-        | ProductTerm(_, SymbolDisplay symbol, VarDisplay bound, range, body) -> sprintf "%s %s %s" symbol (bound) (print_formula_memo body)
+        | ProductTerm(_, SymbolDisplay symbol, VarDisplay bound, range, body) ->
+            sprintf "(%s %s | %s : %s)" symbol bound (print_formula_memo range) (print_formula_memo body)
 
         (* Boolean connectives: recurse structurally \u2014 propositional formulas bottom out
            at the Var/Const/True/False cases above with NO decompilation. *)

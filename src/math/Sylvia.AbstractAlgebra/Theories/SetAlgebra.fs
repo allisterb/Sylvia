@@ -14,13 +14,24 @@ module SetAlgebra =
     
     (* Formulas *)
 
-    /// n-ary union of sets
-    [<Formula>]
-    let union<'t when 't : equality> (bound:int) (range:bool) (body:Set<'t>) = formula<Set<'t>>
+    (* Union and intersection of families of sets (Gries \u00a711.4). \u222a and \u2229 are symmetric, associative
+       and idempotent and have identities, so each is an operator to which \u00a78.2's `(\u2605x | R : E)`
+       quantification notation applies \u2014 that is all (11.74)/(11.75) are. There is no separate
+       "big union of a set of sets" operator in the chapter: a family `S : Set<Set<'t>>` is handled
+       as the instance `(\u222au | u \u2208 S : u)`, which is how (11.76) Partition is stated.
 
-    /// n-ary intersection of sets
+       Built on `Formula.sum`/`product`, so `(|Quantifier|_|)` recognizes them and the three GENERIC
+       quantifier axioms \u2014 One-Point (8.14), Nesting (8.20), Renaming (8.21) \u2014 already apply. Empty
+       range (8.13), Distributivity (8.15), Range split (8.18) and Interchange (8.19) are keyed on
+       \u2200/\u2203 and do NOT; those come via the membership axioms in `SetTheory`, which reduce \u222a/\u2229 to \u2203/\u2200. *)
+
+    /// n-ary union of sets \u2014 Gries (11.74), `(\u222ax | R : E)`.
     [<Formula>]
-    let intersect<'t when 't : equality> (bound:int) (range:bool) (body:Set<'t>) = product Set.set_intersection "\u22c2" bound range body
+    let union<'t, 'u when 't : equality> (bound:'u) (range:bool) (body:Set<'t>) = sum Set.set_union "\u22c3" bound range body
+
+    /// n-ary intersection of sets \u2014 Gries (11.75), `(\u2229x | R : E)`.
+    [<Formula>]
+    let intersect<'t, 'u when 't : equality> (bound:'u) (range:bool) (body:Set<'t>) = product Set.set_intersection "\u22c2" bound range body
 
     /// Symbolic set comprehension {x | R : E} (Gries 11.1): dummy `bound`:'t, range `R`, body `E`:'t,
     /// yielding a set of 't. A quantifier-shaped placeholder mirroring `forall_expr`/`exists_expr`

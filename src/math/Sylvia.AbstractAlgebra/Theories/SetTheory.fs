@@ -124,6 +124,48 @@ module SetTheory =
             when sequal s s1 && sequal t t1 && vequal' xv (get_vars xe1) && vequal' xv (get_vars xe2) -> desc "Subset"
         | _ -> None
 
+    (* Union and intersection of FAMILIES of sets (Gries §11.4). `(∪x | R : E)` and `(∩x | R : E)`
+       are §8.2 quantifications of the binary ∪/∩ — `Formula.sum`/`product` terms, built by
+       `SetAlgebra.union`/`intersect`. These two axioms are the bridge that makes them usable: they
+       reduce membership in a family to an ∃/∀ over membership in the body, after which every law
+       about families is ordinary predicate calculus. That is Gries' own remark that "other
+       properties … can be derived from the properties of ∃ and ∀".
+
+       They are keyed on the OPERATOR, not on the `sum`/`product` shape alone: the quantification
+       builders are generic, so any future generalized quantification (a Σ, say) would otherwise
+       match a set-membership axiom. The operator argument is eta-expanded by the builder to
+       `fun l r -> op l r`, and the method underneath is matched by NAME so the axiom stays
+       element-type-agnostic, as the binary operator axioms above are.
+
+       NOTE these DO check the side condition that Membership (11.3) above leaves unchecked: the
+       element `y` must not mention the dummy. Without it the `x` in `y`, free on the left, would be
+       CAPTURED by the quantifier introduced on the right. *)
+
+    /// The operator argument of a generalized quantification, recognized by the name of the method
+    /// underneath its eta-expansion.
+    let private (|QuantOp|_|) (name: string) =
+        function
+        | Lambda(_, Lambda(_, Call(None, mi, _))) when mi.Name = name -> Some ()
+        | _ -> None
+
+    /// y ∈ (∪x | R : E)  =  (∃x | R : y ∈ E)   (Gries 11.74, membership in a family union).
+    let (|UnionFamilyMember|_|) =
+        function
+        | Equals(ElementOf(y, Sylvia.Patterns.SumTerm(QuantOp "set_union", _, bound, range, body)),
+                 Exists(_, bound', range', ElementOf(y', body')))
+            when vequal' bound bound' && sequal3 y range body y' range' body'
+                 && not (Sylvia.Patterns.occurs_free bound y) -> desc "Family Union Membership"
+        | _ -> None
+
+    /// y ∈ (∩x | R : E)  =  (∀x | R : y ∈ E)   (Gries 11.75, membership in a family intersection).
+    let (|IntersectFamilyMember|_|) =
+        function
+        | Equals(ElementOf(y, Sylvia.Patterns.ProductTerm(QuantOp "set_intersection", _, bound, range, body)),
+                 ForAll(_, bound', range', ElementOf(y', body')))
+            when vequal' bound bound' && sequal3 y range body y' range' body'
+                 && not (Sylvia.Patterns.occurs_free bound y) -> desc "Family Intersection Membership"
+        | _ -> None
+
     /// T ∈ 𝒫S = T ⊆ S   (Gries 11.23, Power set).
     ///
     /// Unlike the operators above this does NOT reduce membership to a propositional combination of
@@ -158,6 +200,8 @@ module SetTheory =
         | ComplementMember x
         | DifferenceMember x
         | SubsetDef x
+        | UnionFamilyMember x
+        | IntersectFamilyMember x
         | PowersetMember x
         | EmptyMember x
         | UniverseMember x -> Some x
@@ -511,6 +555,145 @@ module SetTheory =
     /// S − T ⊆ ~T   (a difference is disjoint from what was removed)
     let difference_subset_complement (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem =
         meta_subset (s - t) (-t)
+
+    (* ------------------------------------------------------------------------------------------
+       Families of sets (Gries §11.4).
+
+       `(∪x | R : E)` and `(∩x | R : E)` are §8.2 quantifications of the binary ∪/∩ — there is no
+       separate "big union of a set of sets" operator in the chapter. A family `S : Set<Set<'t>>` is
+       the instance `(∪u | u ∈ S : u)`, which is how (11.76) Partition is stated.
+
+       Every law here is Extensionality, then the family membership axiom to get to an ∃/∀, then one
+       predicate-calculus step. That is Gries' own remark that the properties of these operators
+       "can be derived from the properties of ∃ and ∀" — and it is why the laws had to go through
+       membership rather than through generic quantifier axioms: of 8.13-8.21 only One-Point,
+       Nesting and Renaming are stated generically over the quantified operator (see the note in
+       `docs/prover-set-theory.md`).
+       ------------------------------------------------------------------------------------------ *)
+
+    /// A dummy variable at an arbitrary element type — including a SET-typed one, which Gries
+    /// (11.76) needs for `(∪u | u ∈ S : u)`.
+    ///
+    /// `SetVar<'t>` cannot be used for this: it is a `SetTerm`, i.e. a set-valued TERM, whereas a
+    /// quantifier dummy has to be a `TermVar`. And `ScalarVar`, the only other concrete `TermVar`,
+    /// is constrained to value types.
+    let elem_var<'t when 't : equality> (name: string) : TermVar<'t> = ElemVar<'t>(name) :> TermVar<'t>
+
+    /// (∪x | R : E) — Gries (11.74). Range and body are given as a proposition / set term in `x`,
+    /// mirroring `PredCalculus.qall`/`qex` rather than the `Pred`-based combinators.
+    let qunion (x: TermVar<'u>) (R: Prop) (E: SetTerm<'t>) : SetTerm<'t> =
+        SetTerm<'t>(<@ union %x.Expr %R.Expr %E.Expr @>)
+
+    /// (∩x | R : E) — Gries (11.75).
+    let qinter (x: TermVar<'u>) (R: Prop) (E: SetTerm<'t>) : SetTerm<'t> =
+        SetTerm<'t>(<@ intersect %x.Expr %R.Expr %E.Expr @>)
+
+    /// Abstract the dummy back out of a proposition written in it, giving the `Pred` that the
+    /// predicate-calculus theorems take. Binds the `Var` OBJECT occurring in the body rather than a
+    /// structurally-equal copy, so the application `P.[x]` beta-reduces back to exactly `p`.
+    let private pred_of<'u when 'u : equality> (x: TermVar<'u>) (p: Prop) : Pred<'u> =
+        let body = expand p.Expr
+        let xv = List.head (get_vars (expand x.Expr))
+        let v = match get_vars body |> List.tryFind (fun w -> vequal w xv) with Some w -> w | None -> xv
+        Pred<'u>(func = Expr.Cast<'u -> bool>(expand (Expr.Lambda(v, body))))
+
+    /// ~(∪x | R : E) = (∩x | R : ~E)   (De Morgan over a family union).
+    ///
+    /// The ∃ introduced by (11.74) is turned into a ∀ by **Generalized De Morgan (9.17)**, which is
+    /// an axiom of S — so this needs no `Pred` at all. 9.18b would say it in one step, but it is a
+    /// derived theorem taking predicates, and the axiom plus a double negation is cheaper.
+    let de_morgan_family_union (x: TermVar<'u>) (R: Prop) (E: SetTerm<'t>) : Theorem =
+        let th = set_theory<'t> :> Theory
+        let v = membership_var<'t> [ expand R.Expr; expand E.Expr; expand x.Expr ]
+        let lhs, rhs = -(qunion x R E), qinter x R (-E)
+        let goal = lhs == rhs
+        let vE = memb v E
+        theorem th goal [
+            ax_ident th (goal == qall v T ((memb v lhs) == (memb v rhs)))
+            ax_ident th ((memb v lhs) == !!(memb v (qunion x R E)))   |> at [select_body; left_branch]
+            ax_ident th ((memb v (qunion x R E)) == qex x R vE)       |> at [select_body; left_branch; apply_unary]
+            ax_ident th (qex x R vE == !!(qall x R (!!vE)))           |> at [select_body; left_branch; apply_unary]
+            double_negation (qall x R (!!vE))                         |> at [select_body; left_branch]
+            ax_ident th ((memb v rhs) == qall x R (memb v (-E)))      |> at [select_body; right_branch]
+            ax_ident th ((memb v (-E)) == !!vE)                       |> at [select_body; right_branch; select_body]
+            def_true (qall x R (!!vE)) |> Commute                     |> at [select_body]
+            ident_forall_true' v
+        ]
+
+    /// ~(∩x | R : E) = (∪x | R : ~E)   (De Morgan over a family intersection).
+    let de_morgan_family_inter (x: TermVar<'u>) (R: Prop) (E: SetTerm<'t>) : Theorem =
+        let th = set_theory<'t> :> Theory
+        let v = membership_var<'t> [ expand R.Expr; expand E.Expr; expand x.Expr ]
+        let lhs, rhs = -(qinter x R E), qunion x R (-E)
+        let goal = lhs == rhs
+        let vE = memb v E
+        theorem th goal [
+            ax_ident th (goal == qall v T ((memb v lhs) == (memb v rhs)))
+            ax_ident th ((memb v lhs) == !!(memb v (qinter x R E)))   |> at [select_body; left_branch]
+            ax_ident th ((memb v (qinter x R E)) == qall x R vE)      |> at [select_body; left_branch; apply_unary]
+            ax_ident th ((memb v rhs) == qex x R (memb v (-E)))       |> at [select_body; right_branch]
+            ax_ident th ((memb v (-E)) == !!vE)                       |> at [select_body; right_branch; select_body]
+            ax_ident th (qex x R (!!vE) == !!(qall x R (!!(!!vE))))   |> at [select_body; right_branch]
+            double_negation vE                                        |> at [select_body; right_branch; apply_unary; select_body]
+            def_true (!!(qall x R vE)) |> Commute                     |> at [select_body]
+            ident_forall_true' v
+        ]
+
+    /// (∪x | false : E) = ∅   (empty range). Note Empty range (8.13) is one of the axioms that is
+    /// NOT generic over the quantified operator, which is exactly why this has to reach an ∃ first.
+    let empty_range_union (x: TermVar<'u>) (E: SetTerm<'t>) : Theorem =
+        let th = set_theory<'t> :> Theory
+        let v = membership_var<'t> [ expand E.Expr; expand x.Expr ]
+        let lhs = qunion x F E
+        let goal = lhs == empty_set<'t>
+        let body = qex x F (memb v E)
+        theorem th goal [
+            ax_ident th (goal == qall v T ((memb v lhs) == (memb v empty_set<'t>)))
+            ax_ident th ((memb v lhs) == body)                    |> at [select_body; left_branch]
+            ax_ident th (body == F)                               |> at [select_body; left_branch]
+            ax_ident th ((memb v empty_set<'t>) == F)             |> at [select_body; right_branch]
+            def_true F |> Commute                                 |> at [select_body]
+            ident_forall_true' v
+        ]
+
+    /// (∩x | false : E) = U   (empty range, dual). The ∀ with a false range is itself an axiom of S
+    /// rather than an identity, so it is discharged with `Taut` instead of a rewrite.
+    let empty_range_inter (x: TermVar<'u>) (E: SetTerm<'t>) : Theorem =
+        let th = set_theory<'t> :> Theory
+        let v = membership_var<'t> [ expand E.Expr; expand x.Expr ]
+        let lhs = qinter x F E
+        let goal = lhs == universe<'t>
+        let body = qall x F (memb v E)
+        theorem th goal [
+            ax_ident th (goal == qall v T ((memb v lhs) == (memb v universe<'t>)))
+            ax_ident th ((memb v lhs) == body)                    |> at [select_body; left_branch]
+            Taut (axiom th body)                                  |> at [select_body; left_branch]
+            ax_ident th ((memb v universe<'t>) == T)              |> at [select_body; right_branch]
+            def_true T |> Commute                                 |> at [select_body]
+            ident_forall_true' v
+        ]
+
+    /// S ∩ (∪x | R : E) = (∪x | R : S ∩ E)   (∩ distributes into a family union).
+    ///
+    /// `S` must be x-free — that is the side condition on Gries 9.21, which this goes through. It is
+    /// not checked here: an `S` mentioning `x` simply fails to match 9.21 and the proof does not
+    /// close, which is a safe failure rather than a wrong theorem.
+    let distrib_inter_family_union (x: TermVar<'u>) (R: Prop) (S: SetTerm<'t>) (E: SetTerm<'t>) : Theorem =
+        let th = set_theory<'t> :> Theory
+        let v = membership_var<'t> [ expand R.Expr; expand E.Expr; expand S.Expr; expand x.Expr ]
+        let lhs, rhs = S * (qunion x R E), qunion x R (S * E)
+        let goal = lhs == rhs
+        let vS, vE = memb v S, memb v E
+        theorem th goal [
+            ax_ident th (goal == qall v T ((memb v lhs) == (memb v rhs)))
+            ax_ident th ((memb v lhs) == (vS * (memb v (qunion x R E))))  |> at [select_body; left_branch]
+            ax_ident th ((memb v (qunion x R E)) == qex x R vE)           |> at [select_body; left_branch; right_branch]
+            distrib_and_exists_and x (pred_of x R) vS (pred_of x vE)      |> at [select_body; left_branch]
+            ax_ident th ((memb v rhs) == qex x R (memb v (S * E)))        |> at [select_body; right_branch]
+            ax_ident th ((memb v (S * E)) == (vS * vE))                   |> at [select_body; right_branch; select_body]
+            def_true (qex x R (vS * vE)) |> Commute                       |> at [select_body]
+            ident_forall_true' v
+        ]
 
     (* Power set (11.23). *)
 

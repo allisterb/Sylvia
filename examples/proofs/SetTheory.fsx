@@ -470,5 +470,94 @@ let strS   = setvar<string> "S"
 named "generic  ~(S∩T) = ~S∪~T  over char"                         (fun () -> de_morgan_inter cS cT)
 named "generic  S∪S = S         over string"                      (fun () -> idemp_union strS)
 
+printfn "\n===== (R) Families of sets (Gries §11.4): membership in (∪x|R:E) and (∩x|R:E) ====="
+// §11.4 does NOT add a "big union of a set of sets" operator. ∪ and ∩ are symmetric, associative,
+// idempotent and have identities, so each is an operator to which §8.2's `(★x | R : E)` notation
+// applies — that is all (11.74)/(11.75) are. A family `S : Set<Set<'t>>` is then handled as the
+// instance `(∪u | u ∈ S : u)`, which is how (11.76) Partition is stated.
+//
+// The two axioms below are the bridge: they reduce membership in a family to an ∃/∀ over membership
+// in the body, after which every law about families is ordinary predicate calculus — Gries' own
+// remark that "other properties … can be derived from the properties of ∃ and ∀".
+let fi = intvar "i"
+let fy = intvar "y"
+let fz = intvar "z"
+let fbody = <@ set_comp %fz.Expr (%fz.Expr < %fi.Expr) %fz.Expr @>       // E = {z | z < i : z}
+let frange = <@ %fi.Expr >= 0 @>
+let fUnion  = <@ union %fi.Expr %frange %fbody @>
+let fInter  = <@ intersect %fi.Expr %frange %fbody @>
+
+ok "11.74 (∪i|R:E) is a quantifier, and its RANGE renders"
+   ((st.PrintFormula (expand fUnion)).StartsWith "(⋃ i | i >= 0 : ")
+ok "11.75 (∩i|R:E) likewise"
+   ((st.PrintFormula (expand fInter)).StartsWith "(⋂ i | i >= 0 : ")
+// The dummy is no longer pinned to int, so Gries' (11.76) shape — a dummy ranging over SETS — builds.
+let fFam : SetTerm<Set<int>> = setvar<Set<int>> "F"
+let fu = SetVar<int> "u"
+let fuinF : Prop = (fu :> Term<Set<int>>) |?| fFam
+ok "(11.76) shape  (∪u | u ∈ F : u)  builds with a set-typed dummy"
+   ((st.PrintFormula (expand <@ union %fu.Expr %fuinF.Expr %fu.Expr @>)) = "(⋃ u | u ∈ F : u)")
+
+ok "11.74 membership  y ∈ (∪i|R:E) = (∃i|R: y∈E)"
+   (st.AxEquiv <@ (%fy.Expr |?| %fUnion) = exists_expr %fi.Expr %frange (%fy.Expr |?| %fbody) @>)
+ok "11.75 membership  y ∈ (∩i|R:E) = (∀i|R: y∈E)"
+   (st.AxEquiv <@ (%fy.Expr |?| %fInter) = forall_expr %fi.Expr %frange (%fy.Expr |?| %fbody) @>)
+
+// Soundness. The last two are what stop a FUTURE generalized quantification (a Σ, say) from being
+// read as a set-membership axiom: the axioms key on the OPERATOR, not on the sum/product shape.
+ok "∪ paired with ∀ rejected"
+   (not (st.AxEquiv <@ (%fy.Expr |?| %fUnion) = forall_expr %fi.Expr %frange (%fy.Expr |?| %fbody) @>))
+ok "∩ paired with ∃ rejected"
+   (not (st.AxEquiv <@ (%fy.Expr |?| %fInter) = exists_expr %fi.Expr %frange (%fy.Expr |?| %fbody) @>))
+ok "mismatched range rejected"
+   (not (st.AxEquiv <@ (%fy.Expr |?| %fUnion) = exists_expr %fi.Expr (%fi.Expr > 0) (%fy.Expr |?| %fbody) @>))
+ok "mismatched dummy rejected"
+   (not (st.AxEquiv <@ (%fy.Expr |?| %fUnion) = exists_expr %fz.Expr %frange (%fy.Expr |?| %fbody) @>))
+// CAPTURE: an element mentioning the dummy is free on the left and would be captured on the right.
+// (This side condition is CHECKED here, unlike the one on Membership 11.3 in section E.)
+ok "element mentioning the dummy rejected (capture)"
+   (not (st.AxEquiv <@ (%fi.Expr |?| %fUnion) = exists_expr %fi.Expr %frange (%fi.Expr |?| %fbody) @>))
+ok "sum carrying ∩ is not a family union"
+   (not (st.AxEquiv <@ (%fy.Expr |?| (Formula.sum Set.set_intersection "⋃" %fi.Expr %frange %fbody))
+                        = exists_expr %fi.Expr %frange (%fy.Expr |?| %fbody) @>))
+ok "product carrying ∪ is not a family intersection"
+   (not (st.AxEquiv <@ (%fy.Expr |?| (Formula.product Set.set_union "⋂" %fi.Expr %frange %fbody))
+                        = forall_expr %fi.Expr %frange (%fy.Expr |?| %fbody) @>))
+
+// The §11.4 laws, from the library. Each is Extensionality → the family membership axiom → ONE
+// predicate-calculus step, which is the whole point of routing families through membership: only
+// One-Point, Nesting and Renaming are stated generically over the quantified operator, so nothing
+// else about ∪/∩ as quantifiers is available directly.
+//
+// `qunion`/`qinter` are the SetTerm-level builders (the shape `PredCalculus.qall`/`qex` have).
+let fE : SetTerm<int> = SetTerm<int>(fbody)
+let fR : Prop = Prop frange
+named "        ~(∪x|R:E) = (∩x|R:~E)     de_morgan_family_union"     (fun () -> de_morgan_family_union fi fR fE)
+named "        ~(∩x|R:E) = (∪x|R:~E)     de_morgan_family_inter"     (fun () -> de_morgan_family_inter fi fR fE)
+named "        (∪x|false:E) = ∅          empty_range_union"          (fun () -> empty_range_union fi fE)
+named "        (∩x|false:E) = U          empty_range_inter"          (fun () -> empty_range_inter fi fE)
+named "9.21    S∩(∪x|R:E) = (∪x|R:S∩E)   distrib_inter_family_union" (fun () -> distrib_inter_family_union fi fR sS fE)
+named "generic ~(∪k|R:E) = (∩k|R:~E) over char elements"
+      (fun () -> de_morgan_family_union (intvar "k") (boolvar "Rc") (setvar<char> "Ec"))
+
+// A SET-typed dummy, i.e. Gries (11.76)'s own shape. `elem_var` is needed here: `SetVar` is a
+// `SetTerm` — a set-valued TERM — and only a `TermVar` can be a quantifier dummy.
+let fud : TermVar<Set<int>> = elem_var<Set<int>> "u"
+let fudinF : Prop = (fud :> Term<Set<int>>) |?| fFam
+named "(11.76) ~(∪u|u∈F:u) = (∩u|u∈F:~u)  over a family of sets"
+      (fun () -> de_morgan_family_union fud fudinF (SetTerm<int>(fud.Expr)))
+
+// The empty-range law is worth noting twice: EMPTY RANGE (8.13) is one of the axioms that is NOT
+// generic over the quantified operator, so the proof only closes because 11.74 reaches an ∃ first.
+// (The range must be the NAMED truth constant `F` — `(|False|_|)` matches
+// `ValueWithName(_,bool,"False")` only, so a bare `false` literal silently fails to match it.)
+let fEmptyU = qunion fi F fE
+
+// Families sit OUTSIDE the metatheorem tactics, like the power set: `set_shape` classifies a family
+// term as an atom, so `meta_set_ident` treats it as an opaque set variable. That is SOUND but
+// incomplete — it proves only what holds of an arbitrary set and cannot see inside the quantifier.
+ok "meta_set_ident treats a family as an atom (sound, incomplete): S∪(∪i|R:E) = (∪i|R:E)∪S"
+   (metaproven (sS + fEmptyU) (fEmptyU + sS))
+
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1

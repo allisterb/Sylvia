@@ -5,13 +5,17 @@ Schneider, *A Logical Approach to Discrete Math*, **Chapter 11**. Companion to
 [`prover-predicate-calculus.md`](prover-predicate-calculus.md) and
 [`prover-automation.md`](prover-automation.md).
 
-Runnable foundation check: `dotnet fsi examples/proofs/SetTheory.fsx` (**133/133**).
+Runnable foundation check: `dotnet fsi examples/proofs/SetTheory.fsx` (**152/152**).
 
 **Status.** Chapter 11 is covered apart from Size (11.12): the foundational layer (Membership 11.3,
 Extensionality 11.4), every operator definition (Subset 11.13, Complement 11.18, Union 11.20,
 Intersection 11.21, Difference 11.22, Power set 11.23, and `∅`/`U` membership), the Boolean-algebra
 layer, and Metatheorem 11.25(a)/(b)/(c) mechanized as the `meta_set_ident` / `meta_subset` tactics. Size needs
 a Σ quantifier — see §4d.
+
+**§11.4 (families of sets)** is done apart from the two items listed at the end of §4e: the
+`(∪x|R:E)` / `(∩x|R:E)` quantifiers, their membership axioms, the `qunion`/`qinter` builders and the
+derived laws (De Morgan both ways, both empty-range cases, ∩-over-∪ distributivity).
 
 All of it now lives in the **library** (`Theories/SetTheory.fs`), not in the example script — see §6.
 
@@ -303,14 +307,142 @@ tactics: let 11.23 take the goal **down** to a subset obligation, then discharge
 That is `powerset_member` in section P, and it proves `∅ ∈ 𝒫S`, `S ∈ 𝒫S`, `S∩T ∈ 𝒫S`, `S−T ∈ 𝒫S`
 while refusing `S∪T ∈ 𝒫S`.
 
-Example is now **133/133** — the 89 checks described above, plus section Q, which proves every named
+Example is now **152/152** — the 89 checks described above, plus section Q, which proves every named
 law through the library exports listed in §6 (including two at element types other than `int`).
 
-**Size (11.12) is the one thing left in ch.11**, and it is genuinely out of reach rather than merely
-unstarted: `#S = (Σx | x∈S : 1)` needs a Σ quantifier, i.e. a quantified fold over a numeric codomain.
-Sylvia's quantifier machinery is `∀`/`∃` over `Prop` bodies; a Σ needs arithmetic in the body and a
-different one-point/split-off-term story — the same reason Gries 8.22/8.23 are out of scope for the
-predicate calculus (see `prover-predicate-calculus.md` §6).
+**Size (11.12) is the one thing left in ch.11.** `#S = (Σx | x∈S : 1)` needs a Σ quantifier.
+
+> An earlier version of this paragraph said Σ was "genuinely out of reach" because "Sylvia's
+> quantifier machinery is `∀`/`∃` over `Prop` bodies". **That is wrong**, and the correction matters
+> for §11.4 as well as for Size. `Formula.sum`/`product` are *generalized* quantification builders —
+> `sum (op) (symbol) (bound) (range) (body)`, i.e. Gries §8.2's `(★x | R : E)` for an arbitrary binary
+> operator — and `(|Quantifier|_|)` is `Sum | Product | ForAll | Exists`, so a Σ term is
+> representable and recognized today. What is actually missing is Σ's own AXIOMS plus arithmetic in
+> the body; see the note on which of 8.13–8.21 generalize, below.
+
+### Which of the general quantification axioms (8.13–8.21) actually generalize
+
+Gries §11.4 rests on the claim that `(∪x | R : E)` and `(∩x | R : E)` satisfy the general axioms of
+quantification, because `∪`/`∩` are symmetric, associative, idempotent and have identities. In
+Sylvia the picture is *half* that, and the split is not arbitrary:
+
+| Axiom | Keyed on | Applies to any `★`? |
+|---|---|---|
+| One-Point (8.14) | `Quantifier` | **yes** |
+| Nesting (8.20) | `Quantifier` | **yes** |
+| Dummy renaming (8.21) | `Quantifier` | **yes** |
+| Empty range (8.13) | `ForAll`/`Exists` | no |
+| Distributivity (8.15, `QuantifierCollect`) | `ForAll`/`Exists` | no |
+| Range split (8.18, `RangeSplit`) | `ForAll`/`Exists` | no |
+| Interchange (8.19) | `ForAll`/`Exists` | no |
+
+The three that generalize are exactly the ones about **binding structure** — they need nothing from
+the operator. The four that do not are exactly the ones that depend on the operator's **algebra**,
+and `sum`/`product` do not carry what they would need: empty range requires `★`'s identity element
+(`(★x | false : E) = unit★`), and range split requires idempotency (for a non-idempotent `★` such as
+`Σ`, 8.17/8.18 hold only for *disjoint* ranges). The builders take `(op, symbol)` and nothing else.
+
+So for §11.4 the cheap and principled route is **not** to generalize those four axioms, but to add
+the two membership axioms — `y ∈ (∪x|R:E) = (∃x|R: y∈E)` and `y ∈ (∩x|R:E) = (∀x|R: y∈E)` — and
+derive the family laws from `∃`/`∀`, which is what Gries himself suggests ("other properties … can be
+derived from the properties of `∃` and `∀`"). Generalizing the axioms is the harder path and is what
+Σ would eventually need.
+
+### §11.4 groundwork — done (2026-08-12)
+
+Three defects stood between the above and any family theorem. All three are fixed; the axioms and
+the theorems themselves are not started.
+
+1. **`SetAlgebra.union` was a stub** — `= formula<Set<'t>>`, which discards its arguments and
+   expands to `FormulaModule.formula`, so an n-ary union term was silently meaningless and was not a
+   `Quantifier`. Now `sum Set.set_union "⋃" bound range body`, mirroring `intersect`'s `product`.
+   (`sum` for ∪ and `product` for ∩ also matches Definition 11.24's `∪↦∨`, `∩↦∧`.)
+2. **The dummy was pinned to `int`** (`bound:int`), so Gries' own (11.76) — `(∪u | u ∈ S : u)`, whose
+   dummy is a *set* — could not be written. Both builders now carry the dummy type: `union<'t,'u>`.
+3. **`Display` matched the range and then dropped it**, so `(⋃i | 0≤i<n : S)` printed as `⋃ i S`,
+   indistinguishable from the same body over any other range. Now rendered like ∀/∃, including the
+   `|:` form for a true range.
+
+Verified after the fix — note the set-typed dummy in the third line, and that One-Point applies:
+
+```
+(⋃ i | i >= 0 ∧ i < n : S)      QUANTIFIER bound=["i"]
+(⋂ i | i > 0 : S ∪ T)           QUANTIFIER bound=["i"]
+(⋃ u | u ∈ F : u)               QUANTIFIER bound=["u"]      ← the (11.76) shape
+One-Point (8.14) instance recognized on an n-ary union: true
+```
+
+### §11.4 membership axioms — done (2026-08-12)
+
+Two axioms in `SetTheory.fs`, added to `set_theory_axioms`. They are the bridge: they reduce
+membership in a family to an `∃`/`∀` over membership in the body, after which every law about
+families is ordinary predicate calculus.
+
+```
+y ∈ (∪x | R : E)  =  (∃x | R : y ∈ E)      (11.74)
+y ∈ (∩x | R : E)  =  (∀x | R : y ∈ E)      (11.75)
+```
+
+Three things about how they are keyed:
+
+- **On the OPERATOR, not the `sum`/`product` shape.** The quantification builders are generic, so a
+  future generalized quantification — a `Σ` — would otherwise match a *set*-membership axiom. The
+  operator argument is eta-expanded by the builder to `fun l r -> op l r`, and the method underneath
+  is matched by NAME, keeping the axiom element-type-agnostic like the binary operator axioms.
+- **The capture side condition is CHECKED**, unlike the one on Membership (11.3). If the element `y`
+  mentioned the dummy, that `x` is free on the left and would be *captured* by the quantifier
+  introduced on the right. Pinned by a rejection test.
+- Families sit **outside** `meta_set_ident` / `meta_subset`, like the power set: `set_shape`
+  classifies a family term as `SAtom`, so the tactic treats it as an opaque set variable. That is
+  sound but incomplete — it proves only what holds of an arbitrary set and cannot see inside the
+  quantifier. Also pinned by a test, so nobody later assumes the metatheorem covers families.
+
+Section **R** of `examples/proofs/SetTheory.fsx` covers all of it: both axioms recognized, seven
+rejection tests (wrong quantifier, wrong range, wrong dummy, capture, and both operator-guard cases),
+the `(11.76)` set-typed-dummy shape, and a worked law —
+
+```
+(∪i | false : E) = ∅
+```
+
+Extensionality → 11.74 → Empty range (8.13) → `v∈∅ = false` → close. Note (8.13) is one of the
+axioms that is *not* generic over the quantified operator, which is exactly why the proof has to go
+through 11.74 to reach an `∃` first.
+
+**Gotcha worth recording:** the range must be the NAMED truth constant `F`, not a bare `false`
+literal. `(|False|_|)` matches `ValueWithName(_, bool, "False")` only — deliberate, so that
+propositions are only ever compared to propositions — and a literal `false` range silently fails to
+match Empty range.
+
+### §11.4 builders and laws — done (2026-08-12)
+
+| Export | Statement |
+|---|---|
+| `qunion x R E` / `qinter x R E` | the `SetTerm`-level builders, shaped like `PredCalculus.qall`/`qex` |
+| `elem_var<'t> name` | a dummy at an arbitrary element type, **including a set-typed one** |
+| `de_morgan_family_union x R E` | `~(∪x\|R:E) = (∩x\|R:~E)` |
+| `de_morgan_family_inter x R E` | `~(∩x\|R:E) = (∪x\|R:~E)` |
+| `empty_range_union x E` | `(∪x\|false:E) = ∅` |
+| `empty_range_inter x E` | `(∩x\|false:E) = U` |
+| `distrib_inter_family_union x R S E` | `S ∩ (∪x\|R:E) = (∪x\|R: S∩E)` |
+
+Every one is Extensionality → the membership axiom → **one** predicate-calculus step. Three things
+worth recording:
+
+- **De Morgan needs no `Pred` at all.** 9.18b would say it in a single step but is a derived theorem
+  taking predicates; Generalized De Morgan (9.17) `(∃x|R:P) = ¬(∀x|R:¬P)` is an *axiom of S*, so
+  going through it plus a `double_negation` is both cheaper and avoids abstracting the dummy.
+- **`elem_var` had to be exported.** A set-typed dummy is exactly what (11.76) needs, and `SetVar` is
+  a `SetTerm` — a set-valued *term* — not a `TermVar`, so it cannot be a quantifier dummy.
+  `ScalarVar`, the only other concrete `TermVar`, is restricted to value types.
+- **`pred_of`** (private) abstracts the dummy back out of a proposition for the laws that *do* go
+  through predicate-calculus theorems taking `Pred`s — here, 9.21 for distributivity. It binds the
+  `Var` **object** occurring in the body rather than a structurally-equal copy, so `P.[x]`
+  beta-reduces back to exactly the original proposition; verified by a round-trip check.
+
+**Still open in §11.4**: `T ∈ S ⇒ T ⊆ (∪u | u∈S : u)` (9.28 ∃-introduction under a ∀, a genuinely
+multi-step hand proof), and (11.76) Partition, which is a *definition* rather than a theorem and
+needs a two-dummy `∀` over set-typed dummies.
 
 ## 3a. One-Point (Gries 8.14) kernel fix
 
