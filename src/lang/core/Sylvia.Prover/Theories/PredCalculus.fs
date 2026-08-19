@@ -392,23 +392,39 @@ module PredCalculus =
             implies_true (-(forall'(x, -R))) |> Taut |> apply                           // ¬(∀x|:¬R) ⇒ T → true
         ]
 
+    (* Fresh variables *)
+
+    /// The first variable of `x`'s KIND, named by `names 0`, `names 1`, ..., whose name occurs free in
+    /// NONE of the `avoid` expressions. `names` must be able to produce arbitrarily many distinct
+    /// names, since the search bumps its index until one is free.
+    ///
+    /// The variable comes back as the CONCRETE type of `x` — a `SetVar` prototype yields a `SetVar`,
+    /// so a theory's dummy keeps its operators. That is the point of the self-typed `IFreshVar<'v>`
+    /// constraint: a base-typed factory would erase the concrete type.
+    let fresh_var<'t, 'v when 't: equality and 'v :> ISymbolicVar<'t> and 'v :> IFreshVar<'v>>
+            (x: 'v) (names: int -> string) (avoid: Expr list) : 'v =
+        let clashes (v: 'v) = avoid |> List.exists (Patterns.occurs_free (get_vars (expand (v :> ISymbolicVar<'t>).Expr)))
+        let rec pick i =
+            let cand = (x :> IFreshVar<'v>).WithName (names i)
+            if clashes cand then pick (i + 1) else cand
+        pick 0
+
+    /// A dummy of `x`'s kind at an arbitrary element type, named `v`, `v#1`, `v#2`, ... — the first
+    /// one free in `avoid`. What a theory wants for a manufactured bound variable that is not
+    /// standing in for one the caller supplied.
+    let fresh_dummy<'t when 't: equality> (name: string) (avoid: Expr list) : ElemVar<'t> =
+        fresh_var (ElemVar<'t> name) (fun i -> if i = 0 then name else sprintf "%s#%d" name i) avoid
+
     (* Metatheorem Witness (Gries 9.30) — ∃-elimination via a fresh witness (eigenvariable) *)
 
     /// A fresh variable of `x`'s type whose name occurs free in NONE of the `avoid` expressions. Used
     /// to introduce the eigenvariable x̂ in `witness`; freshness is the entire soundness burden there,
     /// so this must be capture-airtight (it bumps a counter until `Patterns.occurs_free` is false).
-    ///
-    /// The eigenvariable comes back as the CONCRETE type of `x` — a `SetVar` dummy yields a `SetVar`
-    /// witness, so the subproof can keep using set operators on it. That is the point of the
-    /// self-typed `IFreshVar<'v>` constraint: a base-typed factory would erase the concrete type.
+    /// The eigenvariable is always RENAMED (`x#0` first, never `x` itself), and comes back as the
+    /// concrete type of `x` — see `fresh_var`.
     let fresh_witness<'t, 'v when 't: equality and 'v :> ISymbolicVar<'t> and 'v :> IFreshVar<'v>>
             (x: 'v) (avoid: Expr list) : 'v =
-        let sym (v: 'v) = v :> ISymbolicVar<'t>
-        let clashes (v: 'v) = avoid |> List.exists (Patterns.occurs_free (get_vars (expand (sym v).Expr)))
-        let rec pick i =
-            let cand = (x :> IFreshVar<'v>).WithName (sprintf "%s#%d" (sym x).Name i)
-            if clashes cand then pick (i + 1) else cand
-        pick 0
+        fresh_var x (sprintf "%s#%d" (x :> ISymbolicVar<'t>).Name) avoid
 
     /// Metatheorem Witness (Gries 9.30), the ∃-elimination (right-to-left) direction: from a completed
     /// proof of the *witness obligation*  (R[x̂] ∧ P[x̂]) ⇒ Q  for a FRESH x̂ (not occurring free in R,

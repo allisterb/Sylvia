@@ -111,6 +111,17 @@ and [<AbstractClass>] TermVar<'t when 't: equality>(n: string) =
         member x.Expr = x.Expr
         member x.Var = x.Var
     
+/// A dummy variable at an ARBITRARY element type: the concrete `TermVar` a theory reaches for when
+/// it needs a bound variable and has no algebra to attach to it. `ScalarVar`, the other concrete
+/// `TermVar`, is constrained to value types (`'t :> ValueType`), which excludes `string`, `Set<'t>`
+/// and every reference element type a theory may quantify over.
+///
+/// NOT needed for a SET-typed dummy: a `SetVar<'t>` is already both a set term and an
+/// `ISymbolicVar<Set<'t>>`, which is what Gries (11.76) `(∪u | u ∈ S : u)` wants.
+and ElemVar<'t when 't: equality>(n: string) =
+    inherit TermVar<'t>(n)
+    interface IFreshVar<ElemVar<'t>> with member x.WithName n = ElemVar<'t>(n)
+
 and IndexVar(expr: Expr<int>) =
     inherit Term<int>(expr)
     // Decompiled once on first access, not per construction or per Display call.

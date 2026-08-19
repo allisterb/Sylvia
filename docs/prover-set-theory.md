@@ -62,8 +62,7 @@ set-formula rendering got ~5× faster. Details in §7/§8 and `docs/prover-perf-
    inherits One-Point/Nesting/Renaming; what is missing is Σ's own axioms (empty range needs `0` as
    unit, range split needs disjointness since `+` is not idempotent) plus arithmetic in the body.
    Note §4d's old claim that Σ was "out of reach" was wrong and is corrected in place.
-3. **Move `ElemVar` into the core.** `SetTheory.ElemVar` is a generic concrete `TermVar` that
-   `Term.fs` could own; doing so would let `elem_var` and `membership_var` go away.
+3. ~~**Move `ElemVar` into the core.**~~ **Done (2026-08-19)** — see §9.
 
 ### Traps this session recorded, worth reading before touching these files
 
@@ -792,3 +791,33 @@ needs the capability, and folding it in would have added a parameter to all ~57 
 `R`/`P` to the eigenvariable. Implemented on `ScalarVar`, `SetVar` and `SetTheory.ElemVar`, on the INTERFACE ONLY: constructing a
 fresh variable is all any caller needs, and that is where the capability belongs semantically. An
 SRTP route would need an intrinsic member re-added, which is a one-liner per type if ever wanted.
+
+## 9. `ElemVar` in the core, and one fresh-variable search (2026-08-19)
+
+`ElemVar<'t>` — the concrete `TermVar` a theory reaches for when it needs a bound variable at an
+element type with no algebra attached — was private to `SetTheory`. It is now `Term.fs`'s, public,
+sitting next to the `ScalarVar` whose `'t :> ValueType` constraint is the reason it has to exist.
+Nothing about the class changed; it is three lines either way. What the move buys is that the next
+theory over a reference element type does not re-declare it.
+
+The duplicated part was the **fresh-variable search**, which existed twice with different naming
+policies: `fresh_witness` (`x#0`, `x#1`, …, never `x` itself, because an eigenvariable must be a
+rename) and `SetTheory.membership_var` (`v`, `v#1`, …, where reusing `v` is fine). Both bumped a
+counter until `Patterns.occurs_free` said the candidate was free in the avoid-set. One search now,
+in `PredCalculus`, parameterized by the candidate names:
+
+| Export | Meaning |
+|---|---|
+| `fresh_var x names avoid` | first variable of `x`'s KIND named `names 0`, `names 1`, … free in all of `avoid` |
+| `fresh_dummy name avoid` | `ElemVar` named `name`, `name#1`, … — a manufactured dummy |
+| `fresh_witness x avoid` | `x#0`, `x#1`, … — always a rename (9.30's eigenvariable) |
+
+`fresh_var` keeps the self-typed `IFreshVar<'v>` constraint that §8 introduced, so the variable comes
+back at the caller's concrete type. `SetTheory.elem_var` and `SetTheory.membership_var` are gone; the
+six translation sites read `fresh_dummy<'t> "v" [ … ]`, which puts the dummy's name where it is
+chosen rather than three hundred lines away.
+
+Gate re-run clean: build 0 errors, `SYLVIA_SEQUAL_CHECK=1` suite **135/135**, `SetTheory.fsx`
+**157/157**, `AdversarialSweep.fsx` ALL CLEAR, `Sledgehammer.fsx` ALL PASS, `PredCalculus.fsx`
+closes. Genericity of all three checked by reflection (§6's trap), not by a clean build:
+`fresh_var<t,v> : v`, `fresh_dummy<t> : ElemVar<t>`, `fresh_witness<t,v> : v`.
