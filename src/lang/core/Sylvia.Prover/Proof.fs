@@ -562,11 +562,11 @@ with
             | _ -> failwithf "%s is not a binary operation." (print_formula expr)
         | ApplyRange rule ->
             match expr with
-            | Quantifier(op, x, range, body) -> let s = rule.Apply range in let v = vars_to_tuple x in call op (v::s::body::[])
+            | Quantifier(_, _, range, body) -> Patterns.rebuild_quantifier expr (rule.Apply range) body
             | _ -> failwithf "%s is not a quantification." (print_formula expr)
         | ApplyBody rule ->
             match expr with
-            | Quantifier(op, x, range, body) -> let s = rule.Apply body in let v = vars_to_tuple x in call op (v::range::s::[])
+            | Quantifier(_, _, range, body) -> Patterns.rebuild_quantifier expr range (rule.Apply body)
             | _ -> failwithf "%s is not a quantification." (print_formula expr)
         | LeftBranch ra ->
             match expr with
@@ -586,11 +586,11 @@ with
             | _ -> failwithf "%s is not a unary operation." (print_formula expr)
         | SelectRange ra ->
             match expr with
-            | Quantifier(op, x, range, body) -> let s = ra.ApplyRule range in let v = vars_to_tuple x in call op (v::s::body::[])
+            | Quantifier(_, _, range, body) -> Patterns.rebuild_quantifier expr (ra.ApplyRule range) body
             | _ -> failwithf "%s is not a quantification." (print_formula expr)
         | SelectBody ra ->
             match expr with
-            | Quantifier(op, x, range, body) -> let s = ra.ApplyRule body in let v = vars_to_tuple x in call op (v::range::s::[])
+            | Quantifier(_, _, range, body) -> Patterns.rebuild_quantifier expr range (ra.ApplyRule body)
             | _ -> failwithf "%s is not a quantification." (print_formula expr)
         | Auto rf -> let r = rf expr in r.Apply expr    
     member x.Pos =

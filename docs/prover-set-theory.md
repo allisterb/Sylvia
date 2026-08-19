@@ -5,13 +5,12 @@ Schneider, *A Logical Approach to Discrete Math*, **Chapter 11**. Companion to
 [`prover-predicate-calculus.md`](prover-predicate-calculus.md) and
 [`prover-automation.md`](prover-automation.md).
 
-Runnable foundation check: `dotnet fsi examples/proofs/SetTheory.fsx` (**157/157**).
+Runnable foundation check: `dotnet fsi examples/proofs/SetTheory.fsx` (**167/167**).
 
-**Status.** Chapter 11 is covered apart from Size (11.12): the foundational layer (Membership 11.3,
-Extensionality 11.4), every operator definition (Subset 11.13, Complement 11.18, Union 11.20,
-Intersection 11.21, Difference 11.22, Power set 11.23, and `∅`/`U` membership), the Boolean-algebra
-layer, and Metatheorem 11.25(a)/(b)/(c) mechanized as the `meta_set_ident` / `meta_subset` tactics. Size needs
-a Σ quantifier — see §4d.
+**Status.** Chapter 11 is COVERED: the foundational layer (Membership 11.3, Extensionality 11.4),
+every operator definition (Subset 11.13, Complement 11.18, Union 11.20, Intersection 11.21,
+Difference 11.22, Power set 11.23, Size 11.12, and `∅`/`U` membership), the Boolean-algebra layer,
+and Metatheorem 11.25(a)/(b)/(c) mechanized as the `meta_set_ident` / `meta_subset` tactics.
 
 **§11.4 (families of sets) is complete**: the `(∪x|R:E)` / `(∩x|R:E)` quantifiers, their membership
 axioms, the `qunion`/`qinter` builders, the derived laws (De Morgan both ways, both empty-range
@@ -58,11 +57,11 @@ set-formula rendering got ~5× faster. Details in §7/§8 and `docs/prover-perf-
 
 1. **Gries ch.12, mathematical induction** — the stated destination, and the natural next chapter.
    Nothing in ch.11 blocks it.
-2. **Size (11.12)**, if ch.11 completeness matters more. `Formula.sum` already represents Σ and it
-   inherits One-Point/Nesting/Renaming; what is missing is Σ's own axioms (empty range needs `0` as
-   unit, range split needs disjointness since `+` is not idempotent) plus arithmetic in the body.
-   Note §4d's old claim that Σ was "out of reach" was wrong and is corrected in place.
+2. ~~**Size (11.12)**~~ **Done (2026-08-19)** — see §10. (Range split turned out NOT to need
+   disjointness: (8.18) is unconditional, and the disjoint case follows from it plus empty range.)
 3. ~~**Move `ElemVar` into the core.**~~ **Done (2026-08-19)** — see §9.
+
+Which leaves **1** as the whole of what is next: ch.11 is complete.
 
 ### Traps this session recorded, worth reading before touching these files
 
@@ -365,10 +364,13 @@ tactics: let 11.23 take the goal **down** to a subset obligation, then discharge
 That is `powerset_member` in section P, and it proves `∅ ∈ 𝒫S`, `S ∈ 𝒫S`, `S∩T ∈ 𝒫S`, `S−T ∈ 𝒫S`
 while refusing `S∪T ∈ 𝒫S`.
 
-Example is now **157/157** — the 89 checks described above, plus section Q, which proves every named
-law through the library exports listed in §6 (including two at element types other than `int`).
+Example is now **167/167** — the 89 checks described above, plus section Q, which proves every named
+law through the library exports listed in §6 (including two at element types other than `int`), plus
+section S for Size.
 
-**Size (11.12) is the one thing left in ch.11.** `#S = (Σx | x∈S : 1)` needs a Σ quantifier.
+**Size (11.12) is DONE — see §10.** `#S = (Σx | x∈S : 1)` needed a Σ quantifier, which is
+`Theories/Sums.fs`. The note below diagnosed that correctly and is kept because the diagnosis is
+what the implementation followed.
 
 > An earlier version of this paragraph said Σ was "genuinely out of reach" because "Sylvia's
 > quantifier machinery is `∀`/`∃` over `Prop` bodies". **That is wrong**, and the correction matters
@@ -549,10 +551,15 @@ Verified: full prover suite 85/85 (no regression), and both set-theory smoke tes
   `combine_axioms`, constructor threading, complement-law fix.
 - `src/math/Sylvia.AbstractAlgebra/Theories/SetAlgebra.fs` — `∪/∩/~/∅/U` instantiation of
   `BooleanAlgebra<Set<'t>>` (§11.3).
+- `src/math/Sylvia.AbstractAlgebra/Theories/Sums.fs` — Σ as a §8.2 quantification of `+`, and its
+  axioms (§10). Compiled BEFORE `SetTheory.fs`, which needs it for Size (11.12); `Integers`, the
+  arithmetic theory, is compiled after both and is independent of it.
 - `src/math/Sylvia.AbstractAlgebra/Theories/SetTheory.fs` — membership/extensionality recognizer
   patterns, the two-foundation `SetTheory` type, **the metatheorem tactics and the named laws** (§6).
 - `src/math/Sylvia.AbstractAlgebra/Definitions/Set.fs` — the `Set<'t>` data type and runtime
   operators / comprehension constructors.
+- `src/lang/core/Sylvia.Prover/Patterns.fs` — `rebuild_quantifier`, which is what lets a rule be
+  addressed at the range or body of a ★ term at all (§10).
 - `examples/proofs/SetTheory.fsx` — runnable foundation verification (also a regression guard).
 
 ## 6. The library API
@@ -648,6 +655,9 @@ top-level render.
 | `meta_set_ident l r` | Metatheorem 11.25(a) — and (c) is `meta_set_ident Es universe` |
 | `meta_subset l r` | Metatheorem 11.25(b) |
 | `powerset_member t s` | 11.23 composed down onto 11.25(b) |
+| `singleton x e` | `{e}` as Gries' enumeration (11.2) at one element, `{x | x = e : x}` |
+| `size_empty` / `size_singleton` / `size_union_inter` / `size_disjoint_union` | Size (11.12) — see §10 |
+| `Sums.qsum` / `Sums.intv` | `(Σx | R : E)` and an integer literal, from `Theories/Sums.fs` |
 | named laws | 11.19, 11.26–11.30, 11.32, 11.34–11.36, 11.39–11.42, absorption, the ∩/∪ bounds, 11.58, the difference laws, the power-set memberships |
 
 `set_theory<'t>` used to be a plain generic `let` value, which F# re-evaluates on **every access** — so
@@ -821,3 +831,127 @@ Gate re-run clean: build 0 errors, `SYLVIA_SEQUAL_CHECK=1` suite **135/135**, `S
 **157/157**, `AdversarialSweep.fsx` ALL CLEAR, `Sledgehammer.fsx` ALL PASS, `PredCalculus.fsx`
 closes. Genericity of all three checked by reflection (§6's trap), not by a clean build:
 `fresh_var<t,v> : v`, `fresh_dummy<t> : ElemVar<t>`, `fresh_witness<t,v> : v`.
+
+## 10. Size (11.12) and Σ (2026-08-19)
+
+`#S = (Σx | x∈S : 1)`. The last definition of ch.11, and the only one whose right-hand side leaves
+the propositional/predicate fragment: it is an **integer** term. So a size law is a **Σ law with a
+membership range**, proved by unfolding every `#` into a Σ, letting the operator axioms rewrite the
+resulting RANGES, and closing with Σ's own axioms. Extensionality is not involved, and neither is
+Metatheorem (11.25): 11.24 has no boolean translation of `#S` to offer.
+
+### `Theories/Sums.fs` — Σ as a §8.2 quantification
+
+§8.2 asks of a quantified operator ★ only that it be symmetric, associative and have a unit. `+` is,
+with unit 0, so Σ is `Formula.sum` at `+` exactly as ⋃/⋂ are `sum`/`product` at ∪/∩:
+
+```fsharp
+[<Formula>] let sigma<'u> (bound: 'u) (range: bool) (body: int) = sum int_add "Σ" bound range body
+```
+
+`int_add` is a NAMED function so the axioms can key on it under `sum`'s eta-expansion — the device
+§11.4's family axioms use, and what stops a Σ matching a family-union axiom (both are `sum` terms).
+
+The axioms are five, and the split is the one §4d predicted:
+
+| Axiom | Statement |
+|---|---|
+| `+` symmetric / associative / unit 0 | what §8.2 requires of ★ (`Assoc`/`Commute`/`Identity` at `int`) |
+| (8.13) Empty range | `(Σx \| false : E) = 0` — names the unit, so it is NOT the generic 8.13 |
+| (8.18) Range split | `(Σx \| R∨Q : E) + (Σx \| R∧Q : E) = (Σx \| R : E) + (Σx \| Q : E)` |
+| (8.15) Distributivity | `(Σx \| R : E) + (Σx \| R : F) = (Σx \| R : E+F)` |
+
+One-Point (8.14), Nesting (8.20) and Renaming (8.21) are keyed on `Quantifier`, which covers `Sum`,
+so they apply to a Σ term as they stand and are not restated. `#{e} = 1` is proof that this is real
+rather than a claim: the ∃ that Set membership (11.3) introduces and the Σ that Size (11.12)
+introduces are collapsed by the same One-Point axiom, one after the other.
+
+**(8.18) is the unconditional range split**, and that is why it is the one to have: (8.16) needs the
+two ranges disjoint and (8.17) needs ★ idempotent, which `+` is not. The disjoint case follows from
+it plus Empty range, since a `false` split range contributes 0.
+
+`Sums.sum_axioms` is composed into `SetTheory` the same way the set axioms are composed over the
+Boolean-algebra ones (`BooleanAlgebra.combine_axioms`) — a size law is an integer identity, so it
+needs both. The `+` axioms are matched through `Binary`, which checks the operand TYPE, so they fire
+only on integer addition and never on `S + T` (which is `Set<'t>`'s `op_BarPlusBar`).
+
+### The four laws
+
+| Export | Statement |
+|---|---|
+| `size_empty` | `#∅ = 0` |
+| `size_singleton x e` | `#{e} = 1`, where `{e}` is `singleton x e` = `{x \| x = e : x}` (11.2 at one element) |
+| `size_union_inter s t` | `#(S∪T) + #(S∩T) = #S + #T` |
+| `size_disjoint_union s t disjoint` | `#(S∪T) = #S + #T`, given a PROOF of `S ∩ T = ∅` |
+
+`size_union_inter` is Gries' inclusion/exclusion in the form that needs no subtraction — six rewrites
+(four Size unfoldings, two membership axioms on the ranges) and the state IS (8.18). His
+`#(S∪T) = #S + #T − #(S∩T)` is the same identity with a `−`, which the theory of sets has no axiom
+for; `Integers` does, and is a separate theory compiled after this one.
+
+`size_disjoint_union` takes the proviso as a **completed theorem**, not as an unchecked side
+condition, and rejects a proof of anything else. In the example it is discharged by 11.39
+(Contradiction) via `meta_set_ident`, giving `#(S∪~S) = #S + #~S`.
+
+**Orientation.** An axiom is recognized in the orientation its pattern is written in, and the ambient
+logic's symmetry (3.2) is symmetry of ≡, i.e. of BOOLEAN equality — nothing flips an INTEGER
+identity, and `Tactics.Commute` cannot: it casts both sides to `bool`. This is not a real restriction
+and no axiom is stated twice: the mirror of any identity is provable in one step by rewriting the
+OTHER side of its own goal down to `x = x` (`SEqual`). `size_disjoint_union`'s two local lemmas —
+`#(S∪T) → #(S∪T) + 0` and `0 → #(S∩T)` — are exactly that, and are why it needs no new axiom.
+
+### Four core changes Size forced
+
+1. **`Patterns.rebuild_quantifier`** — a live bug, not a gap. `ApplyRange` / `ApplyBody` /
+   `SelectRange` / `SelectBody` rebuilt the quantifier as `call op (bound::range::body)`, i.e. a
+   THREE-argument call. That is right for ∀/∃, but a generalized quantification is a FIVE-argument
+   `sum`/`product` call whose first two arguments are the operator and its display symbol — and
+   `(|Quantifier|_|)` hands back that OPERATOR, not the `sum` method. So addressing the range or body
+   of any ★ term threw `Incorrect number of arguments`; §11.4's ⋃/⋂ had simply never been addressed
+   that way (their laws all work on the ∀/∃ that extensionality introduces). `#∅ = 0` needs exactly
+   that, its second step being "rewrite the RANGE of a Σ".
+2. **`IntTerm`** (`Term.fs`) — an integer term whose `+` builds the `op_Addition` call and nothing
+   else. `Scalar<int>`'s `+` runs the result through the CAS (`simplifye`), which **throws** on a term
+   it does not know: `#S + #T` failed outright. A CAS pass would in any case be free to reshape a tree
+   that an axiom is about to be matched against.
+3. **`ScalarRelation.ScalarVars`** — was an eager `member val` mapping EVERY variable of either side
+   through `ScalarVar<'t>`, so merely CONSTRUCTING `#S = (Σv | v∈S : 1)` — an int equation mentioning
+   the set variable S — threw. Now lazy and filtered to the relation's own element type. Nothing
+   outside the type reads it.
+4. **`Display`: `Add`/`Subtract` cases** — for the reason `SymbolicBinary` exists. A term with no
+   structural case is decompiled WHOLE, so an operator inside one that does have a symbol is never
+   reached: `#(S ∪ T) + #(S ∩ T)` printed as ``Set`1.Size(S ∪ T) + …``. A quantification operand is
+   left unbracketed, since `(Σ v | R : E)` already prints its own delimiters.
+
+`#` itself is a **static method** on `Set<'t>` carrying `[<Symbol "#">]`, not an instance property
+like `Powerset`: a symbolic size is then a `Call(None, mi, [s])`, which is both the shape the
+name-keyed axioms match and the shape `Display`'s prefix rendering handles. `𝒫S`, a property, has to
+be matched and printed separately — that asymmetry is the reason for the choice.
+
+### Side conditions on (11.12)
+
+The axiom checks two, and the example checks that it checks them: the dummy must be the variable the
+range's membership atom is about (or `#S = (Σx | y∈S : 1)` would match), and it must not occur free
+in `S` (or the Σ would CAPTURE a variable free on the left — `#{y | y = x : y} = (Σx | x ∈ {y | y = x
+: y} : 1)` is the instance that shows why). The body must be the literal `1`.
+
+### What is still not there
+
+`#S ≥ 0` and `S ⊆ T ⇒ #S ≤ #T` need an ORDER on the integers, which is `Integers`' `DefLessThan` and
+a theory this one does not include. Nothing in Size blocks them; they belong with the arithmetic.
+A singleton still PRINTS as `SetAlgebra.set_comp x (x = e) x`: a comprehension is a three-argument
+binder that `Display` has no case for, and it cannot get one without the (theory-agnostic) renderer
+learning about sets — the same wall `𝒫S` sits behind.
+
+### Gate
+
+Build 0 errors. `SYLVIA_SEQUAL_CHECK=1` suite **135/135**; `SetTheory.fsx` **167/167**;
+`AdversarialSweep.fsx` ALL CLEAR; `Sledgehammer.fsx` ALL PASS; `PropCalculus.fsx`,
+`PredCalculus.fsx`, `IntegerAlgebra.fsx` and `VerifyRuleFixes.fsx` all close.
+
+Perf A/B'd against the pre-session tree the way §4 of the perf handoff asks (`git stash -u` +
+rebuild, min of 3): `PredCalculus.fsx` 1982 → 1970 ms, `PropCalculus.fsx` 1614 → 1615 ms. No
+regression, as expected — of the three changes on a hot path one (`ScalarVars`) is strictly less
+work, one (`rebuild_quantifier`) adds a single pattern probe to a per-STEP path measured in
+microseconds, and the `Display` cases sit in the tail of a match that propositional formulas never
+reach.

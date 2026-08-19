@@ -192,6 +192,19 @@ with
         | Set s -> let bval = exprv b in SetComprehension(<@ fun x -> (%s.Range) x && (x <> %bval) @>, s.MapExpr, (fun sc x -> s.Contains sc x && not(x = b)), (a.Cardinality - (Finite (lazy 1)))) |> Set
         
     member a.Complement (b:Set<'t>) = b.Difference a
+
+    /// #S, the SIZE of a set — Gries (11.12), `#S = (Σx | x∈S : 1)`.
+    ///
+    /// A STATIC method rather than an instance property, unlike `Powerset`: a symbolic `#S` is then a
+    /// `Call(None, mi, [s])`, which is the shape the name-keyed axioms match (as they do for ∪/∩/−)
+    /// AND the shape `Display`'s `[<Symbol>]`-driven prefix rendering handles, so `#S` prints as
+    /// Gries writes it. The runtime value is the finite cardinality; a symbolic size is never
+    /// evaluated, and an infinite set has no size in the sense (11.12) defines.
+    [<Symbol "#">]
+    static member Size (s: Set<'t>) : int =
+        match s.Cardinality with
+        | Finite n -> n.Force()
+        | c -> failwithf "The set %A has cardinality %A, not a finite size." s c
            
     /// Set of all subsets.
     member a.Powerset : Set<Set<'t>>=
@@ -373,6 +386,11 @@ module SetOps =
     /// power set is built with `Expr.PropertyGet` and matched as `PropertyGet(Some s, pi, [])`.
     let powerset<'t when 't: equality> = typeof<Set<'t>>.GetProperty("Powerset")
 
+    /// #S, the size of a set (Gries 11.12). A static METHOD (see the note on `Set.Size`), so a
+    /// symbolic size is `Call(None, size, [s])` — the same shape as the binary set operators.
+    let size<'t when 't: equality> = typeof<Set<'t>>.GetMethod("Size", (FSharp.Core.Operators.(|||) BindingFlags.Public BindingFlags.Static), System.Type.DefaultBinder,
+                                        [| typeof<Set<'t>> |], [||])
+
     let createSubset<'t when 't: equality> = typeof<Set<'t>>.GetMethod("op_BarGreaterBar", (FSharp.Core.Operators.(|||) BindingFlags.Public BindingFlags.Static), System.Type.DefaultBinder, 
                                                 [| typeof<Set<'t>>; typeof<Expr<'t -> bool>> |], [||])
 
@@ -548,6 +566,12 @@ type SetTerm<'t when 't: equality>(expr:Expr<Set<'t>>) =
     /// overload at `'u := Set<'t>`.
     member a.Powerset : SetTerm<Set<'t>> =
         Expr.PropertyGet(a.Expr, SetOps.powerset<'t>) |> expand_as<Set<Set<'t>>> |> SetTerm
+
+    /// #S, symbolically (Gries 11.12) — an INTEGER term, not a set term, so it is an `IntTerm`
+    /// and `#S + #T` is ordinary integer addition — structural, not through the CAS (see `IntTerm`).
+    /// The defining axiom lives in `SetTheory`, which is where the Σ it unfolds to is available.
+    member a.Size : IntTerm =
+        unary_call(None, SetOps.size<'t>, a.Expr) |> expand_as<int> |> IntTerm
 
     static member (|>|) (l:SetTerm<'t>, r:Expr<'t->bool>) = binary_call(None, SetOps.createSubset<'t>, l.Expr, r) |> expand_as<Set<'t>> |> SetTerm
     
