@@ -256,12 +256,6 @@ module SetTheory =
        fixed variable ceiling here.
        ------------------------------------------------------------------------------------------ *)
 
-    /// A dummy element variable. `TermVar` is abstract and its only concrete subclass, `ScalarVar`,
-    /// is constrained to value types — too narrow for a set theory over an arbitrary element type.
-    type private ElemVar<'t when 't: equality>(n: string) =
-        inherit TermVar<'t>(n)
-        interface IFreshVar<ElemVar<'t>> with member x.WithName n = ElemVar<'t>(n)
-
     /// The shape of a set expression under Definition (11.24), extended with Difference (11.22).
     type private SetShape<'t when 't: equality> =
         | SUnion of SetTerm<'t> * SetTerm<'t>
@@ -311,14 +305,6 @@ module SetTheory =
     let private mem_pred (s: SetTerm<'t>) : Pred<'t> =
         let z = Var("z", typeof<'t>)
         Pred<'t>(func = (Expr.Lambda(z, binary_call(None, SetOps.elementOf<'t>, Expr.Var z, s.Expr)) |> expand_as<'t -> bool>))
-
-    /// A membership dummy `v`, fresh with respect to `avoid` (the set expressions being translated).
-    let private membership_var<'t when 't: equality> (avoid: Expr list) : TermVar<'t> =
-        let rec pick i =
-            let cand = ElemVar<'t>(if i = 0 then "v" else sprintf "v#%d" i) :> TermVar<'t>
-            let vars = get_vars (expand cand.Expr)
-            if avoid |> List.exists (Sylvia.Patterns.occurs_free vars) then pick (i + 1) else cand
-        pick 0
 
     /// Definition (11.24), structurally: `∪↦∨`, `∩↦∧`, `~↦¬`, `∅↦false`, `U↦true`, and every other
     /// set expression (in practice a set variable) ↦ its membership atom `v∈S`.
@@ -381,7 +367,7 @@ module SetTheory =
     /// `meta_set_ident Es universe`, whose body reduces to `Ep = true`.
     let meta_set_ident (lhs: SetTerm<'t>) (rhs: SetTerm<'t>) : Theorem =
         let th = set_theory<'t> :> Theory
-        let v = membership_var<'t> [ expand lhs.Expr; expand rhs.Expr ]
+        let v = fresh_dummy<'t> "v" [ expand lhs.Expr; expand rhs.Expr ]
         let goal = lhs == rhs
         let ext = ax_ident th (goal == qall v T ((memb v lhs) == (memb v rhs)))          // Extensionality 11.4
         let stepL = match set_shape lhs with | SAtom -> [] | _ -> [ unfold_in th v lhs |> at [select_body; left_branch] ]
@@ -399,7 +385,7 @@ module SetTheory =
     /// body is an implication, not an equality) replaces it with `true`. Raises if `lhs ⊄ rhs`.
     let meta_subset (lhs: SetTerm<'t>) (rhs: SetTerm<'t>) : Theorem =
         let th = set_theory<'t> :> Theory
-        let v = membership_var<'t> [ expand lhs.Expr; expand rhs.Expr ]
+        let v = fresh_dummy<'t> "v" [ expand lhs.Expr; expand rhs.Expr ]
         let goal = lhs |<| rhs
         let sub_ax = ax_ident th (goal == qall v (memb v lhs) (memb v rhs))               // Subset 11.13
         let trade = trade_forall_implies v (mem_pred lhs) (mem_pred rhs)               // Trading 9.2
@@ -576,14 +562,6 @@ module SetTheory =
        `docs/prover-set-theory.md`).
        ------------------------------------------------------------------------------------------ *)
 
-    /// A dummy variable at an arbitrary element type. `ScalarVar`, the only other concrete
-    /// `TermVar`, is constrained to value types, so this is what a dummy over an arbitrary element
-    /// type has to be.
-    ///
-    /// NOT needed for a SET-typed dummy: a plain `SetVar<'t>` implements `ISymbolicVar<Set<'t>>`, so
-    /// it is both a dummy and a set term, which is what Gries (11.76) `(∪u | u ∈ S : u)` wants.
-    let elem_var<'t when 't : equality> (name: string) : TermVar<'t> = ElemVar<'t>(name) :> TermVar<'t>
-
     /// (∪x | R : E) — Gries (11.74). Range and body are given as a proposition / set term in `x`,
     /// mirroring `PredCalculus.qall`/`qex` rather than the `Pred`-based combinators.
     let qunion (x: #ISymbolicVar<'u>) (R: Prop) (E: SetTerm<'t>) : SetTerm<'t> =
@@ -609,7 +587,7 @@ module SetTheory =
     /// derived theorem taking predicates, and the axiom plus a double negation is cheaper.
     let de_morgan_family_union (x: #ISymbolicVar<'u>) (R: Prop) (E: SetTerm<'t>) : Theorem =
         let th = set_theory<'t> :> Theory
-        let v = membership_var<'t> [ expand R.Expr; expand E.Expr; expand x.Expr ]
+        let v = fresh_dummy<'t> "v" [ expand R.Expr; expand E.Expr; expand x.Expr ]
         let lhs, rhs = -(qunion x R E), qinter x R (-E)
         let goal = lhs == rhs
         let vE = memb v E
@@ -628,7 +606,7 @@ module SetTheory =
     /// ~(∩x | R : E) = (∪x | R : ~E)   (De Morgan over a family intersection).
     let de_morgan_family_inter (x: #ISymbolicVar<'u>) (R: Prop) (E: SetTerm<'t>) : Theorem =
         let th = set_theory<'t> :> Theory
-        let v = membership_var<'t> [ expand R.Expr; expand E.Expr; expand x.Expr ]
+        let v = fresh_dummy<'t> "v" [ expand R.Expr; expand E.Expr; expand x.Expr ]
         let lhs, rhs = -(qinter x R E), qunion x R (-E)
         let goal = lhs == rhs
         let vE = memb v E
@@ -648,7 +626,7 @@ module SetTheory =
     /// NOT generic over the quantified operator, which is exactly why this has to reach an ∃ first.
     let empty_range_union (x: #ISymbolicVar<'u>) (E: SetTerm<'t>) : Theorem =
         let th = set_theory<'t> :> Theory
-        let v = membership_var<'t> [ expand E.Expr; expand x.Expr ]
+        let v = fresh_dummy<'t> "v" [ expand E.Expr; expand x.Expr ]
         let lhs = qunion x F E
         let goal = lhs == empty_set<'t>
         let body = qex x F (memb v E)
@@ -665,7 +643,7 @@ module SetTheory =
     /// rather than an identity, so it is discharged with `Taut` instead of a rewrite.
     let empty_range_inter (x: #ISymbolicVar<'u>) (E: SetTerm<'t>) : Theorem =
         let th = set_theory<'t> :> Theory
-        let v = membership_var<'t> [ expand E.Expr; expand x.Expr ]
+        let v = fresh_dummy<'t> "v" [ expand E.Expr; expand x.Expr ]
         let lhs = qinter x F E
         let goal = lhs == universe<'t>
         let body = qall x F (memb v E)
@@ -685,7 +663,7 @@ module SetTheory =
     /// close, which is a safe failure rather than a wrong theorem.
     let distrib_inter_family_union (x: #ISymbolicVar<'u>) (R: Prop) (S: SetTerm<'t>) (E: SetTerm<'t>) : Theorem =
         let th = set_theory<'t> :> Theory
-        let v = membership_var<'t> [ expand R.Expr; expand E.Expr; expand S.Expr; expand x.Expr ]
+        let v = fresh_dummy<'t> "v" [ expand R.Expr; expand E.Expr; expand S.Expr; expand x.Expr ]
         let lhs, rhs = S * (qunion x R E), qunion x R (S * E)
         let goal = lhs == rhs
         let vS, vE = memb v S, memb v E
@@ -714,7 +692,7 @@ module SetTheory =
     /// shape (11.76) Partition is stated in. A plain `SetVar` serves as both the dummy and the body.
     let family_union_upper_bound (u: SetVar<'t>) (F: SetTerm<Set<'t>>) (A: SetTerm<'t>) : Theorem =
         let th = set_theory<'t> :> Theory
-        let y = membership_var<'t> [ expand F.Expr; expand A.Expr; expand u.Expr ]
+        let y = fresh_dummy<'t> "v" [ expand F.Expr; expand A.Expr; expand u.Expr ]
         let inF (s: SetTerm<'t>) : Prop =
             binary_call(None, SetOps.elementOf<Set<'t>>, s.Expr, F.Expr) |> expand_as<bool> |> Prop
         let bigU = qunion u (inF u) u
