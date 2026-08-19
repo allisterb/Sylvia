@@ -49,6 +49,20 @@ module PredCalculus =
     /// (∃ x | R : B) with range R and body B given as propositions in x.
     let qex (x: #ISymbolicVar<'t>) (R:Prop) (B:Prop) : Prop = Prop <@ Formula.exists_expr %x.Expr %R.Expr %B.Expr @>
 
+    (* TWO-DUMMY quantifications, `(★ x,y | R : B)`. The bound is a TUPLE, which is what `BoundVars`
+       matches (`NewTuple`), so these are ordinary quantifiers to every axiom and rule. In particular
+       Nesting (8.20) relates them to the nested single-dummy form — and Nesting is one of the three
+       axioms stated generically over the quantified operator, so that holds for any `★`. Gries states
+       (11.76) Partition in this form. *)
+
+    /// (∀ x,y | R : B), with range and body given as propositions in x and y.
+    let qall2 (x: #ISymbolicVar<'a>) (y: #ISymbolicVar<'b>) (R:Prop) (B:Prop) : Prop =
+        Prop <@ Formula.forall_expr (%x.Expr, %y.Expr) %R.Expr %B.Expr @>
+
+    /// (∃ x,y | R : B). Mirrors `qall2`.
+    let qex2 (x: #ISymbolicVar<'a>) (y: #ISymbolicVar<'b>) (R:Prop) (B:Prop) : Prop =
+        Prop <@ Formula.exists_expr (%x.Expr, %y.Expr) %R.Expr %B.Expr @>
+
     /// A predicate constantly equal to the truth constant T. Its application to any term
     /// reduces to T (the named True), so it stands in for a `true` range/body where the
     /// Pred-based combinators need a predicate.
@@ -383,10 +397,16 @@ module PredCalculus =
     /// A fresh variable of `x`'s type whose name occurs free in NONE of the `avoid` expressions. Used
     /// to introduce the eigenvariable x̂ in `witness`; freshness is the entire soundness burden there,
     /// so this must be capture-airtight (it bumps a counter until `Patterns.occurs_free` is false).
-    let fresh_witness (x: #ISymbolicVar<'t>) (avoid: Expr list) : ScalarVar<'t> =
-        let clashes (v: ScalarVar<'t>) = avoid |> List.exists (Patterns.occurs_free (get_vars (expand v.Expr)))
+    ///
+    /// The eigenvariable comes back as the CONCRETE type of `x` — a `SetVar` dummy yields a `SetVar`
+    /// witness, so the subproof can keep using set operators on it. That is the point of the
+    /// self-typed `IFreshVar<'v>` constraint: a base-typed factory would erase the concrete type.
+    let fresh_witness<'t, 'v when 't: equality and 'v :> ISymbolicVar<'t> and 'v :> IFreshVar<'v>>
+            (x: 'v) (avoid: Expr list) : 'v =
+        let sym (v: 'v) = v :> ISymbolicVar<'t>
+        let clashes (v: 'v) = avoid |> List.exists (Patterns.occurs_free (get_vars (expand (sym v).Expr)))
         let rec pick i =
-            let cand = ScalarVar<'t>(sprintf "%s#%d" x.Name i)
+            let cand = (x :> IFreshVar<'v>).WithName (sprintf "%s#%d" (sym x).Name i)
             if clashes cand then pick (i + 1) else cand
         pick 0
 
@@ -402,7 +422,12 @@ module PredCalculus =
     /// (x̂ fresh in R, P, Q; and x not free in Q), which are checked here; the manufactured proof
     /// rewrites the goal to the obligation with a single trusted step and then replays `body`'s own
     /// steps, so nothing else enters the trusted base.
-    let witness (x: #ISymbolicVar<'t>) (R: Pred<'t>) (P: Pred<'t>) (Q: Prop) (body: TermVar<'t> -> Theorem) : Theorem =
+    /// `'v` is the dummy's CONCRETE type, so the eigenvariable handed to `body` is the same kind of
+    /// variable as `x` — a set dummy gives a set witness. The three constraints are what that costs:
+    /// `ISymbolicVar` for the name, `IFreshVar` to manufacture the fresh one, and `Term<'t>` because
+    /// the obligation applies the predicates `R`/`P` to it.
+    let witness<'t, 'v when 't: equality and 'v :> ISymbolicVar<'t> and 'v :> IFreshVar<'v> and 'v :> Term<'t>>
+            (x: 'v) (R: Pred<'t>) (P: Pred<'t>) (Q: Prop) (body: 'v -> Theorem) : Theorem =
         let goal = (exists (x, R, P)) ==> Q
         if Patterns.occurs_free (get_vars (expand x.Expr)) (expand Q.Expr) then
             failwithf "witness: the bound variable %s occurs free in Q; the metatheorem requires x not free in Q." x.Name

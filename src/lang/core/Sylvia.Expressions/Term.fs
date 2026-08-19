@@ -34,6 +34,23 @@ type ISymbolicVar<'t when 't: equality> =
     /// The quotation variable that a binder binds.
     abstract member Var: Var
 
+/// A symbolic variable that can produce a fresh sibling OF ITS OWN CONCRETE TYPE.
+///
+/// Separate from `ISymbolicVar<'t>`, and self-typed, for two reasons. Self-typed because a base-typed
+/// factory would hand an eigenvariable back as an `ISymbolicVar` and lose everything the concrete
+/// variable could do — a `SetVar` witness has to still be a set TERM inside the subproof. Separate
+/// because only `fresh_witness` needs this: folding it into `ISymbolicVar<'t>` would add a second
+/// type parameter to all ~57 signatures that mention it, for a capability none of them use.
+///
+/// The alternative — an SRTP member constraint `'v when 'v : (member WithName: string -> 'v)` —
+/// works and also preserves the concrete type, but REQUIRES `inline` (verified on F# 10: without it
+/// the type variable defaults to `obj`), and `inline` is viral: it would spread from `fresh_witness`
+/// to `witness` and to every generic caller. SRTP also only sees INTRINSIC members, never interface
+/// implementations.
+type IFreshVar<'self> =
+    /// A variable of the same kind, at a new name.
+    abstract member WithName: string -> 'self
+
 [<AbstractClass; StructuredFormatDisplay("{Display}")>]
 type Term<'t when 't: equality> (expr:Expr<'t>, ?h:TermHistory) =
     member val Expr = expr
@@ -372,6 +389,8 @@ and ScalarVar<'t when 't: equality and 't :> ValueType and 't :> IEquatable<'t>>
     member x.Item(i:IndexVar) = ScalarIndexedVar<'t>(x, i)
     
     member x.Item(i:int) = ScalarVar<'t>(x.Name + i.ToString())
+
+    interface IFreshVar<ScalarVar<'t>> with member x.WithName n = ScalarVar<'t> n
     
     member internal x.Item(e:Expr<int>) = Unchecked.defaultof<'t>
     
@@ -890,12 +909,19 @@ module Prop =
 module Pred =
     let symbolic_pred<'t when 't:equality> s = Pred<'t>(symbol=s)
     
-    let forall'<'t when 't: equality> (x:TermVar<'t>, B:Pred<'t>) = Prop <@ forall_expr %(x.Expr) %(T.Expr) %(B[x].Expr) @>
+    // `x` is `Term<'t>`, not `TermVar<'t>`, in ALL FOUR of these — the primed pair used to require
+    // `TermVar` while their unprimed siblings did not, and that inconsistency was load-bearing: it
+    // propagated up through `exists_intro` (9.28) and excluded any dummy that is not a `TermVar`,
+    // notably a `SetVar` (which is a `SetTerm`, so a `Term<Set<'t>>`, but cannot also inherit
+    // `TermVar<Set<'t>>` — see `ISymbolicVar`). Callers in `PredCalculus` take `#ISymbolicVar<'t>`,
+    // so F# conjoins the two constraints and a caller's dummy must satisfy both, which every
+    // variable type does.
+    let forall'<'t when 't: equality> (x:Term<'t>, B:Pred<'t>) = Prop <@ forall_expr %(x.Expr) %(T.Expr) %(B[x].Expr) @>
 
     let forall<'t when 't: equality> (x:Term<'t>, R:Pred<'t>, B:Pred<'t>) = Prop <@ forall_expr %(x.Expr) %(R[x].Expr) %(B[x].Expr) @>
 
     /// Existential quantification with a true range: (∃x |: B). Mirrors `forall'`.
-    let exists'<'t when 't: equality> (x:TermVar<'t>, B:Pred<'t>) = Prop <@ exists_expr %(x.Expr) %(T.Expr) %(B[x].Expr) @>
+    let exists'<'t when 't: equality> (x:Term<'t>, B:Pred<'t>) = Prop <@ exists_expr %(x.Expr) %(T.Expr) %(B[x].Expr) @>
 
     /// Existential quantification (∃x | R : B). Mirrors `forall`.
     let exists<'t when 't: equality> (x:Term<'t>, R:Pred<'t>, B:Pred<'t>) = Prop <@ exists_expr %(x.Expr) %(R[x].Expr) %(B[x].Expr) @>

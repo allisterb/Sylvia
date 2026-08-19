@@ -5,7 +5,7 @@ Schneider, *A Logical Approach to Discrete Math*, **Chapter 11**. Companion to
 [`prover-predicate-calculus.md`](prover-predicate-calculus.md) and
 [`prover-automation.md`](prover-automation.md).
 
-Runnable foundation check: `dotnet fsi examples/proofs/SetTheory.fsx` (**153/153**).
+Runnable foundation check: `dotnet fsi examples/proofs/SetTheory.fsx` (**157/157**).
 
 **Status.** Chapter 11 is covered apart from Size (11.12): the foundational layer (Membership 11.3,
 Extensionality 11.4), every operator definition (Subset 11.13, Complement 11.18, Union 11.20,
@@ -13,11 +13,70 @@ Intersection 11.21, Difference 11.22, Power set 11.23, and `∅`/`U` membership)
 layer, and Metatheorem 11.25(a)/(b)/(c) mechanized as the `meta_set_ident` / `meta_subset` tactics. Size needs
 a Σ quantifier — see §4d.
 
-**§11.4 (families of sets)** is done apart from the two items listed at the end of §4e: the
-`(∪x|R:E)` / `(∩x|R:E)` quantifiers, their membership axioms, the `qunion`/`qinter` builders and the
-derived laws (De Morgan both ways, both empty-range cases, ∩-over-∪ distributivity).
+**§11.4 (families of sets) is complete**: the `(∪x|R:E)` / `(∩x|R:E)` quantifiers, their membership
+axioms, the `qunion`/`qinter` builders, the derived laws (De Morgan both ways, both empty-range
+cases, ∩-over-∪ distributivity, the union upper bound) and (11.76) Partition.
 
 All of it now lives in the **library** (`Theories/SetTheory.fs`), not in the example script — see §6.
+
+---
+
+## Handoff (2026-08-12)
+
+**Where this stands.** Gries ch.11 is complete except Size (11.12). §11.4 (families of sets) landed
+this session, along with three core-type changes that came out of it.
+
+Gate — all green at handoff:
+
+```bash
+dotnet build src/Sylvia.sln                                        # 0 errors
+SYLVIA_SEQUAL_CHECK=1 dotnet test tests/Sylvia.Tests.Prover/...    # 135/135
+dotnet fsi examples/proofs/SetTheory.fsx                           # 157/157 ALL PASS
+dotnet fsi examples/proofs/AdversarialSweep.fsx                    # ALL CLEAR
+dotnet fsi examples/atp/Sledgehammer.fsx                           # ALL PASS
+```
+
+Perf A/B'd against the pre-session tree (`git stash` + rebuild, Release, warm): no regression, and
+set-formula rendering got ~5× faster. Details in §7/§8 and `docs/prover-perf-handoff.md` §4.
+
+### What changed, in dependency order
+
+1. **`Definitions/Set.fs`** — symbolic set operators are now `+` / `*` / `-` (∪ / ∩ / −) on
+   `SetTerm`, a SURFACE rename only; the tree still names `Set<'t>`'s `|+|`/`|*|`/`|-|`. `sprintset`
+   renders `∪ ∩ − ~ ∅ 𝕌`.
+2. **`Display.fs`** — `SymbolicUnary`/`SymbolicBinary` structural cases driven by `[<Symbol>]`, plus
+   `Symbols.BulitIn` applied in `print_src`. Proof logs now read `(S − T) ⊆ ~T`.
+3. **`Term.fs`** — `ISymbolicVar<'t>` (variable-ness as an interface) and `IFreshVar<'self>` (a
+   self-typed factory). `forall'`/`exists'` widened to `Term<'t>`.
+4. **`PredCalculus.fs`** — 41 signatures widened to `#ISymbolicVar<'t>`; `qall2`/`qex2` added;
+   `fresh_witness`/`witness` now generic in the variable's concrete type.
+5. **`Theories/SetAlgebra.fs`** — `union` was a stub that discarded its arguments; now
+   `sum Set.set_union "⋃"`. Both builders take the dummy type.
+6. **`Theories/SetTheory.fs`** — the §11.4 axioms, builders and laws; `partition` (11.76).
+
+### Next, in the order I would take it
+
+1. **Gries ch.12, mathematical induction** — the stated destination, and the natural next chapter.
+   Nothing in ch.11 blocks it.
+2. **Size (11.12)**, if ch.11 completeness matters more. `Formula.sum` already represents Σ and it
+   inherits One-Point/Nesting/Renaming; what is missing is Σ's own axioms (empty range needs `0` as
+   unit, range split needs disjointness since `+` is not idempotent) plus arithmetic in the body.
+   Note §4d's old claim that Σ was "out of reach" was wrong and is corrected in place.
+3. **Move `ElemVar` into the core.** `SetTheory.ElemVar` is a generic concrete `TermVar` that
+   `Term.fs` could own; doing so would let `elem_var` and `membership_var` go away.
+
+### Traps this session recorded, worth reading before touching these files
+
+- F# silently solving `'t := obj` on ambiguous operator overloads — **FS0064 is reported at the
+  CALLER**. Verify genericity by reflection (`m.IsGenericMethodDefinition`), not by a clean build.
+- Module `do` and bare `static do` bindings that **never run** — a file's initializer needs a VALUE
+  access, and types are `beforefieldinit`. Use `static let` + a read from the instance constructor.
+- Whole-formula perf A/B is **worthless on this machine**: ±30% run-to-run on payloads the change
+  cannot touch. Measure marginal costs in isolation.
+- Range must be the NAMED truth constant `F`, never a bare `false` literal.
+- `def_implies` is `(p ∨ q) = q`, not `¬p ∨ q` (that is `ident_implies_not_or`); collecting an
+  antecedent needs `rshunt`, not `shunt`.
+- Unary `-` does not work on a `SetVar` (F#'s `~-` is `^a -> ^a`); upcast to `SetTerm` first.
 
 ## 1. What Chapter 11 actually builds
 
@@ -307,7 +366,7 @@ tactics: let 11.23 take the goal **down** to a subset obligation, then discharge
 That is `powerset_member` in section P, and it proves `∅ ∈ 𝒫S`, `S ∈ 𝒫S`, `S∩T ∈ 𝒫S`, `S−T ∈ 𝒫S`
 while refusing `S∪T ∈ 𝒫S`.
 
-Example is now **153/153** — the 89 checks described above, plus section Q, which proves every named
+Example is now **157/157** — the 89 checks described above, plus section Q, which proves every named
 law through the library exports listed in §6 (including two at element types other than `int`).
 
 **Size (11.12) is the one thing left in ch.11.** `#S = (Σx | x∈S : 1)` needs a Σ quantifier.
@@ -439,9 +498,35 @@ worth recording:
   `Var` **object** occurring in the body rather than a structurally-equal copy, so `P.[x]`
   beta-reduces back to exactly the original proposition; verified by a round-trip check.
 
-**Still open in §11.4**: `T ∈ S ⇒ T ⊆ (∪u | u∈S : u)` (9.28 ∃-introduction under a ∀, a genuinely
-multi-step hand proof), and (11.76) Partition, which is a *definition* rather than a theorem and
-needs a two-dummy `∀` over set-typed dummies.
+### The last two — done (2026-08-12)
+
+| Export | Statement |
+|---|---|
+| `family_union_upper_bound u F A` | `A ∈ F ⇒ A ⊆ (∪u \| u∈F : u)` |
+| `partition u v S target` | (11.76), as a definition |
+| `PredCalculus.qall2` / `qex2` | two-dummy quantifications `(★ x,y \| R : B)` |
+
+**The upper bound** is the first §11.4 law that is an *implication* rather than an identity, and the
+first needing **∃-introduction (9.28)** rather than a membership rewrite — the witness for
+`y ∈ (∪u|u∈F:u)` is `A` itself. Subset (11.13) and 11.74 take the consequent to
+`(∀y | y∈A : (∃u | u∈F : y∈u))`; both quantifiers are traded to a true range (9.2, 9.19); the
+antecedent is pushed inside the ∀ by distributivity (9.5, sound because `A ∈ F` is y-free); reverse
+shunting collects it into `(A∈F ∧ y∈A) ⇒ …`, which is exactly the 9.28 instance.
+
+Two things that cost a cycle each and are worth knowing: Sylvia's `def_implies` is `(p ∨ q) = q`, not
+`¬p ∨ q` — for the latter use `ident_implies_not_or`; and `shunt` goes `(p∧q) ⇒ r` → `p ⇒ (q ⇒ r)`,
+so collecting an antecedent needs **`rshunt`**.
+
+**Partition** is stated in Gries' own **two-dummy** form rather than the nested one. That is not
+cosmetic: the bound is a tuple, which is what `BoundVars` matches, so it is an ordinary quantifier to
+every axiom — and **Nesting (8.20) relates the two forms**, which the example pins as a check. Nesting
+is one of the three axioms generic over the quantified operator, so this holds for any `★`.
+
+This law also needed the `ISymbolicVar` work (§7): both the dummy and the body are set variables.
+
+```
+(∀ u,v | u ∈ F ∧ (v ∈ F ∧ ¬(u = v)) : u ∩ v = ∅) ∧ ((⋃ u | u ∈ F : u) = A)
+```
 
 ## 3a. One-Point (Gries 8.14) kernel fix
 
@@ -658,3 +743,52 @@ which is why they were never the risk.
 
 Gate re-run clean: `SYLVIA_SEQUAL_CHECK=1` suite **135/135**, `AdversarialSweep.fsx` ALL CLEAR (only
 the documented `replace_eq` precondition), and the prop/pred/set examples all close.
+
+## 8. `IFreshVar<'self>` — 9.30 at any element type
+
+`witness` (Gries 9.30) was the last place the old value-type restriction bit. Its eigenvariable is
+*manufactured*, not accepted, and `ISymbolicVar<'t>` cannot help with that — you cannot instantiate an
+interface, so `fresh_witness` had to name a concrete class, and the only one available in
+`Sylvia.Prover` was `ScalarVar<'t>` with its `'t :> ValueType`. The wall was never about sets:
+`string` failed identically.
+
+Fixed with a **self-typed factory interface**, so the eigenvariable comes back as the caller's
+concrete variable type:
+
+```fsharp
+type IFreshVar<'self> =
+    abstract member WithName: string -> 'self
+
+let fresh_witness<'t, 'v when 't: equality and 'v :> ISymbolicVar<'t> and 'v :> IFreshVar<'v>>
+        (x: 'v) (avoid: Expr list) : 'v
+```
+
+```
+int    dummy -> witness x#0  of type ScalarVar     (unchanged)
+SetVar dummy -> witness u#0  of type SetVar        u#0 ∪ S,  u#0 ⊆ S   -- still a set TERM
+```
+
+That last line is the reason for the self type. A base-typed factory returning `ISymbolicVar<'t>`
+would compile and would remove the value-type restriction, but the eigenvariable would arrive in the
+subproof stripped of everything the concrete variable can do — no `∪`, no `⊆` — which is precisely
+the wrapping problem `ISymbolicVar` was introduced to remove.
+
+**Why not an SRTP member constraint** (`'v when 'v : (member WithName: string -> 'v)`), which also
+preserves the concrete type — measured, not assumed, on **F# 10**:
+
+- It **requires `inline`**. Without it the type variable defaults to `obj` (`FS0064` + `FS0071`), the
+  same failure mode as the `'t := obj` trap in §6. Member constraints without `inline` are still not
+  a thing.
+- `inline` is **viral**: it would spread from `fresh_witness` to `witness` and on to every generic
+  caller, and `witness` is a large function that builds quotations.
+- SRTP sees only **intrinsic** members, never interface implementations — so it would additionally
+  constrain how the capability may be declared.
+
+`IFreshVar` needs none of that, and infers without explicit type arguments. It is deliberately
+separate from `ISymbolicVar<'t>` rather than a second type parameter on it: only `fresh_witness`
+needs the capability, and folding it in would have added a parameter to all ~57 signatures.
+
+`witness` also gained a `'v :> Term<'t>` constraint, because the obligation applies the predicates
+`R`/`P` to the eigenvariable. Implemented on `ScalarVar`, `SetVar` and `SetTheory.ElemVar`, on the INTERFACE ONLY: constructing a
+fresh variable is all any caller needs, and that is where the capability belongs semantically. An
+SRTP route would need an intrinsic member re-added, which is a one-liner per type if ever wanted.

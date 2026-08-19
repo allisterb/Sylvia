@@ -260,6 +260,7 @@ module SetTheory =
     /// is constrained to value types — too narrow for a set theory over an arbitrary element type.
     type private ElemVar<'t when 't: equality>(n: string) =
         inherit TermVar<'t>(n)
+        interface IFreshVar<ElemVar<'t>> with member x.WithName n = ElemVar<'t>(n)
 
     /// The shape of a set expression under Definition (11.24), extended with Difference (11.22).
     type private SetShape<'t when 't: equality> =
@@ -698,6 +699,65 @@ module SetTheory =
             def_true (qex x R (vS * vE)) |> Commute                       |> at [select_body]
             ident_forall_true' v
         ]
+
+    /// A ∈ F  ⇒  A ⊆ (∪u | u ∈ F : u)   — a member of a family is contained in the family's union.
+    ///
+    /// The first §11.4 law that is an IMPLICATION rather than an identity, and the first that needs
+    /// ∃-INTRODUCTION (9.28) rather than just a membership rewrite: the witness for `y ∈ (∪u|u∈F:u)`
+    /// is `A` itself. Shape of the proof — Subset (11.13) and the family membership axiom (11.74)
+    /// take the consequent to `(∀y | y∈A : (∃u | u∈F : y∈u))`; both quantifiers are traded to a true
+    /// range (9.2, 9.19); the antecedent is pushed inside the ∀ by distributivity (9.5, sound because
+    /// `A ∈ F` is y-free); reverse shunting collects it into `(A∈F ∧ y∈A) ⇒ …`, which is exactly the
+    /// 9.28 instance at `u := A`.
+    ///
+    /// `F` is a family — `SetTerm<Set<'t>>` — and `u` is a dummy ranging over SETS, so this is the
+    /// shape (11.76) Partition is stated in. A plain `SetVar` serves as both the dummy and the body.
+    let family_union_upper_bound (u: SetVar<'t>) (F: SetTerm<Set<'t>>) (A: SetTerm<'t>) : Theorem =
+        let th = set_theory<'t> :> Theory
+        let y = membership_var<'t> [ expand F.Expr; expand A.Expr; expand u.Expr ]
+        let inF (s: SetTerm<'t>) : Prop =
+            binary_call(None, SetOps.elementOf<Set<'t>>, s.Expr, F.Expr) |> expand_as<bool> |> Prop
+        let bigU = qunion u (inF u) u
+        let ubody = u :> SetTerm<'t>
+        let yinu, yinA, ainF = memb y ubody, memb y A, inF A
+        let ex = qex u T (inF ubody * yinu)            // (∃u |: u∈F ∧ y∈u), the true-range form
+        let bodyY = yinA ==> ex
+        let goal = ainF ==> (A |<| bigU)
+        // (A∈F ∧ y∈A) ⇒ (∃u |: u∈F ∧ y∈u)   — 9.28 at the witness u := A
+        let intro = exists_intro u (pred_of (u :> ISymbolicVar<Set<'t>>) (inF ubody * yinu)) A
+        theorem th goal [
+            ax_ident th ((A |<| bigU) == qall y yinA (memb y bigU))                    |> at_right
+            ax_ident th ((memb y bigU) == qex u (inF ubody) yinu)                      |> at [right_branch; select_body]
+            trade_exists_and u (pred_of (u :> ISymbolicVar<Set<'t>>) (inF ubody))
+                               (pred_of (u :> ISymbolicVar<Set<'t>>) yinu)             |> at [right_branch; select_body]
+            trade_forall_implies y (pred_of (y :> ISymbolicVar<'t>) yinA)
+                                   (pred_of (y :> ISymbolicVar<'t>) ex)                |> at_right
+            ident_implies_not_or ainF (qall y T bodyY)
+            distrib_or_forall' y truepred (!!ainF) (pred_of (y :> ISymbolicVar<'t>) bodyY)
+            ident_implies_not_or ainF bodyY |> Commute                                 |> at [select_body]
+            rshunt                                                                     |> at [select_body]
+            Taut intro                                                                 |> at [select_body]
+            ident_forall_true' y
+        ]
+
+    /// (11.76) **Partition**: `S` partitions `target` iff the sets in `S` are pairwise disjoint and
+    /// their union is `target`.
+    ///
+    /// ```
+    /// (∀u,v | u∈S ∧ v∈S ∧ u≠v : u∩v = ∅)  ∧  (∪u | u∈S : u) = target
+    /// ```
+    ///
+    /// A DEFINITION, not a theorem — there is nothing to prove, and it is stated here in Gries' own
+    /// two-dummy form (`qall2`) rather than the nested one. That is not cosmetic: the bound is a
+    /// tuple, which `BoundVars` matches, so the two forms are related by Nesting (8.20) — one of the
+    /// three axioms that IS generic over the quantified operator. `u` and `v` are set variables
+    /// serving as both dummies and terms.
+    let partition (u: SetVar<'t>) (v: SetVar<'t>) (S: SetTerm<Set<'t>>) (target: SetTerm<'t>) : Prop =
+        let inS (s: SetTerm<'t>) : Prop =
+            binary_call(None, SetOps.elementOf<Set<'t>>, s.Expr, S.Expr) |> expand_as<bool> |> Prop
+        let disjoint = qall2 u v ((inS u) * ((inS v) * !!(u == v))) (((u :> SetTerm<'t>) * v) == empty_set<'t>)
+        let covers = (qunion u (inS u) (u :> SetTerm<'t>)) == target
+        disjoint * covers
 
     (* Power set (11.23). *)
 

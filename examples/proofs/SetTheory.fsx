@@ -558,6 +558,32 @@ named "(11.76) a set variable is a dummy AND a term: (∀u|u∈F: u ⊆ S)"
 // `ValueWithName(_,bool,"False")` only, so a bare `false` literal silently fails to match it.)
 let fEmptyU = qunion fi F fE
 
+// The first §11.4 law that is an IMPLICATION rather than an identity, and the first needing
+// ∃-INTRODUCTION (9.28) — the witness for `y ∈ (∪u|u∈F:u)` is the member set itself.
+let fA : SetTerm<int> = setvar<int> "A"
+named "        A ∈ F ⇒ A ⊆ (∪u|u∈F:u)    family_union_upper_bound"
+      (fun () -> family_union_upper_bound fud fFam fA)
+
+// (11.76) Partition — a DEFINITION, stated in Gries' own TWO-DUMMY form. The bound is a tuple, which
+// `BoundVars` matches, so it is an ordinary quantifier: Nesting (8.20) relates it to the nested
+// single-dummy form, and Nesting is one of the three axioms generic over the quantified operator.
+let fv = setvar<int> "v"
+let fPart = partition fud fv fFam fA
+ok "(11.76) Partition builds in the two-dummy form"
+   ((st.PrintFormula (expand fPart.Expr)).StartsWith "(∀ u,v | u ∈ F ∧ (v ∈ F ∧ ¬(u = v)) : u ∩ v = ∅) ∧ ")
+ok "(11.76) its two-dummy ∀ is a recognized quantifier"
+   (match expand fPart.Expr with
+    | And(Quantifier(_, [b1; b2], _, _), _) -> b1.Name = "u" && b2.Name = "v"
+    | _ -> false)
+// Nesting relates Gries' two-dummy form to the nested one — the check that the representation is
+// not merely well-formed but agrees with the single-dummy machinery.
+let fInS (s: SetTerm<int>) : Prop = (s :> Term<Set<int>>) |?| fFam
+ok "(8.20) Nesting relates the two-dummy and nested forms"
+   (Theory.S.AxEquiv (expand ((qall2 fud fv ((fInS fud) * ((fInS fv) * !!(fud == fv)))
+                                           ((fud * fv) == emptyT))
+                              == qall fud (fInS fud)
+                                   (qall fv ((fInS fv) * !!(fud == fv)) ((fud * fv) == emptyT))).Expr))
+
 // Families sit OUTSIDE the metatheorem tactics, like the power set: `set_shape` classifies a family
 // term as an atom, so `meta_set_ident` treats it as an opaque set variable. That is SOUND but
 // incomplete — it proves only what holds of an arbitrary set and cannot see inside the quantifier.

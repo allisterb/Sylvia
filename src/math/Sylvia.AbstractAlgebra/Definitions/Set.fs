@@ -560,6 +560,10 @@ and SetVar<'t when 't: equality>(n: string) =
     member x.Item(i:IndexVar) = IndexedSetVar(x, i)
     member x.Item(i:int) = SetVar(x.Name + i.ToString())
 
+    /// A fresh `SetVar` at a new name — see `IFreshVar`. This is what lets an eigenvariable
+    /// manufactured by `fresh_witness` still be a set TERM inside the witness subproof.
+    interface IFreshVar<SetVar<'t>> with member x.WithName n = SetVar<'t>(n)
+
     // A set variable is a symbolic variable over `Set<'t>` AS WELL AS a set term. It cannot inherit
     // `TermVar<Set<'t>>` — F# is single-inheritance and the `SetTerm` parent is what carries
     // ∪/∩/−/∈/⊆ — so the variable-ness arrives as an interface instead. This is what lets a set
