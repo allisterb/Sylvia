@@ -21,6 +21,22 @@ module Patterns =
         | BoundVars _ -> ()
         | n -> failwithf "The expression %s is not a bound variables expression." (src n)
 
+    /// Rebuild a quantification with a new range and body, PRESERVING its shape.
+    ///
+    /// A ∀/∃ is a three-argument call `(bound, range, body)`, so it can be rebuilt from the operator
+    /// `Quantifier` hands back. A GENERALIZED quantification (`Formula.sum`/`product` — Gries §8.2's
+    /// `(★x | R : E)`, e.g. §11.4's ⋃/⋂ or the Σ of Size) is a FIVE-argument call whose first two
+    /// arguments are the quantified operator and its display symbol, and `Quantifier` returns that
+    /// OPERATOR, not the `sum` method — so rebuilding one through the operator built a call of the
+    /// wrong arity and threw. Addressing the range or body of a ★ term was unreachable until this.
+    let rebuild_quantifier (expr: Expr) (range: Expr) (body: Expr) : Expr =
+        match expr with
+        | Call(None, mi, op::(Value(_, t) as symbol)::bound::_::_::[])
+            when (mi.Name = "sum" || mi.Name = "product") && t = typeof<string> ->
+            Expr.Call(mi, [ op; symbol; bound; range; body ])
+        | Quantifier(op, x, _, _) -> call op ((vars_to_tuple x)::range::body::[])
+        | _ -> failwithf "The expression %s is not a quantification." (src expr)
+
     /// True iff any variable in `vars` occurs FREE in the expression. Standard binder-aware
     /// definition: recurse, removing a binder's bound variables when descending into it, and
     /// detect an occurrence at a variable leaf. A quantifier binds its dummies in BOTH its

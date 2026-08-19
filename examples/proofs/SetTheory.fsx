@@ -20,6 +20,7 @@ open Formula
 open PropCalculus
 open PredCalculus
 open SetAlgebra
+open Sums
 
 fsi.PrintWidth <- 300
 Proof.LogLevel <- 0
@@ -589,6 +590,45 @@ ok "(8.20) Nesting relates the two-dummy and nested forms"
 // incomplete — it proves only what holds of an arbitrary set and cannot see inside the quantifier.
 ok "meta_set_ident treats a family as an atom (sound, incomplete): S∪(∪i|R:E) = (∪i|R:E)∪S"
    (metaproven (sS + fEmptyU) (fEmptyU + sS))
+
+printfn "\n===== (S) Size (Gries 11.12):  #S = (Σx | x∈S : 1) ====="
+// The one definition of ch.11 whose right-hand side is an INTEGER term, so these are Σ laws (`Sums`)
+// with a membership range rather than membership laws: every `#` unfolds to a Σ by (11.12), the
+// operator axioms (11.20/11.21) turn the RANGES into ∨/∧, and Σ's own axioms close what is left.
+// Nothing here goes through Extensionality or Metatheorem (11.25) — 11.24 has no translation of `#S`.
+let szx = ElemVar<int> "x"
+let szy = ElemVar<int> "y"
+let sze = ElemVar<int> "e"
+
+named "11.12  #∅ = 0                        size_empty"           (fun () -> size_empty<int>)
+named "11.12  #{e} = 1                      size_singleton"       (fun () -> size_singleton szx (sze :> Term<int>))
+named "       #(S∪T) + #(S∩T) = #S + #T     size_union_inter"     (fun () -> size_union_inter sS sT)
+
+// The disjoint case, with the proviso `S ∩ T = ∅` discharged by an ACTUAL proof — 11.39
+// (Contradiction) via `meta_set_ident` — rather than asserted as a side condition.
+let szDisj = meta_set_ident (sS * (neg sS)) emptyT
+named "       #(S∪~S) = #S + #~S            size_disjoint_union"  (fun () -> size_disjoint_union sS (neg sS) szDisj)
+// ... and refused when the proof offered is of something else.
+ok "INVALID disjointness proof rejected"
+   (not (proves "size_disjoint_union" (fun () -> size_disjoint_union sS sT (meta_set_ident (sS * sT) (sT * sS)))))
+
+// The two side conditions on the Size axiom (11.12) itself.
+ok "(11.12) rejects a dummy that is not the range's element"
+   (not (st.AxEquiv (expand (sS.Size == qsum szx (sze |?| sS) (intv 1)).Expr)))
+ok "(11.12) rejects a dummy that occurs free in S (capture)"
+   (let cap = singleton szy (szx :> Term<int>) in                       // {y | y = x : y}, x free
+    not (st.AxEquiv (expand (cap.Size == qsum szx (szx |?| cap) (intv 1)).Expr)))
+ok "(11.12) rejects a body other than 1"
+   (not (st.AxEquiv (expand (sS.Size == qsum szx (szx |?| sS) (intv 2)).Expr)))
+
+// Σ is a `Formula.sum` term, so the three quantifier axioms that are GENERIC over the quantified
+// operator apply to it unchanged — One-Point is what closes `#{e} = 1` above. The four that are
+// keyed on ∀/∃ do not, which is why `Sums` states Empty range (8.13) and Range split (8.18) for +.
+ok "(8.14) One-Point applies to Σ"
+   (Theory.S.AxEquiv (expand ((qsum szx (Prop <@ %szx.Expr = %sze.Expr @>) (intv 1)) == intv 1).Expr))
+ok "(8.13) Σ empty range is an axiom of the theory, not of the logic"
+   (st.AxEquiv (expand ((qsum szx F (intv 1)) == intv 0).Expr)
+    && not (Theory.S.AxEquiv (expand ((qsum szx F (intv 1)) == intv 0).Expr)))
 
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1

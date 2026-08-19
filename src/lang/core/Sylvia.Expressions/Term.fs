@@ -122,6 +122,19 @@ and ElemVar<'t when 't: equality>(n: string) =
     inherit TermVar<'t>(n)
     interface IFreshVar<ElemVar<'t>> with member x.WithName n = ElemVar<'t>(n)
 
+/// A term over the integers with STRUCTURAL arithmetic: `+` builds the `op_Addition` call and does
+/// nothing else. `Scalar<'t>`, the other integer term type, runs every operator through the computer
+/// algebra system (`simplifye`), which throws outright on a term the CAS does not know — a symbolic
+/// `#S`, say — and would in any case be free to reshape a tree that an axiom is matched against.
+/// This is what the terms of Gries §8.2's Σ are built from.
+and IntTerm(expr: Expr<int>) =
+    inherit Term<int>(expr)
+    // Rendered once on first access, as in `Scalar`: Display backs Equals/GetHashCode.
+    let display = lazy (sprinte expr)
+    new (v: int) = IntTerm(exprv v)
+    override x.Display = display.Value
+    static member (+) (l: IntTerm, r: IntTerm) = call_add (l.Expr) (r.Expr) |> expand_as<int> |> IntTerm
+
 and IndexVar(expr: Expr<int>) =
     inherit Term<int>(expr)
     // Decompiled once on first access, not per construction or per Display call.
@@ -565,10 +578,18 @@ and ScalarConst<'t when 't: equality and 't :> ValueType and 't :> IEquatable<'t
 and ScalarRelation<'t when 't: equality and 't :> ValueType and 't :> IEquatable<'t>>(lhs:Scalar<'t>, rhs:Scalar<'t>, op:Expr<'t->'t->bool>) =
     inherit Prop(expand_as<bool> <@ (%op) %lhs.Expr %rhs.Expr @>)
     let display = lazy (sprintf "%s %s %s" (sprinte lhs.Expr) ((src op).Replace("(", "").Replace(")", "")) (sprinte rhs.Expr))
+    // The variables of the relation's OWN element type. Lazy and type-FILTERED: as an eager
+    // `member val` mapping every variable of either side through `ScalarVar<'t>`, merely CONSTRUCTING
+    // a relation whose operands mention a variable of another type threw (`#S = (Σv | v∈S : 1)` is an
+    // int equation mentioning the set variable S). Nothing outside this type reads it.
+    let scalarVars =
+        lazy ((get_vars lhs.Expr) @ (get_vars rhs.Expr)
+              |> List.filter (fun v -> v.Type = typeof<'t>)
+              |> List.map (exprvar<'t> >> ScalarVar<'t>))
     member val Lhs = lhs
     member val Rhs = rhs
     member val Op = op
-    member val ScalarVars = (lhs.Expr |> get_vars |> List.map (exprvar<'t> >> ScalarVar<'t>)) @ (rhs.Expr |> get_vars |> List.map (exprvar<'t> >> ScalarVar<'t>))
+    member x.ScalarVars = scalarVars.Value
     member x.Fix<'a>(o:'a) = 
         let lhs = fix o x.Lhs in
         let rhs = fix o x.Rhs in

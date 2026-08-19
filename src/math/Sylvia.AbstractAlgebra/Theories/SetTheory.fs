@@ -5,6 +5,7 @@
 
 open FSharp.Quotations
 open FSharp.Quotations.Patterns
+open FSharp.Quotations.DerivedPatterns
 
 open FsExpr
 open Formula
@@ -13,6 +14,7 @@ open Descriptions
 open SetAlgebra
 open PropCalculus
 open PredCalculus
+open Sums
 
 /// Theory of sets and set algebra.
 module SetTheory =
@@ -166,6 +168,24 @@ module SetTheory =
                  && not (Sylvia.Patterns.occurs_free bound y) -> desc "Family Intersection Membership"
         | _ -> None
 
+    /// #S = (Σx | x∈S : 1)   (Gries 11.12, Size).
+    ///
+    /// The one definition of the chapter that leaves the propositional/predicate fragment: its
+    /// right-hand side is an INTEGER term, so a size law is a Σ law (`Sums`) with a membership range,
+    /// not a membership law. That is also why Size is outside Metatheorem (11.25) and the
+    /// `meta_set_ident` tactic: there is no boolean translation of `#S` to be had.
+    ///
+    /// Keyed on the METHOD NAME `Size` (`Set<'t>`'s static `#`), like the operator axioms above, so it
+    /// stays element-type-agnostic. Two side conditions: the dummy must be the variable the range's
+    /// membership atom is about (otherwise `#S = (Σx | y∈S : 1)` would match), and it must not occur
+    /// free in S itself (otherwise the Σ would CAPTURE a variable that is free on the left).
+    let (|SizeDef|_|) =
+        function
+        | Equals(Call(None, Op "Size", s::[]), Sums.Sigma(bound, ElementOf(xe, s1), Int32 1))
+            when sequal s s1 && vequal' bound (get_vars xe)
+                 && not (Sylvia.Patterns.occurs_free bound s) -> desc "Size"
+        | _ -> None
+
     /// T ∈ 𝒫S = T ⊆ S   (Gries 11.23, Power set).
     ///
     /// Unlike the operators above this does NOT reduce membership to a propositional combination of
@@ -202,6 +222,7 @@ module SetTheory =
         | SubsetDef x
         | UnionFamilyMember x
         | IntersectFamilyMember x
+        | SizeDef x
         | PowersetMember x
         | EmptyMember x
         | UniverseMember x -> Some x
@@ -217,10 +238,11 @@ module SetTheory =
     //      the object-level payoff of Metatheorem (11.25).
     // Set-specific axioms (Membership 11.3, Extensionality 11.4, the operator definitions 11.13-11.23)
     // are injected through `?axioms`; the plumbing composes them over the Boolean-algebra axioms
-    // instead of discarding them. Size (11.12) is the one definition still missing — it needs a Σ
-    // quantifier the pure fragment does not have.
+    // instead of discarding them. Size (11.12) is here too, and with it Σ's own axioms (`Sums`),
+    // which are composed in the same way: a size law is an integer identity, so it needs what §8.2
+    // asks of the quantified operator `+` as well as the set axioms.
     type SetTheory<'t when 't : equality>(?axioms:Axioms, ?rules:Rules) =
-        inherit SetAlgebra<'t>(BooleanAlgebra.combine_axioms (defaultArg axioms (fun _ -> None)) set_theory_axioms, ?rules = rules)
+        inherit SetAlgebra<'t>(BooleanAlgebra.combine_axioms (defaultArg axioms (fun _ -> None)) (BooleanAlgebra.combine_axioms set_theory_axioms Sums.sum_axioms), ?rules = rules)
 
     /// The set theory over element type 't, built ONCE per element type.
     ///
@@ -750,3 +772,118 @@ module SetTheory =
 
     /// S − T ∈ 𝒫S   (from the difference bound)
     let difference_in_powerset (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem = powerset_member (s - t) s
+
+    (* ------------------------------------------------------------------------------------------
+       Size (11.12) — `#S = (Σx | x∈S : 1)`.
+
+       The one definition of ch.11 whose right-hand side leaves the propositional/predicate fragment:
+       it is an INTEGER term. So a size law is a Σ law (`Sums`) with a membership range, proved by
+       unfolding every `#` into a Σ and letting Σ's own axioms close it — not by Extensionality, and
+       not through Metatheorem (11.25), which has no boolean translation of `#S` to offer.
+
+       Sizes are `IntTerm`s, so `#S + #T` is a structural `op_Addition` call; `Scalar<int>`'s `+`
+       would push the term through the CAS, which does not know `#`.
+
+       ORIENTATION. An axiom is recognized in the orientation its pattern is written in, and the
+       ambient logic's symmetry (3.2) is symmetry of ≡, i.e. of BOOLEAN equality — there is no rule
+       that flips an integer identity. That is not a real restriction and no axiom is stated twice
+       here: the mirror of any identity is provable in one step by rewriting the OTHER side of the
+       goal, which is what `size_disjoint_union`'s two local lemmas do.
+       ------------------------------------------------------------------------------------------ *)
+
+    /// `a = b` at the element type, as a proposition. (`Term.(==)` wants both sides as `Term`s, and a
+    /// dummy arrives as an `ISymbolicVar`, which carries only its expression.)
+    let private eq_elem (a: Expr<'t>) (b: Expr<'t>) : Prop = <@ %a = %b @> |> expand_as<bool> |> Prop
+
+    /// (Σv | v ∈ S : 1) — the right-hand side of (11.12) for a given membership dummy.
+    let private size_sum (v: #ISymbolicVar<'t>) (s: SetTerm<'t>) : IntTerm = qsum v (memb v s) (intv 1)
+
+    /// {e}, the singleton — Gries' enumeration (11.2) at one element, `{x | x = e : x}`. The dummy is
+    /// given explicitly (as in `qunion`) because a law about the set has to speak about it too.
+    let singleton (x: #ISymbolicVar<'t>) (e: Term<'t>) : SetTerm<'t> =
+        SetTerm<'t>(<@ set_comp %x.Expr %((eq_elem x.Expr e.Expr).Expr) %x.Expr @>)
+
+    /// #∅ = 0
+    ///
+    /// Two steps: (11.12) unfolds the size, the empty-set membership axiom collapses the RANGE to
+    /// `false`, and Σ's Empty range (8.13) closes it. The first law that needed a rule to be
+    /// addressable at a ★ term's range at all.
+    let size_empty<'t when 't: equality> : Theorem =
+        let th = set_theory<'t> :> Theory
+        let v = fresh_dummy<'t> "v" []
+        theorem th (empty_set<'t>.Size == intv 0) [
+            ax_ident th (empty_set<'t>.Size == size_sum v empty_set<'t>)  |> at_left
+            ax_ident th ((memb v empty_set<'t>) == F)                     |> at [left_branch; select_range]
+        ]
+
+    /// #{e} = 1
+    ///
+    /// Both One-Point (8.14) applications in one proof, and the point of the law: One-Point is one of
+    /// the three quantifier axioms that ARE generic over the quantified operator, so the ∃ that Set
+    /// membership (11.3) introduces and the Σ that Size (11.12) introduces are collapsed by the same
+    /// axiom. `e` must not mention the dummy — otherwise the ∃'s One-Point instance does not match
+    /// and the proof simply fails to close.
+    let size_singleton (x: #ISymbolicVar<'t>) (e: Term<'t>) : Theorem =
+        let th = set_theory<'t> :> Theory
+        let s = singleton x e
+        let v = fresh_dummy<'t> "v" [ expand s.Expr ]
+        let vx = eq_elem v.Expr x.Expr
+        theorem th (s.Size == intv 1) [
+            ax_ident th (s.Size == size_sum v s)                                    |> at_left
+            ax_ident th ((memb v s) == qex x (eq_elem x.Expr e.Expr) vx)    |> at [left_branch; select_range]
+            ax_ident th ((qex x (eq_elem x.Expr e.Expr) vx) == (eq_elem v.Expr e.Expr))
+                                                                                    |> at [left_branch; select_range]
+        ]
+
+    /// #(S ∪ T) + #(S ∩ T) = #S + #T   — inclusion/exclusion, in the form that needs no subtraction.
+    ///
+    /// Every `#` becomes a Σ over a membership range, ∪/∩ membership (11.20/11.21) turns those ranges
+    /// into `∨`/`∧`, and what is left IS Range split (8.18) — the UNCONDITIONAL split, which is why
+    /// this is the form to state: (8.16) would need the two ranges disjoint and (8.17) would need `+`
+    /// idempotent. Gries' `#(S∪T) = #S + #T − #(S∩T)` is this identity with a subtraction, which the
+    /// theory of sets has no axiom for; `Integers` does, and is a separate theory.
+    let size_union_inter (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem =
+        let th = set_theory<'t> :> Theory
+        let v = fresh_dummy<'t> "v" [ expand s.Expr; expand t.Expr ]
+        theorem th ((s + t).Size + (s * t).Size == s.Size + t.Size) [
+            ax_ident th ((s + t).Size == size_sum v (s + t))                        |> at [left_branch; left_branch]
+            ax_ident th ((memb v (s + t)) == ((memb v s) + (memb v t)))             |> at [left_branch; left_branch; select_range]
+            ax_ident th ((s * t).Size == size_sum v (s * t))                        |> at [left_branch; right_branch]
+            ax_ident th ((memb v (s * t)) == ((memb v s) * (memb v t)))             |> at [left_branch; right_branch; select_range]
+            ax_ident th (s.Size == size_sum v s)                                    |> at [right_branch; left_branch]
+            ax_ident th (t.Size == size_sum v t)                                    |> at [right_branch; right_branch]
+        ]
+
+    /// #(S ∪ T) = #S + #T,  provided S ∩ T = ∅.
+    ///
+    /// The proviso is discharged by a PROOF, not asserted: `disjoint` must be a completed theorem of
+    /// `S ∩ T = ∅` (`meta_set_ident` produces one for the cases that are identities). Given it, the
+    /// law is `size_union_inter` with the ∩ term collapsed — `#(S∩T)` is `#∅` is `0`, and 0 is the
+    /// unit of the quantified operator.
+    ///
+    /// Both local lemmas exist to state an identity in the direction this proof rewrites in, and
+    /// both are proved by rewriting the other side of their own goal down to a reflexivity — see the
+    /// note on orientation above.
+    let size_disjoint_union (s: SetTerm<'t>) (t: SetTerm<'t>) (disjoint: Theorem) : Theorem =
+        let th = set_theory<'t> :> Theory
+        let target = expand ((s * t) == empty_set<'t>).Expr
+        if not (sequal (expand disjoint.Stmt) target) then
+            failwithf "size_disjoint_union: the disjointness proof is of\n  %s\nbut this law needs\n  %s"
+                (th.PrintFormula (expand disjoint.Stmt)) (th.PrintFormula target)
+        let union_size = (s + t).Size
+        // #(S∪T) → #(S∪T) + 0, and 0 → #(S∩T). Neither is an axiom in this direction (nothing flips
+        // an integer identity); each is one rewrite of the goal's other side away from `x = x`.
+        let unit_intro =
+            ident th (union_size == union_size + intv 0) [
+                ax_ident th (union_size + intv 0 == union_size) |> at_right
+            ]
+        let inter_intro =
+            ident th (intv 0 == (s * t).Size) [
+                Ident disjoint     |> at [right_branch; apply_unary]      // #(S∩T) → #∅
+                Ident size_empty<'t>  |> at_right                            // #∅ → 0
+            ]
+        theorem th (union_size == s.Size + t.Size) [
+            unit_intro                          |> at_left                // #(S∪T) + 0
+            inter_intro                         |> at [left_branch; right_branch]
+            Ident (size_union_inter s t)        |> at_left                // → #S + #T
+        ]

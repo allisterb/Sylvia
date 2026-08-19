@@ -232,12 +232,27 @@ module Display =
         | SymbolicBinary(symbol, l, r) ->
             sprintf "%s %s %s" (print_symbolic_operand l) symbol (print_symbolic_operand r)
 
+        (* Integer arithmetic. Not a theory's notation — `+` and `−` are the F# built-ins, and they
+           are here for the same reason `SymbolicBinary` is: a term with no structural case is
+           decompiled WHOLE by `print_src`, so an operator inside one that DOES have a symbol is
+           never reached. `#(S ∪ T) + #(S ∩ T)` used to print as `Set`1.Size(S ∪ T) + …`. *)
+        | Add(l, r) -> sprintf "%s + %s" (print_arith_operand l) (print_arith_operand r)
+        | Subtract(l, r) -> sprintf "%s - %s" (print_arith_operand l) (print_arith_operand r)
+
         (* All other terms *)
         | expr -> print_src expr
 
     /// An operand of a symbolic operator, bracketed unless it is tight (see `is_tight_operand`).
     and private print_symbolic_operand (e: Expr) : string =
         if is_tight_operand e then print_formula_memo e else "(" + print_formula_memo e + ")"
+
+    /// An operand of an arithmetic operator. As `print_symbolic_operand`, except that a
+    /// QUANTIFICATION is left alone: `(Σ v | R : E)` already prints its own delimiters, and
+    /// bracketing it again reads worse than the ambiguity it would remove.
+    and private print_arith_operand (e: Expr) : string =
+        match e with
+        | Quantifier _ -> print_formula_memo e
+        | _ -> print_symbolic_operand e
 
     /// Print an operand, parenthesizing it when it is itself a binary boolean connective so
     /// the nesting is unambiguous. Quantifiers and quantifier-free operands already carry
