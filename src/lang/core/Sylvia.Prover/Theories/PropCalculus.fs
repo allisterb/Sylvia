@@ -1452,6 +1452,53 @@ module PropCalculus =
     // its uses can be discharged by other propositional theorems, so it is left unimplemented
     // pending metavariable support in the kernel.
 
+
+    (* Combinators that USE a completed theorem, rather than state one *)
+
+    /// **Modus ponens as a combinator**: from `⊢ A ⇒ B` and `⊢ A`, conclude `⊢ B`.
+    ///
+    /// Gries' (3.77) is the propositional THEOREM `p ∧ (p ⇒ q) ⇒ q`; this is the inference it
+    /// licenses, in the form a caller needs when an axiom hands back an implication whose antecedent
+    /// has been proved separately (mathematical induction is the motivating case). No new kernel
+    /// primitive: the proof of `B` is three ordinary rewrites —
+    ///
+    /// ```
+    ///   B  →  (T ⇒ B)      Left identity of ⇒ (3.73), used in reverse (it is an identity between
+    ///                      PROPOSITIONS, so `Commute` can flip it)
+    ///      →  (A ⇒ B)      T → A, by the completed proof of A read backwards
+    ///      →  T            by the completed proof of A ⇒ B
+    /// ```
+    ///
+    /// and `T` is an axiom. Both theorems keep their own proofs as the justification carried by the
+    /// rewriting rule, so neither derivation is replayed. The result is proved in the IMPLICATION's
+    /// theory, and it is checked that the two theorems fit together.
+    let mp (imp: Theorem) (ant: Theorem) : Theorem =
+        let theory = imp.Proof.Theory
+        let a, b =
+            match imp.Stmt with
+            | Implies(a, b) -> Prop(Expr.Cast<bool> a), Prop(Expr.Cast<bool> b)
+            | _ -> failwithf "mp: %s is not an implication." (theory.PrintFormula imp.Stmt)
+        if not (sequal (expand ant.Stmt) (expand a.Expr)) then
+            failwithf "mp: the antecedent proved is\n  %s\nbut the implication needs\n  %s"
+                (theory.PrintFormula (expand ant.Stmt)) (theory.PrintFormula (expand a.Expr))
+        theorem theory b [
+            ident_conseq_true b |> Commute |> apply     // B → (T ⇒ B)
+            Taut ant |> Commute |> at_left              // T → A
+            Taut imp |> apply                           // (A ⇒ B) → T
+        ]
+
+    /// **Conjunction introduction**: from `⊢ A` and `⊢ B`, conclude `⊢ A ∧ B`. The companion of `mp`,
+    /// for discharging an antecedent that is a conjunction (as an induction axiom's is). Each side is
+    /// rewritten to `T` by its own completed proof and `T ∧ T` reduces.
+    let conj (l: Theorem) (r: Theorem) : Theorem =
+        let theory = l.Proof.Theory
+        let lp, rp = Prop(Expr.Cast<bool> l.Stmt), Prop(Expr.Cast<bool> r.Stmt)
+        theorem theory (lp * rp) [
+            Taut l |> at_left
+            Taut r |> at_right
+            reduce
+        ]
+
     (* Module information members *)
 
     type private IModuleTypeLocator = interface end

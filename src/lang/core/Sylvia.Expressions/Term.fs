@@ -134,6 +134,11 @@ and IntTerm(expr: Expr<int>) =
     new (v: int) = IntTerm(exprv v)
     override x.Display = display.Value
     static member (+) (l: IntTerm, r: IntTerm) = call_add (l.Expr) (r.Expr) |> expand_as<int> |> IntTerm
+    static member (+) (l: IntTerm, r: int)       = call_add (l.Expr) (Expr.Value r) |> expand_as<int> |> IntTerm
+    static member (-) (l: IntTerm, r: IntTerm)   = call_sub (l.Expr) (r.Expr) |> expand_as<int> |> IntTerm
+    static member (-) (l: IntTerm, r: int)       = call_sub (l.Expr) (Expr.Value r) |> expand_as<int> |> IntTerm
+    static member ( * ) (l: IntTerm, r: IntTerm) = call_mul (l.Expr) (r.Expr) |> expand_as<int> |> IntTerm
+    static member ( * ) (l: int, r: IntTerm)     = call_mul (Expr.Value l) (r.Expr) |> expand_as<int> |> IntTerm
 
 and IndexVar(expr: Expr<int>) =
     inherit Term<int>(expr)

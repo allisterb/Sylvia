@@ -79,6 +79,7 @@ module Formula =
     let private (|ImpliesCall|_|) : CallPattern = specific_call <@@ (===>) @@>
     let private (|ConseqCall|_|) : CallPattern = specific_call <@@ (<===) @@>
     let private (|LtCall|_|) : CallPattern = specific_call <@@ (<) @@>
+    let private (|LeCall|_|) : CallPattern = specific_call <@@ (<=) @@>
     let private (|RangeCall|_|) : CallPattern = specific_call <@@ (..) @@>
 
     let (|Equals|_|) =
@@ -188,6 +189,15 @@ module Formula =
     let (|LessThan|_|) =
          function
          | LtCall (None,_,l::r::[]) -> Some (l, r)
+         | _ -> None
+
+    /// `l ≤ r`. The companion of `LessThan`. Named `LessEq` because `LessThanOrEqual` is taken by a
+    /// fixed-point CONSTRAINT type in `Sylvia.Arithmetic`, auto-opened into this namespace. A
+    /// quantifier RANGE over the integers is usually a conjunction of these (`0 ≤ i ∧ i ≤ n`), which
+    /// is the shape Gries writes `0 ≤ i ≤ n`.
+    let (|LessEq|_|) =
+         function
+         | LeCall (None,_,l::r::[]) -> Some (l, r)
          | _ -> None
 
     let (|Range|_|) =

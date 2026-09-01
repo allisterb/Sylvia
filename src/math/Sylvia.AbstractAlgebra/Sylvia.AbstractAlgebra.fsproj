@@ -31,6 +31,7 @@
     <Compile Include="Theories\SetTheory.fs" />
     <Compile Include="Theories\Integers.fs" />
     <Compile Include="Theories\RealNumbers.fs" />
+    <Compile Include="Theories\Induction.fs" />
   </ItemGroup>
 
   <ItemGroup>

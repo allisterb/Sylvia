@@ -34,6 +34,17 @@ module Integers =
         | Equals(LessThan(l,r), SetTheory.ElementOf(Subtract(r', l'), Zpos)) when sequal2 l r l' r' -> pattern_name "Definition of <" |> Some
         | _ -> None
 
+    /// `x ≤ x = true` — reflexivity of ≤.
+    ///
+    /// The one order fact mathematical induction needs (`Induction.hypothesis_at`, to instantiate an
+    /// inductive hypothesis at its own upper bound). Gries develops the order on ℤ properly in a
+    /// later chapter; this is not that, and the ordering axioms are deliberately not opened up here
+    /// beyond what a proof by induction cannot do without.
+    let (|ReflexLessEq|_|) =
+        function
+        | Equals(LessEq(a, b), True) when sequal a b -> pattern_name "Reflexivity of ≤" |> Some
+        | _ -> None
+
     // Hoisted operator templates: quotation literals written inline in match arms are
     // re-deserialized on every axiom probe (see docs/expressions-perf.md).
     let private eq_op : Expr<int->int->bool> = <@ (=) @>
@@ -57,52 +68,57 @@ module Integers =
         | LeftCancelNonZero add_op zero_int x
         | BinaryOpDefR eq_op sub_op add_op neg_op x  -> Some (desc x)
         | Exists(_, a::[], Bool true, (Equals(Add(Var _, Var a'), Int32 0))) when vequal a a' -> Some (axiom_desc "Integers" (pattern_name "Additive Inverse")) 
-        | DefLessThan x -> Some (desc x)
+        | DefLessThan x
+        | ReflexLessEq x -> Some (desc x)
         | _ -> None
 
     (* Expression functions for derived rules *)
 
+    // NB the folded VALUE is built with `Expr.Value`, not with a `<@@ l + r @@>` quotation. A
+    // quotation over the pattern-bound `l`/`r` captures them as `ValueWithName(v, "l")` operands and
+    // rebuilds the CALL — so `2 * 0` became `l * r` (values 2 and 0, unevaluated) and nothing was
+    // ever reduced. Measured on `2 * 0` before the fix; the rule was inert at every type.
     let rec _reduce_constants  =
         function
-        | Add(UInt16 l, UInt16 r) -> <@@ l + r @@>
-        | Multiply(UInt16 l, UInt16 r) -> <@@ l * r @@>        
-        | Subtract(UInt16 l, UInt16 r) -> <@@ l - r @@>
+        | Add(UInt16 l, UInt16 r) -> Expr.Value(l + r)
+        | Multiply(UInt16 l, UInt16 r) -> Expr.Value(l * r)        
+        | Subtract(UInt16 l, UInt16 r) -> Expr.Value(l - r)
 
-        | Add(Int16 l, Int16 r) -> <@@ l + r @@>
-        | Multiply(Int16 l, Int16 r) -> <@@ l * r @@>        
-        | Subtract(Int16 l, Int16 r) -> <@@ l - r @@>
+        | Add(Int16 l, Int16 r) -> Expr.Value(l + r)
+        | Multiply(Int16 l, Int16 r) -> Expr.Value(l * r)        
+        | Subtract(Int16 l, Int16 r) -> Expr.Value(l - r)
 
-        | Add(UInt32 l, UInt32 r) -> <@@ l + r @@>
-        | Multiply(UInt32 l, UInt32 r) -> <@@ l * r @@>        
-        | Subtract(UInt32 l, UInt32 r) -> <@@ l - r @@>
+        | Add(UInt32 l, UInt32 r) -> Expr.Value(l + r)
+        | Multiply(UInt32 l, UInt32 r) -> Expr.Value(l * r)        
+        | Subtract(UInt32 l, UInt32 r) -> Expr.Value(l - r)
 
-        | Add(Int32 l, Int32 r) -> <@@ l + r @@>
-        | Multiply(Int32 l, Int32 r) -> <@@ l * r @@>        
-        | Subtract(Int32 l, Int32 r) -> <@@ l - r @@>
+        | Add(Int32 l, Int32 r) -> Expr.Value(l + r)
+        | Multiply(Int32 l, Int32 r) -> Expr.Value(l * r)        
+        | Subtract(Int32 l, Int32 r) -> Expr.Value(l - r)
         
-        | Add(UInt64 l, UInt64 r) -> <@@ l + r @@>
-        | Multiply(UInt64 l, UInt64 r) -> <@@ l * r @@>        
-        | Subtract(UInt64 l, UInt64 r) -> <@@ l - r @@>
+        | Add(UInt64 l, UInt64 r) -> Expr.Value(l + r)
+        | Multiply(UInt64 l, UInt64 r) -> Expr.Value(l * r)        
+        | Subtract(UInt64 l, UInt64 r) -> Expr.Value(l - r)
 
-        | Add(Int64 l, Int64 r) -> <@@ l + r @@>
-        | Multiply(Int64 l, Int64 r) -> <@@ l * r @@>        
-        | Subtract(Int64 l, Int64 r) -> <@@ l - r @@>
+        | Add(Int64 l, Int64 r) -> Expr.Value(l + r)
+        | Multiply(Int64 l, Int64 r) -> Expr.Value(l * r)        
+        | Subtract(Int64 l, Int64 r) -> Expr.Value(l - r)
 
-        | Add(Rational l, Rational r) -> <@@ l + r @@>
-        | Multiply(Rational l, Rational r) -> <@@ l * r @@>        
-        | Subtract(Rational l, Rational r) -> <@@ l - r @@>
+        | Add(Rational l, Rational r) -> Expr.Value(l + r)
+        | Multiply(Rational l, Rational r) -> Expr.Value(l * r)        
+        | Subtract(Rational l, Rational r) -> Expr.Value(l - r)
 
-        | Add(Single l, Single r) -> <@@ l + r @@>
-        | Multiply(Single l, Single r) -> <@@ l * r @@>        
-        | Subtract(Single l, Single r) -> <@@ l - r @@>
+        | Add(Single l, Single r) -> Expr.Value(l + r)
+        | Multiply(Single l, Single r) -> Expr.Value(l * r)        
+        | Subtract(Single l, Single r) -> Expr.Value(l - r)
 
-        | Add(Double l, Double r) -> <@@ l + r @@>
-        | Multiply(Double l, Double r) -> <@@ l * r @@>        
-        | Subtract(Double l, Double r) -> <@@ l - r @@>
+        | Add(Double l, Double r) -> Expr.Value(l + r)
+        | Multiply(Double l, Double r) -> Expr.Value(l * r)        
+        | Subtract(Double l, Double r) -> Expr.Value(l - r)
         
-        | Add(Decimal l, Decimal r) -> <@@ l + r @@>
-        | Multiply(Decimal l, Decimal r) -> <@@ l * r @@>        
-        | Subtract(Decimal l, Decimal r) -> <@@ l - r @@>
+        | Add(Decimal l, Decimal r) -> Expr.Value(l + r)
+        | Multiply(Decimal l, Decimal r) -> Expr.Value(l * r)        
+        | Subtract(Decimal l, Decimal r) -> Expr.Value(l - r)
 
         | expr -> traverse expr _reduce_constants
 

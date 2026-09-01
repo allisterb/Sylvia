@@ -232,12 +232,15 @@ module Display =
         | SymbolicBinary(symbol, l, r) ->
             sprintf "%s %s %s" (print_symbolic_operand l) symbol (print_symbolic_operand r)
 
-        (* Integer arithmetic. Not a theory's notation — `+` and `−` are the F# built-ins, and they
+        (* Integer arithmetic and order. Not a theory's notation — these are the F# built-ins — and they
            are here for the same reason `SymbolicBinary` is: a term with no structural case is
            decompiled WHOLE by `print_src`, so an operator inside one that DOES have a symbol is
-           never reached. `#(S ∪ T) + #(S ∩ T)` used to print as `Set`1.Size(S ∪ T) + …`. *)
+           never reached. `#(S ∪ T) + #(S ∩ T)` used to print as `Set`1.Size(S ∪ T) + …`, and an
+           induction range as `0 <= n` rather than Gries' `0 ≤ n`. *)
         | Add(l, r) -> sprintf "%s + %s" (print_arith_operand l) (print_arith_operand r)
         | Subtract(l, r) -> sprintf "%s - %s" (print_arith_operand l) (print_arith_operand r)
+        | LessThan(l, r) -> sprintf "%s < %s" (print_arith_operand l) (print_arith_operand r)
+        | LessEq(l, r) -> sprintf "%s ≤ %s" (print_arith_operand l) (print_arith_operand r)
 
         (* All other terms *)
         | expr -> print_src expr

@@ -55,13 +55,14 @@ set-formula rendering got ~5× faster. Details in §7/§8 and `docs/prover-perf-
 
 ### Next, in the order I would take it
 
-1. **Gries ch.12, mathematical induction** — the stated destination, and the natural next chapter.
-   Nothing in ch.11 blocks it.
+1. ~~**Gries ch.12, mathematical induction**~~ **§12.1 done (2026-08-19)** — `docs/prover-induction.md`.
 2. ~~**Size (11.12)**~~ **Done (2026-08-19)** — see §10. (Range split turned out NOT to need
    disjointness: (8.18) is unconditional, and the disjoint case follows from it plus empty range.)
 3. ~~**Move `ElemVar` into the core.**~~ **Done (2026-08-19)** — see §9.
 
-Which leaves **1** as the whole of what is next: ch.11 is complete.
+All three are done. **Ch.12 §12.1 (mathematical induction) has since landed** — see
+[`prover-induction.md`](prover-induction.md); what it wants from THIS chapter next is Split off term
+(8.23) for `Sums`' Σ over an integer range, which is what Gries' own induction examples need.
 
 ### Traps this session recorded, worth reading before touching these files
 
