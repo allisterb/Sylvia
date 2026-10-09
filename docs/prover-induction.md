@@ -5,7 +5,7 @@ Design and implementation notes for Gries & Schneider, *A Logical Approach to Di
 [`prover-predicate-calculus.md`](prover-predicate-calculus.md) and
 [`prover-set-theory.md`](prover-set-theory.md).
 
-Runnable check: `dotnet fsi examples/proofs/Induction.fsx` (**32/32**).
+Runnable check: `dotnet fsi examples/proofs/Induction.fsx` (**37/37**).
 
 **Status.** Induction over the integers is mechanized as **one axiom** — Gries (12.8), induction over
 `{n₀, n₀+1, …}` — plus a combinator that discharges it, and a lemma (`hypothesis_at`) that packages
@@ -193,7 +193,7 @@ the point: an admitted rule that silently does nothing is invisible until someth
 - `src/lang/core/Sylvia.Expressions/Formula.fs` — the `LessEq` pattern (named that because
   `LessThanOrEqual` is a fixed-point CONSTRAINT type in `Sylvia.Arithmetic`, auto-opened into the
   same namespace).
-- `src/lang/core/Sylvia.Expressions/Term.fs` — `IntTerm`'s `*` and `-` (it already had `+`).
+- `src/lang/core/Sylvia.Expressions/Term.fs` — `IntVar` (§11), and `IntTerm`'s `*` and `-` (it already had `+`).
 - `src/lang/core/Sylvia.Prover/Display.fs` — structural `<` and `≤`, so a range prints as Gries
   writes it.
 - `examples/proofs/Induction.fsx` — the runnable check.
@@ -209,7 +209,8 @@ the point: an admitted rule that silently does nothing is invisible until someth
 | `hypothesis_at th n₀ n i P` | `(n₀ ≤ n ∧ IH) ⇒ P.n` |
 | `by_induction th n₀ n i P base step` | (12.8) discharged |
 | `by_induction_nat th n i P base step` | the `n₀ := 0` case, i.e. (12.5) |
-| `leq` / `succ` / `tm` / `pred_of` | building blocks for stating a `P` and its obligations |
+| `leq` / `succ` / `tm` / `pred_of` | building blocks for stating a `P` and its obligations (`tm`/`succ` are only needed for a dummy WITHOUT arithmetic; with an `IntVar` write `n` and `n + 1`) |
+| `IntVar name` | an integer variable that is also an integer term — the dummy to use (§11) |
 | `PropCalculus.mp` / `PropCalculus.conj` | modus ponens and ∧-introduction, as combinators |
 
 ## 10. Gate
@@ -217,7 +218,7 @@ the point: an admitted rule that silently does nothing is invisible until someth
 ```bash
 dotnet build src/Sylvia.sln                                        # 0 errors
 SYLVIA_SEQUAL_CHECK=1 dotnet test tests/Sylvia.Tests.Prover/...    # 135/135
-dotnet fsi examples/proofs/Induction.fsx                           # 32/32 ALL PASS
+dotnet fsi examples/proofs/Induction.fsx                           # 37/37 ALL PASS
 dotnet fsi examples/proofs/SetTheory.fsx                           # 167/167 ALL PASS
 dotnet fsi examples/proofs/AdversarialSweep.fsx                    # ALL CLEAR
 dotnet fsi examples/atp/Sledgehammer.fsx                           # ALL PASS
@@ -232,3 +233,25 @@ run-to-run spread on this machine (the baseline's own three runs of the set exam
 4043–4452 ms). Nothing here is on a hot path: the two new `Display` cases sit in the tail of a match
 that propositional formulas never reach, `mp`/`conj` are new functions, and the `Integers.reduce` fix
 changes a rule that no propositional or predicate payload runs.
+
+## 11. `IntVar` — the dummy to write proofs over
+
+The API takes its dummies as `#ISymbolicVar<int>`, so ANY integer variable works — an `ElemVar<int>`
+included, and the example checks that. But an `ElemVar` has no arithmetic, so every use had to be
+wrapped: `two * (tm n)`, `f (tm n) + two`, `succ n`. `IntVar` (`Term.fs`) is the `SetVar` design at
+`int`: it inherits `IntTerm`'s STRUCTURAL arithmetic, implements `ISymbolicVar<int>` so it can be a
+quantifier dummy, and `IFreshVar<IntVar>` so a fresh witness is still an `IntVar`. The worked example
+now reads `pred_of n ((f n) == (2 * n))` and `P.[n + 1]`.
+
+`n + 1` builds exactly the tree `succ n` does, which the example checks, so the two are
+interchangeable and the axiom's `P(n+1)` reconstruction sees no difference.
+
+**Why not implicit conversions instead.** Measured on SDK 10.0.401, an `Expr<int> → IntTerm`
+`op_Implicit` fires ONLY at a let-bound parameter typed exactly `IntTerm`. It is rejected at a
+parameter typed as the base `Term<int>`, at a flexible `#Term<int>`, at a method parameter, and at an
+operator — and the API's parameters and the proofs' operators are all of those. That is the same wall
+`ISymbolicVar` hit for sets: making the variable itself a term is what works.
+
+**`IntVar`, not `ScalarVar<int>` (`intvar`), in proofs.** `ScalarVar`'s operators send every result
+through the CAS (`simplifye`) — right for computation, wrong for a proof, where an axiom is about to
+be matched against the exact tree, and the CAS throws outright on a term it does not know.

@@ -846,9 +846,12 @@ module FsExpr =
 
     let get_vars_to_tuple (x:Expr) = x |> get_vars |> vars_to_tuple 
             
-    let rec (|List|_|) =
-        let isListType (u:UnionCaseInfo) = u.DeclaringType.IsGenericType && u.DeclaringType.GetGenericTypeDefinition() = typedefof<list<_>>
-        function
+    let private isListType (u:UnionCaseInfo) = u.DeclaringType.IsGenericType && u.DeclaringType.GetGenericTypeDefinition() = typedefof<list<_>>
+
+    // A recursive active pattern must be a syntactic FUNCTION: newer compilers (FS1209, seen on SDK
+    // 10.0.401) reject `let rec (|P|_|) = let helper = … in function …`, so the helper lives outside.
+    let rec (|List|_|) (expr: Expr) =
+        match expr with
         | NewUnionCase(uci, []) when isListType uci -> Some []
         | NewUnionCase(uci, lhs::(NewUnionCase(_, []))::[]) when isListType uci  -> Some (lhs::[])
         | NewUnionCase(uci, lhs::List(rhs)::[]) when isListType uci  -> Some (lhs::rhs)

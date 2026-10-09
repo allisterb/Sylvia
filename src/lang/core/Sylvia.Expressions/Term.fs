@@ -121,7 +121,7 @@ and [<AbstractClass>] TermVar<'t when 't: equality>(n: string) =
 and ElemVar<'t when 't: equality>(n: string) =
     inherit TermVar<'t>(n)
     interface IFreshVar<ElemVar<'t>> with member x.WithName n = ElemVar<'t>(n)
-
+    
 /// A term over the integers with STRUCTURAL arithmetic: `+` builds the `op_Addition` call and does
 /// nothing else. `Scalar<'t>`, the other integer term type, runs every operator through the computer
 /// algebra system (`simplifye`), which throws outright on a term the CAS does not know — a symbolic
@@ -139,6 +139,33 @@ and IntTerm(expr: Expr<int>) =
     static member (-) (l: IntTerm, r: int)       = call_sub (l.Expr) (Expr.Value r) |> expand_as<int> |> IntTerm
     static member ( * ) (l: IntTerm, r: IntTerm) = call_mul (l.Expr) (r.Expr) |> expand_as<int> |> IntTerm
     static member ( * ) (l: int, r: IntTerm)     = call_mul (Expr.Value l) (r.Expr) |> expand_as<int> |> IntTerm
+    static member (+) (l: int, r: IntTerm)       = call_add (Expr.Value l) (r.Expr) |> expand_as<int> |> IntTerm
+    static member (-) (l: int, r: IntTerm)       = call_sub (Expr.Value l) (r.Expr) |> expand_as<int> |> IntTerm
+    static member ( * ) (l: IntTerm, r: int)     = call_mul (l.Expr) (Expr.Value r) |> expand_as<int> |> IntTerm
+
+/// An integer VARIABLE that is also an integer TERM — the `SetVar` design, at `int`.
+///
+/// It inherits `IntTerm`'s structural arithmetic, so a proof is written over the variable itself
+/// (`2 * n`, `n + 1`, `f n`) instead of wrapping a dummy at every use, and it implements
+/// `ISymbolicVar<int>` (so it can be a quantifier dummy) and `IFreshVar<IntVar>` (so a fresh witness
+/// is still an `IntVar`, operators and all).
+///
+/// Use this in PROOFS, not `ScalarVar<int>` (`intvar`). That is the variable of the computational
+/// layer, and its operators send every result through the CAS (`simplifye`): right for computing,
+/// wrong for proving, where an axiom is about to be matched against the exact tree — and the CAS
+/// throws outright on a term it does not know.
+and IntVar(n: string) =
+    inherit IntTerm(Expr.Var(Var(n, typeof<int>)) |> expand_as<int>)
+    member x.Name = n
+    member x.Var = match x.Expr with | Var v -> v | _ -> failwith "An IntVar's expression is always a variable."
+
+    interface ISymbolicVar<int> with
+        member x.Name = x.Name
+        member x.Symbol = x.Name
+        member x.Expr = x.Expr
+        member x.Var = x.Var
+
+    interface IFreshVar<IntVar> with member x.WithName n = IntVar n
 
 and IndexVar(expr: Expr<int>) =
     inherit Term<int>(expr)

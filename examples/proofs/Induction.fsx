@@ -12,6 +12,9 @@
 //       `f(n+1) = f.n + 2`, and `(∀n | 0 ≤ n : f.n = 2·n)`;
 //   (E) `by_induction` refuses proofs of anything but the two obligations.
 //
+// The dummies are `IntVar`s — integer variables that are ALSO integer terms — so the statements are
+// written over the variables themselves: `2 * n`, `n + 1`, `f n`.
+//
 // Run:  dotnet fsi examples/proofs/Induction.fsx
 
 open Sylvia
@@ -36,11 +39,11 @@ let why what (e: exn) = printfn "     [%s] %s" what (e.Message.Split('\n').[0]);
 let proves (what: string) (f: unit -> Theorem) = try (f ()).Proof.Complete with e -> why what e
 let named (label: string) (f: unit -> Theorem) = ok label (proves label f)
 
-let n = ElemVar<int> "n"
-let i = ElemVar<int> "i"
-let m = ElemVar<int> "m"
+let n = IntVar "n"
+let i = IntVar "i"
+let m = IntVar "m"
+let k = IntVar "k"
 let zero = IntTerm 0
-let two = IntTerm 2
 
 printfn "\n===== (A) (12.8) Mathematical Induction over {n₀, n₀+1, …} ====="
 
@@ -54,44 +57,46 @@ ok "(12.5) induction over ℕ is an axiom of the theory"      (ind.AxEquiv ax0.E
 ok "(12.5) is NOT an axiom of the ambient logic"            (not (Theory.S.AxEquiv ax0.Expr))
 
 // The base point is a parameter: (12.5) is the n₀ := 0 instance of (12.8), not a separate axiom.
-let k = ElemVar<int> "k"
-ok "(12.8) at a symbolic base point n₀ = k"                 (ind.AxEquiv (induction_axiom (tm k) n i P).Expr)
+ok "(12.8) at a symbolic base point n₀ = k"                 (ind.AxEquiv (induction_axiom k n i P).Expr)
 ok "(12.8) at base point 1"                                 (ind.AxEquiv (induction_axiom (IntTerm 1) n i P).Expr)
+
+// The API takes any `#ISymbolicVar<int>`: a dummy with no arithmetic of its own works as well.
+ok "(12.8) with ElemVar dummies, which carry no arithmetic"
+   (ind.AxEquiv (induction_axiom zero (ElemVar<int> "n") (ElemVar<int> "i") P).Expr)
 
 printfn "\n===== (B) The side conditions are checked ====="
 // `P` is not a syntactic argument of an axiom — the recognizer sees only the statement — so the
 // four applications of P are tied to ONE predicate by reconstructing three of them from the
 // conclusion's body. Each way of breaking that is rejected.
 
-let stepOf (n0: Term<int>) (nn: ElemVar<int>) (ii: ElemVar<int>) (Q: Pred<int>) = inductive_case n0 nn ii Q
 let mk (bse: Prop) (stp: Prop) (con: Prop) = ((bse * stp) ==> con)
 
 ok "wrong base case (P.1 against a conclusion from 0) rejected"
-   (not (ind.AxEquiv (mk P.[IntTerm 1] (stepOf zero n i P) (conclusion zero n P)).Expr))
+   (not (ind.AxEquiv (mk P.[IntTerm 1] (inductive_case zero n i P) (conclusion zero n P)).Expr))
 ok "wrong step consequent (P(n+2)) rejected"
    (not (ind.AxEquiv (mk P.[zero]
-                         (qall n (leq zero (tm n)) ((hypothesis zero n i P) ==> P.[tm n + IntTerm 2]))
+                         (qall n (leq zero n) ((hypothesis zero n i P) ==> P.[n + 2]))
                          (conclusion zero n P)).Expr))
 ok "a strict hypothesis range (i < n) rejected"
    (not (ind.AxEquiv (mk P.[zero]
-                         (qall n (leq zero (tm n))
-                               ((qall i ((leq zero (tm i)) * (Prop <@ %i.Expr < %n.Expr @>)) P.[tm i]) ==> P.[succ n]))
+                         (qall n (leq zero n)
+                               ((qall i ((leq zero i) * (Prop <@ %i.Expr < %n.Expr @>)) P.[i]) ==> P.[n + 1]))
                          (conclusion zero n P)).Expr))
 ok "step and conclusion quantifying different dummies rejected"
-   (not (ind.AxEquiv (mk P.[zero] (stepOf zero m i P) (conclusion zero n P)).Expr))
+   (not (ind.AxEquiv (mk P.[zero] (inductive_case zero m i P) (conclusion zero n P)).Expr))
 ok "the two dummies being the SAME variable rejected"
-   (not (ind.AxEquiv (mk P.[zero] (stepOf zero n n P) (conclusion zero n P)).Expr))
+   (not (ind.AxEquiv (mk P.[zero] (inductive_case zero n n P) (conclusion zero n P)).Expr))
 ok "base points that disagree rejected"
-   (not (ind.AxEquiv (mk P.[zero] (stepOf (IntTerm 1) n i P) (conclusion zero n P)).Expr))
+   (not (ind.AxEquiv (mk P.[zero] (inductive_case (IntTerm 1) n i P) (conclusion zero n P)).Expr))
 // A base point mentioning a dummy would be CAPTURED by the range that quantifies it.
 ok "a base point mentioning the dummy rejected"
-   (not (ind.AxEquiv (induction_axiom (tm n) n i P).Expr))
+   (not (ind.AxEquiv (induction_axiom n n i P).Expr))
 // A P mentioning `i` would have its `i` captured when the hypothesis body is formed.
-let Pi = pred_of n (P.[tm i] * P.[tm n])
+let Pi = pred_of n (P.[i] * P.[n])
 ok "a predicate mentioning the hypothesis dummy rejected"
    (not (ind.AxEquiv (induction_axiom zero n i Pi).Expr))
 // A P that re-binds n inside itself would have that binder substituted under.
-let Pbind = pred_of n (qall n (leq zero (tm n)) P.[tm n])
+let Pbind = pred_of n (qall n (leq zero n) P.[n])
 ok "a predicate re-binding the dummy rejected"
    (not (ind.AxEquiv (induction_axiom zero n i Pbind).Expr))
 
@@ -100,10 +105,10 @@ printfn "\n===== (C) The inductive hypothesis, at its own upper bound ====="
 // order fact induction needs, reflexivity of ≤. Both premises are load-bearing: `n₀ ≤ n` is what
 // discharges the instance's range obligation, and it can come from nowhere else.
 named "hypothesis_at:  (n₀ ≤ n ∧ IH) ⇒ P.n"  (fun () -> hypothesis_at ind zero n i P)
-named "hypothesis_at at a symbolic base point" (fun () -> hypothesis_at ind (tm k) n i P)
-ok "reflexivity of ≤ is an axiom (Integers)"   (ind.AxEquiv ((leq (tm n) (tm n)) == T).Expr)
+named "hypothesis_at at a symbolic base point" (fun () -> hypothesis_at ind k n i P)
+ok "reflexivity of ≤ is an axiom (Integers)"   (ind.AxEquiv ((leq n n) == T).Expr)
 ok "≤ is NOT symmetric-by-accident: n ≤ m is not an axiom"
-   (not (ind.AxEquiv ((leq (tm n) (tm m)) == T).Expr))
+   (not (ind.AxEquiv ((leq n m) == T).Expr))
 
 printfn "\n===== (D) A worked induction: an inductively defined function (§12.2) ====="
 // f.0 = 0,  f(n+1) = f.n + 2   — two axioms, in the shape §12.2 calls an inductive definition.
@@ -126,16 +131,16 @@ let f_axioms =
 
 let th = Induction(f_axioms) :> Theory
 ok "f.0 = 0 is an axiom of the extended theory"        (th.AxEquiv ((f zero) == zero).Expr)
-ok "f(n+1) = f.n + 2 is an axiom"                      (th.AxEquiv ((f (succ n)) == (f (tm n) + two)).Expr)
+ok "f(n+1) = f.n + 2 is an axiom"                      (th.AxEquiv ((f (n + 1)) == (f n + 2)).Expr)
 ok "(12.8) survives the extension"                     (th.AxEquiv ax0.Expr)
-ok "the extension is not free: f.n = 0 is no axiom"    (not (th.AxEquiv ((f (tm n)) == zero).Expr))
+ok "the extension is not free: f.n = 0 is no axiom"    (not (th.AxEquiv ((f n) == zero).Expr))
 
 // P.n :  f.n = 2·n
-let Pf = pred_of n ((f (tm n)) == (two * (tm n)))
-let a = leq zero (tm n)
+let Pf = pred_of n ((f n) == (2 * n))
+let a = leq zero n
 let ih = hypothesis zero n i Pf
-let pn1 = Pf.[succ n]
-let rhs = two * (tm n) + two
+let pn1 = Pf.[n + 1]
+let rhs = 2 * n + 2
 
 // Base case: f.0 = 2·0 — the definition, then constant folding.
 let bse =
@@ -149,7 +154,7 @@ let bse =
 let body =
     theorem th (a ==> (ih ==> pn1)) [
         (shunt' a ih pn1 |> Commute) |> apply                                 // → (0 ≤ n ∧ IH) ⇒ P(n+1)
-        ax_ident th ((f (succ n)) == (f (tm n) + two)) |> at [right_branch; left_branch]
+        ax_ident th ((f (n + 1)) == (f n + 2)) |> at [right_branch; left_branch]
         Deduce' (hypothesis_at th zero n i Pf) |> apply_right                 // f.n → 2·n, from the IH
         Integers.distrib_mul_add |> at [right_branch; right_branch]           // 2·(n+1) → 2·n + 2·1
         Integers.reduce |> at [right_branch; right_branch]                    // 2·1 → 2
@@ -180,7 +185,7 @@ ok "the step does not close without the inductive hypothesis"
    (not (proves "step without IH" (fun () ->
         theorem th (a ==> (ih ==> pn1)) [
             (shunt' a ih pn1 |> Commute) |> apply
-            ax_ident th ((f (succ n)) == (f (tm n) + two)) |> at [right_branch; left_branch]
+            ax_ident th ((f (n + 1)) == (f n + 2)) |> at [right_branch; left_branch]
             Integers.distrib_mul_add |> at [right_branch; right_branch]
             Integers.reduce |> at [right_branch; right_branch]
             ax_ident th (T == (rhs == rhs)) |> Commute |> at_right
@@ -196,6 +201,16 @@ refuses "the base case and inductive case swapped"
         (fun () -> by_induction th zero n i Pf stp bse)
 refuses "an inductive case for a different predicate"
         (fun () -> by_induction th zero n i P bse stp)
+
+printfn "\n===== (F) IntVar: a variable that is also a term ====="
+// `n + 1` from the operator and `succ n` from the theory build the SAME tree, which is what lets the
+// statements above use either. A fresh witness of an IntVar is an IntVar (IFreshVar), so it keeps
+// its arithmetic inside a subproof — it can be added to without being wrapped first.
+ok "n + 1 is exactly succ n"                      (sequal (expand (n + 1).Expr) (expand (succ n).Expr))
+let w = fresh_witness n [ expand (f n).Expr ]
+ok "a fresh witness of an IntVar is an IntVar"   (w.GetType() = typeof<IntVar>)
+ok "... with its arithmetic intact: w + 1"       ((th.PrintFormula (expand (w + 1).Expr)) = "n#0 + 1")
+ok "an IntVar prints as its name"               (n.Display = "n")
 
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1

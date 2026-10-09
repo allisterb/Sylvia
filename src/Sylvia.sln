@@ -9,7 +9,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "External", "External", "{02
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Expect.NETStandard", "..\ext\Expect.NET\Expect.NET\Expect.NETStandard.csproj", "{E20DD857-F9B4-E249-D8BE-C37EF52FE4C3}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Configuration", "Configuration", "{87D8DE13-6F41-4BAC-B027-B01AF612B81A}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Scripts", "Scripts", "{87D8DE13-6F41-4BAC-B027-B01AF612B81A}"
 	ProjectSection(SolutionItems) = preProject
 		Directory.Build.props = Directory.Build.props
 	EndProjectSection
@@ -137,12 +137,13 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Proofs", "Proofs", "{7F85747F-BE97-4C16-A6D7-CA7F93DC9819}"
 	ProjectSection(SolutionItems) = preProject
 		..\examples\proofs\Include.fsx = ..\examples\proofs\Include.fsx
+		..\examples\proofs\Induction.fsx = ..\examples\proofs\Induction.fsx
 		..\examples\proofs\PredCalculus.fsx = ..\examples\proofs\PredCalculus.fsx
 		..\examples\proofs\PropCalculus.fsx = ..\examples\proofs\PropCalculus.fsx
 		..\examples\proofs\SetTheory.fsx = ..\examples\proofs\SetTheory.fsx
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "atp", "atp", "{68A1DE43-81C3-8B0C-7EDD-DE6B670F2ABD}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ATP", "ATP", "{68A1DE43-81C3-8B0C-7EDD-DE6B670F2ABD}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Sylvia.ATP.E", "lang\atp\Sylvia.ATP.E\Sylvia.ATP.E.fsproj", "{C6C50138-D816-4D37-BFBA-5E1E9D57DEC6}"
 EndProject
