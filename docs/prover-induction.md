@@ -5,7 +5,7 @@ Design and implementation notes for Gries & Schneider, *A Logical Approach to Di
 [`prover-predicate-calculus.md`](prover-predicate-calculus.md) and
 [`prover-set-theory.md`](prover-set-theory.md).
 
-Runnable check: `dotnet fsi examples/proofs/Induction.fsx` (**37/37**).
+Runnable check: `dotnet fsi examples/proofs/Induction.fsx` (**50/50**).
 
 **Status.** Induction over the integers is mechanized as **one axiom** — Gries (12.8), induction over
 `{n₀, n₀+1, …}` — plus a combinator that discharges it, and a lemma (`hypothesis_at`) that packages
@@ -160,12 +160,12 @@ An example whose statement genuinely CANNOT be proved without induction needs ei
 definition (as here) or `Σ`/`Π` with Split off term. Gries' own (12.7) `(Σi | 1 ≤ i ≤ n : 2i−1) = n²`
 is the second kind, and it needs three things this theory does not have yet:
 
-1. **Split off term (8.23)** over an integer range, for `Σ` — `(Σi | 1 ≤ i ≤ n+1 : E) = (Σi | 1 ≤ i ≤ n : E) + E(n+1)`.
+1. ~~**Split off term (8.23)** over an integer range, for `Σ`~~ — **done, §12.**
 2. An **empty-range fact for a numeric range** — `1 ≤ i ≤ 0` is empty, which is arithmetic, not the
    syntactic `false` that `Sums`' (8.13) matches.
 3. More of the **order on ℤ** than reflexivity.
 
-That is the natural next increment, and it is arithmetic work rather than induction work.
+Of the three, the second and third are what remains: §12 lists exactly what (12.7) still needs.
 
 ## 7. A bug this found: `Integers.reduce` never reduced anything
 
@@ -218,7 +218,7 @@ the point: an admitted rule that silently does nothing is invisible until someth
 ```bash
 dotnet build src/Sylvia.sln                                        # 0 errors
 SYLVIA_SEQUAL_CHECK=1 dotnet test tests/Sylvia.Tests.Prover/...    # 135/135
-dotnet fsi examples/proofs/Induction.fsx                           # 37/37 ALL PASS
+dotnet fsi examples/proofs/Induction.fsx                           # 50/50 ALL PASS
 dotnet fsi examples/proofs/SetTheory.fsx                           # 167/167 ALL PASS
 dotnet fsi examples/proofs/AdversarialSweep.fsx                    # ALL CLEAR
 dotnet fsi examples/atp/Sledgehammer.fsx                           # ALL PASS
@@ -255,3 +255,83 @@ operator — and the API's parameters and the proofs' operators are all of those
 **`IntVar`, not `ScalarVar<int>` (`intvar`), in proofs.** `ScalarVar`'s operators send every result
 through the CAS (`simplifye`) — right for computation, wrong for a proof, where an axiom is about to
 be matched against the exact tree, and the CAS throws outright on a term it does not know.
+
+## 12. Split off term (8.23) for Σ, and what it rests on
+
+```
+split_off_term th lo n i E  :  ⊢ lo ≤ n+1 ⇒ (Σi | lo ≤ i ∧ i ≤ n+1 : E) = (Σi | lo ≤ i ∧ i ≤ n : E) + E[i := n+1]
+```
+
+A **theorem**, as in Gries — nothing about Σ or ranges is axiomatized for it. His proof (p.152) is
+Range split plus the One-point rule plus two facts about integer ranges that he defers to ch.15, and
+it is carried out here step for step:
+
+```
+Σ(lo≤i≤n+1)  =  Σ(R ∨ Q)                    range_extend, under the proviso      R = lo≤i≤n,  Q = i=n+1
+             =  Σ(R ∨ Q) + 0                 unit of +, introduced
+             =  Σ(R ∨ Q) + Σ(false)          Empty range (8.13), introduced
+             =  Σ(R ∨ Q) + Σ(R ∧ Q)          range_disjoint, introduced
+             =  Σ(R) + Σ(i = n+1)            Range split (8.18)
+             =  Σ(R) + E[i := n+1]           One-point (8.14)
+```
+
+It goes through Σ's UNCONDITIONAL range split (8.18), not the disjoint one (8.16) Gries cites: the
+disjointness is used instead to show the second split term is `Σ(false) = 0`. Three of the steps
+introduce something (an integer identity used right-to-left); each is a local lemma proved by
+rewriting the other side of its own goal, the device `size_disjoint_union` uses (set-theory doc §10).
+
+Stated in the `≤`-both-sides form the induction axiom uses (`n₀ ≤ i ∧ i ≤ n`), not Gries'
+`0 ≤ i < n+1`, so a split range is exactly an inductive hypothesis's range. The **proviso
+`lo ≤ n+1` is genuine**: at `lo = n+2` the left range is empty and the right is `{n+1}`. Gries hides it
+in `n:ℕ`.
+
+### Three new trusted pieces, each the smallest that does the job
+
+| Piece | Where | Statement |
+|---|---|---|
+| **Substitution (3.84a)** | the logic (`EquationalLogic`) | `(z = e ∧ E) = (z = e ∧ E[z := e])`, any type |
+| **Discreteness** | `Integers`, `int` only | `(x ≤ y+1) = (x ≤ y ∨ x = y+1)` |
+| **Successor is not ≤** | `Integers`, `int` only | `(x+1 ≤ x) = false` |
+
+**(3.84a) was missing from the kernel.** Its Leibniz (3.83) matches only `Var = Var`, so there was
+no way to put an EXPRESSION for a variable under the conjunct that equates them — and every argument
+about an integer range needs exactly that (`i = n+1 ∧ i ≤ n` to `i = n+1 ∧ n+1 ≤ n`). The right-hand
+side is reconstructed by `replace_var_expr` and compared, so the only obligation is that the naive
+substitution be capture-free: `z` is not re-bound inside `E`, and no variable free in `e` is bound
+inside `E`. Both guards are exercised as rejections. The binder check, `rebinds`, now lives in
+`Patterns` and is shared with the induction axiom, which had a private copy.
+
+**Discreteness is what makes 8.23 an INTEGER theorem**: over the reals there are values strictly
+between `y` and `y+1`, and the identity is false. Both order axioms check `x.Type = typeof<int>`, and
+the example checks discreteness is not recognized over `float`.
+
+Gries proves facts like these from the arithmetic axioms of ch.15. When those exist here, both order
+axioms should become theorems; until then they are stated, with the same care as the induction
+axiom, and they are the only arithmetic Split off term rests on.
+
+### The induction theory now carries Σ
+
+`Induction(…)` composes `Sums.sum_axioms` alongside `Integers.integer_axioms` and (12.8): Split off
+term needs Σ's axioms and the integer order in ONE theory, and so does any induction over a sum.
+
+### What (12.7) still needs
+
+`(∀n | 0 ≤ n : (Σi | 1 ≤ i ≤ n : 2i−1) = n²)` now has its key step. Three smaller pieces remain:
+
+1. **The base case's empty range** — `(1 ≤ i ∧ i ≤ 0) = false`. Arithmetic, not the syntactic
+   `false` (8.13) matches; it needs something like transitivity of `≤` plus `(1 ≤ 0) = false`.
+2. **The proviso from the inductive hypothesis's range** — the step has `0 ≤ n` and Split off term
+   wants `1 ≤ n+1`: translation, `(x ≤ y) = (x+1 ≤ y+1)`, then constant folding.
+3. **The algebra** `n·n + (2(n+1) − 1) = (n+1)·(n+1)` with `Integers`' rewrite rules, which only
+   rewrite in fixed directions — fiddly rather than hard.
+
+Section (G) of `Induction.fsx` checks everything above: (3.84a) firing and refusing
+(wrong substitution, capture of `e`'s variables, substitution under a binder of `z`), both order
+axioms firing and refusing (wrong shape, `y+2`, reals), the two range lemmas at a symbolic lower bound,
+and Split off term at `lo = 1` with `E = 2i−1` and at a symbolic lower bound and body.
+
+**Gate.** Suite 135/135, `Induction.fsx` 50/50, `SetTheory.fsx` 167/167, AdversarialSweep ALL CLEAR,
+Sledgehammer ALL PASS, VerifyRuleFixes passed, Prop/Pred/IntegerAlgebra close. (3.84a) sits in
+`equational_logic_axioms`, which every proof step probes, so it was A/B'd (stash + rebuild, min of
+3): PropCalculus 1755 → 1704 ms, PredCalculus 2328 → 2219 ms, SetTheory 5024 → 4827 ms; the suite ran
+in 34–35 s either side. No regression — most expressions fail its first structural match.

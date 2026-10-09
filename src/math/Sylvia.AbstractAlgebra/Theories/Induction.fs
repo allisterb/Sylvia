@@ -1,4 +1,4 @@
-namespace Sylvia
+﻿namespace Sylvia
 // A bare rule as a proof step implicitly means "apply to the whole expression" (Rule -> RuleApplication).
 #nowarn "3391"
 
@@ -14,6 +14,7 @@ open Descriptions
 
 open PropCalculus
 open PredCalculus
+open Sums
 
 /// Mathematical induction over the integers — Gries & Schneider ch.12, §12.1.
 ///
@@ -78,15 +79,8 @@ module Induction =
 
     (* Axiom *)
 
-    /// True iff `v` is BOUND anywhere inside `e`, by a quantifier or a lambda. A naive substitution
-    /// for `v` — which is what `replace_var_expr` does, and what the checks below use to reconstruct
-    /// `P.n₀` / `P.i` / `P(n+1)` from `P.n` — is only sound when this is false.
-    let rec private rebinds (v: Var) (e: Expr) =
-        match e with
-        | Quantifier(_, bound, range, body) -> (bound |> List.exists (vequal v)) || rebinds v range || rebinds v body
-        | ShapeLambda(b, body) -> vequal v b || rebinds v body
-        | ShapeCombination(_, es) -> es |> List.exists (rebinds v)
-        | ShapeVar _ -> false
+    // `rebinds` (Patterns): the reconstruction of `P.n₀` / `P.i` / `P(n+1)` from `P.n` below is a
+    // naive `replace_var_expr`, sound only when `n` is not re-bound inside `P.n`.
 
     /// True iff `v` occurs in `e` AT ALL — free or bound. Stronger than `occurs_free`, and it is
     /// what makes substituting `v` INTO `e` capture-free.
@@ -134,16 +128,19 @@ module Induction =
 
     (* Theory *)
 
-    /// Integer arithmetic plus (12.8). A caller with its own axioms — the two equations of an
-    /// inductively defined function, say (§12.2) — passes them in, so that everything a proof by
-    /// induction touches lives in ONE theory: the base case, the inductive case, and the axiom
-    /// instance the two are detached from must all be proved in the same one.
+    /// Integer arithmetic, Σ (`Sums`), and (12.8). A caller with its own axioms — the two equations
+    /// of an inductively defined function, say (§12.2) — passes them in, so that everything a proof
+    /// by induction touches lives in ONE theory: the base case, the inductive case, and the axiom
+    /// instance the two are detached from must all be proved in the same one. Σ is here because the
+    /// classic inductions are about sums, and Split off term (below) needs Σ's axioms and the
+    /// integer order in the same theory.
     type Induction(?axioms: Axioms, ?rules: Rules) =
         inherit Theory(BooleanAlgebra.combine_axioms (defaultArg axioms (fun _ -> None))
-                                                     (BooleanAlgebra.combine_axioms induction_axioms Integers.integer_axioms),
+                         (BooleanAlgebra.combine_axioms induction_axioms
+                            (BooleanAlgebra.combine_axioms Sums.sum_axioms Integers.integer_axioms)),
                        (defaultArg rules []) @ Integers.integers.Rules)
 
-    /// The theory: integer arithmetic plus (12.8), with nothing extra.
+    /// The theory: integer arithmetic, Σ, and (12.8), with nothing extra.
     let induction = Induction()
 
     (* Using the inductive hypothesis *)
@@ -171,6 +168,96 @@ module Induction =
             ax_ident th ((leq (tm n) (tm n)) == T) |> Commute
                                                 |> at [right_branch; left_branch; right_branch]  // T → n ≤ n
             // and the state IS Instantiation (9.13) at i := n, which closes it.
+        ]
+
+    (* ------------------------------------------------------------------------------------------
+       Split off term (Gries 8.23), for Σ over an integer range.
+
+       Gries proves 8.23 for any ★ from Range split, the One-point rule, and two facts about integer
+       ranges that he defers to ch.15. It is a THEOREM here too: the integer facts are Discreteness
+       and Successor-is-not-≤ (`Integers`), the substitution is (3.84a) (the logic), and the Σ steps
+       are `Sums`' unconditional Range split (8.18), its Empty range (8.13), and the generic One-Point
+       rule (8.14). Nothing about Σ or ranges is axiomatized for the purpose.
+
+       Stated in the `≤`-on-both-sides form the induction axiom uses (`n₀ ≤ i ∧ i ≤ n`) rather than
+       Gries' `0 ≤ i < n+1`, so a split range is exactly an inductive hypothesis's range.
+       ------------------------------------------------------------------------------------------ *)
+
+    /// `E[i := v]`, for an integer body written in the dummy `i`.
+    let subst_body (i: #ISymbolicVar<int>) (v: Term<int>) (E: Term<int>) : IntTerm =
+        IntTerm(replace_var_expr i.Var (expand v.Expr) (expand E.Expr) |> expand_as<int>)
+
+    /// `lo ≤ n+1 ⇒ ((lo ≤ i ∧ i ≤ n+1) = ((lo ≤ i ∧ i ≤ n) ∨ i = n+1))` — extending a range by one.
+    ///
+    /// Discreteness splits `i ≤ n+1`; ∧ distributes over the split; Substitution (3.84a) turns
+    /// `lo ≤ i ∧ i = n+1` into `lo ≤ n+1 ∧ i = n+1`; and the antecedent discharges `lo ≤ n+1`. The
+    /// proviso is genuine: with `lo = n+2` the left range is empty and the right is `{n+1}`.
+    let range_extend (th: Theory) (lo: Term<int>) (n: Term<int>) (i: #ISymbolicVar<int>) : Theorem =
+        let n1 = IntTerm(n.Expr) + 1
+        let a = leq lo n1
+        let loi, ile, ieq = leq lo (tm i), leq (tm i) n, (tm i :> Term<int>) == (n1 :> Term<int>)
+        theorem th (a ==> ((loi * (leq (tm i) n1)) == ((loi * ile) + ieq))) [
+            ax_ident th ((leq (tm i) n1) == (ile + ieq)) |> at [right_branch; left_branch; right_branch]  // Discreteness
+            distrib_and_or loi ile ieq                   |> at [right_branch; left_branch]
+            commute_and loi ieq                          |> at [right_branch; left_branch; right_branch]
+            ax_ident th ((ieq * loi) == (ieq * a))       |> at [right_branch; left_branch; right_branch]  // (3.84a)
+            Deduce (reflex_implies a)                    |> apply_right                                   // lo ≤ n+1 → T
+            ident_and ieq                                |> at [right_branch; left_branch; right_branch]
+            def_true ((loi * ile) + ieq) |> Commute      |> apply_right
+        ]
+
+    /// `((lo ≤ i ∧ i ≤ n) ∧ i = n+1) = false` — the two parts of an extended range are DISJOINT.
+    /// Substitution (3.84a) puts `n+1` for `i`, and `n+1 ≤ n` is false.
+    let range_disjoint (th: Theory) (lo: Term<int>) (n: Term<int>) (i: #ISymbolicVar<int>) : Theorem =
+        let n1 = IntTerm(n.Expr) + 1
+        let loi, ile, ieq = leq lo (tm i), leq (tm i) n, (tm i :> Term<int>) == (n1 :> Term<int>)
+        theorem th (((loi * ile) * ieq) == F) [
+            commute_and (loi * ile) ieq                                  |> at_left
+            ax_ident th ((ieq * (loi * ile)) == (ieq * ((leq lo n1) * (leq n1 n)))) |> at_left  // (3.84a)
+            ax_ident th ((leq n1 n) == F)                                |> at [left_branch; right_branch; right_branch]
+            zero_and (leq lo n1)                                         |> at [left_branch; right_branch]
+            zero_and ieq                                                 |> at_left
+        ]
+
+    /// **Split off term (Gries 8.23)**, for Σ:
+    ///
+    /// ```
+    /// lo ≤ n+1  ⇒  (Σi | lo ≤ i ∧ i ≤ n+1 : E) = (Σi | lo ≤ i ∧ i ≤ n : E) + E[i := n+1]
+    /// ```
+    ///
+    /// The derivation is Gries' own, carried through Σ's UNCONDITIONAL range split (8.18) rather than
+    /// the disjoint one (8.16): the disjointness `range_disjoint` proves is used to turn the second
+    /// split term into `(Σi | false : E) = 0`, which is the unit of `+`.
+    ///
+    /// ```
+    /// Σ(lo≤i≤n+1)  =  Σ(R ∨ Q)                    range_extend, under the proviso
+    ///              =  Σ(R ∨ Q) + Σ(R ∧ Q)         + 0, and 0 = Σ(false) = Σ(R ∧ Q) by range_disjoint
+    ///              =  Σ(R) + Σ(i = n+1)           Range split (8.18)
+    ///              =  Σ(R) + E[i := n+1]          One-point (8.14)
+    /// ```
+    ///
+    /// Three of those steps rewrite an INTEGER identity right-to-left, which nothing in the logic can
+    /// do directly (its symmetry is symmetry of ≡); each is a local lemma proved by rewriting the
+    /// other side of its own goal — see the note on orientation in `docs/prover-set-theory.md` §10.
+    let split_off_term (th: Theory) (lo: Term<int>) (n: Term<int>) (i: #ISymbolicVar<int>) (E: Term<int>) : Theorem =
+        let n1 = IntTerm(n.Expr) + 1
+        let a = leq lo n1
+        let R = (leq lo (tm i)) * (leq (tm i) n)
+        let Q = (tm i :> Term<int>) == (n1 :> Term<int>)
+        let lhs = qsum i ((leq lo (tm i)) * (leq (tm i) n1)) E
+        let rhs = qsum i R E + subst_body i n1 E
+        let sRQ, sF = qsum i (R + Q) E, qsum i F E
+        let zero = IntTerm 0
+        let unit_intro = ident th (sRQ == sRQ + zero) [ ax_ident th (sRQ + zero == sRQ) |> at_right ]   // x → x + 0
+        let zero_intro = ident th (zero == sF) [ ax_ident th (sF == zero) |> at_right ]                 // 0 → Σ(false)
+        theorem th (a ==> (lhs == rhs)) [
+            Deduce' (range_extend th lo n i)                 |> apply_right
+            unit_intro                                       |> at [right_branch; left_branch]
+            zero_intro                                       |> at [right_branch; left_branch; right_branch]
+            Ident (range_disjoint th lo n i) |> Commute      |> at [right_branch; left_branch; right_branch; select_range]
+            ax_ident th ((sRQ + qsum i (R * Q) E) == (qsum i R E + qsum i Q E)) |> at [right_branch; left_branch]  // (8.18)
+            ax_ident th ((qsum i Q E) == (subst_body i n1 E)) |> at [right_branch; left_branch; right_branch]      // (8.14)
+            ax_ident th (T == (rhs == rhs)) |> Commute       |> apply_right
         ]
 
     (* The principle, as a combinator *)

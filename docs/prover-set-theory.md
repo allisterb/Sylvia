@@ -61,8 +61,8 @@ set-formula rendering got ~5× faster. Details in §7/§8 and `docs/prover-perf-
 3. ~~**Move `ElemVar` into the core.**~~ **Done (2026-08-19)** — see §9.
 
 All three are done. **Ch.12 §12.1 (mathematical induction) has since landed** — see
-[`prover-induction.md`](prover-induction.md); what it wants from THIS chapter next is Split off term
-(8.23) for `Sums`' Σ over an integer range, which is what Gries' own induction examples need.
+[`prover-induction.md`](prover-induction.md); and Split off term (8.23) for `Sums`' Σ over an integer range has since
+landed too (`prover-induction.md` §12) — a theorem, resting on (3.84a) and two integer-order axioms.
 
 ### Traps this session recorded, worth reading before touching these files
 

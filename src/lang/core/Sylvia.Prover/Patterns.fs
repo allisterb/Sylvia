@@ -60,6 +60,19 @@ module Patterns =
         | ShapeCombination (_, exprs) -> exprs |> List.exists (occurs_free vars)
 
     let not_occurs_free (vars:Var list) expr  = not (occurs_free vars expr)
+
+    /// True iff `v` is BOUND anywhere inside `e`, by a quantifier or a lambda.
+    ///
+    /// `replace_var_expr` is a naive traversal, so a substitution `e[v := x]` done with it is sound
+    /// only when this is false for `v` (or it would rewrite occurrences a binder owns) AND for every
+    /// variable free in `x` (or a binder would capture it). Axioms that reconstruct one side of an
+    /// identity by substitution — Substitution (3.84a), Mathematical Induction (12.8) — check both.
+    let rec rebinds (v: Var) (e: Expr) =
+        match e with
+        | Quantifier(_, bound, range, body) -> (bound |> List.exists (vequal v)) || rebinds v range || rebinds v body
+        | ShapeLambda(b, body) -> vequal v b || rebinds v body
+        | ShapeCombination(_, es) -> es |> List.exists (rebinds v)
+        | ShapeVar _ -> false
     
     let get_quantifiers expr =
         let rec rget_quantifiers prev =

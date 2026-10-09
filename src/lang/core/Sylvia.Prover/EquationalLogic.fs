@@ -94,7 +94,29 @@ module EquationalLogic =
         | Implies(Implies(R , Equals(Var p, Var q)), Equals(Quantifier(_, _, R1, P), Quantifier(_, _, R2, P'))) when sequal R R1 && sequal R1 R2 && sequal (replace_var_var p q P) P' -> 
             pattern_desc' (lazy "Leibniz") (lazy <@fun p q R E  -> (R ===> (p = q)) ===> E(p) = E(q) @>) |> Some
         | _ -> None
-    
+
+    /// (3.84a) Substitution:  `(z = e ∧ E) = (z = e ∧ E[z := e])`.
+    ///
+    /// Leibniz (3.83) above only substitutes a VARIABLE for a variable; this substitutes an arbitrary
+    /// EXPRESSION `e`, of any type, for the variable `z` under the conjunct that equates them — which
+    /// is what any argument about an integer range needs (`i = n+1 ∧ i ≤ n` to `i = n+1 ∧ n+1 ≤ n`).
+    /// Gries proves it from Leibniz as an inference rule over arbitrary expressions; this kernel's
+    /// Leibniz is narrower, so it is stated directly.
+    ///
+    /// The right-hand side is RECONSTRUCTED by substitution and compared, so the only obligation is
+    /// that the naive `replace_var_expr` be capture-free: `z` is not re-bound inside `E` (or a binder's
+    /// own occurrences would be rewritten), and no variable free in `e` is bound inside `E` (or the
+    /// substituted `e` would be captured). `e` may mention `z` — the identity is still Leibniz.
+    let (|Substitution|_|) =
+        function
+        | Equals(And(Equals(Var z, e), E), And(Equals(Var z', e'), E'))
+            when vequal z z' && sequal e e'
+                 && not (rebinds z E)
+                 && (get_vars e |> List.forall (fun v -> not (rebinds v E)))
+                 && sequal E' (replace_var_expr z e E) ->
+            pattern_desc' (lazy "Substitution") (lazy <@ fun z e E E' -> (z = e && E) = (z = e && E') @>) |> Some
+        | _ -> None
+
     let (|EmptyRange|_|) =
         function
         | ForAll(_,_,False,_) -> pattern_desc' (lazy "Empty Range") (lazy <@ fun x -> not x @>) |> Some
@@ -191,7 +213,8 @@ module EquationalLogic =
 
         | Implication x  // (3.57 and 3.58)
         | Leibniz x  // (3.83)
-        
+        | Substitution x  // (3.84a)
+
         | EmptyRange x // (8.13)
         | OnePoint x // (8.14)
         | Nesting x

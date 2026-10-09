@@ -212,5 +212,48 @@ ok "a fresh witness of an IntVar is an IntVar"   (w.GetType() = typeof<IntVar>)
 ok "... with its arithmetic intact: w + 1"       ((th.PrintFormula (expand (w + 1).Expr)) = "n#0 + 1")
 ok "an IntVar prints as its name"               (n.Display = "n")
 
+printfn "\n===== (G) Split off term (Gries 8.23) for Σ, and what it rests on ====="
+// A THEOREM, as in Gries: Σ's unconditional Range split (8.18) and Empty range (8.13), the One-point
+// rule (8.14), Substitution (3.84a), and two facts about the integer order. Each foundation is checked
+// to fire where it should and to refuse where it would be unsound.
+
+// (3.84a) Substitution:  (z = e ∧ E) = (z = e ∧ E[z := e])  — an EXPRESSION for a variable, any type.
+let ieq = (i :> Term<int>) == ((n + 1) :> Term<int>)
+let subst_ok = ((ieq * (leq i n)) == (ieq * (leq (n + 1) n)))
+ok "(3.84a) substitutes an expression for a variable"     (Theory.S.AxEquiv subst_ok.Expr)
+ok "(3.84a) rejects a wrong substitution"
+   (not (Theory.S.AxEquiv ((ieq * (leq i n)) == (ieq * (leq (n + 2) n))).Expr))
+// A binder inside E over a variable FREE in e would capture it: (i = n+1 ∧ (∀n |: i ≤ n)).
+ok "(3.84a) rejects capture of e's variables by a binder in E"
+   (not (Theory.S.AxEquiv ((ieq * (qall n T (leq i n))) == (ieq * (qall n T (leq (n + 1) n)))).Expr))
+// A binder inside E over z itself owns those occurrences: (i = n+1 ∧ (∀i |: i ≤ n)) — nothing to
+// substitute, and a naive traversal would rewrite them anyway.
+ok "(3.84a) rejects substituting under a binder of z"
+   (not (Theory.S.AxEquiv ((ieq * (qall i T (leq i n))) == (ieq * (qall i T (leq (n + 1) n)))).Expr))
+
+// The integer order: discreteness, and a successor is never ≤ its predecessor. Both are stated
+// for `int` only — discreteness is FALSE over the reals.
+let x, y = IntVar "x", IntVar "y"
+ok "Discreteness:  (x ≤ y+1) = (x ≤ y ∨ x = y+1)"
+   (ind.AxEquiv ((leq x (y + 1)) == ((leq x y) + ((x :> Term<int>) == ((y + 1) :> Term<int>)))).Expr)
+ok "Discreteness does not hold for y+2"
+   (not (ind.AxEquiv ((leq x (y + 2)) == ((leq x y) + ((x :> Term<int>) == ((y + 2) :> Term<int>)))).Expr))
+ok "Discreteness is not an axiom over the reals"
+   (not (ind.AxEquiv (Prop <@ ((%x.Expr |> float) <= (%y.Expr |> float) + 1.0) = (((%x.Expr |> float) <= (%y.Expr |> float)) || ((%x.Expr |> float) = (%y.Expr |> float) + 1.0)) @>).Expr))
+ok "Successor:  (x+1 ≤ x) = false"                         (ind.AxEquiv ((leq (x + 1) x) == F).Expr)
+ok "... but not (x+1 ≤ y) = false"                          (not (ind.AxEquiv ((leq (x + 1) y) == F).Expr))
+
+// The two range lemmas and the theorem, at a symbolic lower bound and at 1.
+named "range_extend    lo ≤ n+1 ⇒ (lo≤i≤n+1) = (lo≤i≤n ∨ i=n+1)"  (fun () -> range_extend ind k n i)
+named "range_disjoint  ((lo≤i≤n) ∧ i=n+1) = false"                 (fun () -> range_disjoint ind k n i)
+let sot = split_off_term ind (IntTerm 1) n i (2 * i - 1)
+printfn "  %s" (ind.PrintFormula (expand sot.Stmt))
+named "SPLIT OFF TERM  (Σi | 1≤i≤n+1 : 2i−1) = (Σi | 1≤i≤n : 2i−1) + (2(n+1)−1)"  (fun () -> sot)
+named "... at a symbolic lower bound and body"                          (fun () -> split_off_term ind k n i (f i))
+// The proviso is a real premise: the same identity WITHOUT it is not provable by this route, and it
+// is false — at lo = n+2 the left range is empty while the right is {n+1}.
+ok "the proviso is part of the theorem"
+   (match expand sot.Stmt with Implies(LessEq(_, _), _) -> true | _ -> false)
+
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1

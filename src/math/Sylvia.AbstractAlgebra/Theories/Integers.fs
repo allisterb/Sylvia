@@ -45,6 +45,29 @@ module Integers =
         | Equals(LessEq(a, b), True) when sequal a b -> pattern_name "Reflexivity of ≤" |> Some
         | _ -> None
 
+    /// `(x ≤ y + 1) = (x ≤ y ∨ x = y + 1)` — DISCRETENESS of the integers: nothing lies strictly
+    /// between `y` and `y + 1`.
+    ///
+    /// The real content of splitting the last term off an integer range (Gries 8.23), and the fact
+    /// that makes it an INTEGER theorem: over the reals it is false. Restricted to `int` for that
+    /// reason. Gries proves range facts like this from the arithmetic axioms of ch.15; until those
+    /// exist here it is stated directly.
+    let (|DiscreteLessEq|_|) =
+        function
+        | Equals(LessEq(x, Add(y, Int32 1)), Or(LessEq(x', y'), Equals(x'', Add(y'', Int32 1))))
+            when x.Type = typeof<int> && sequal x x' && sequal x' x'' && sequal y y' && sequal y' y'' ->
+            pattern_name "Discreteness of ≤" |> Some
+        | _ -> None
+
+    /// `(x + 1 ≤ x) = false` — a successor is never at or below its predecessor. Together with
+    /// Substitution (3.84a) it is what makes the two halves of a split integer range DISJOINT
+    /// (`i ≤ n ∧ i = n + 1` is false).
+    let (|SuccNotLessEq|_|) =
+        function
+        | Equals(LessEq(Add(x, Int32 1), x'), False) when x.Type = typeof<int> && sequal x x' ->
+            pattern_name "Successor is not ≤" |> Some
+        | _ -> None
+
     // Hoisted operator templates: quotation literals written inline in match arms are
     // re-deserialized on every axiom probe (see docs/expressions-perf.md).
     let private eq_op : Expr<int->int->bool> = <@ (=) @>
@@ -69,7 +92,9 @@ module Integers =
         | BinaryOpDefR eq_op sub_op add_op neg_op x  -> Some (desc x)
         | Exists(_, a::[], Bool true, (Equals(Add(Var _, Var a'), Int32 0))) when vequal a a' -> Some (axiom_desc "Integers" (pattern_name "Additive Inverse")) 
         | DefLessThan x
-        | ReflexLessEq x -> Some (desc x)
+        | ReflexLessEq x
+        | DiscreteLessEq x
+        | SuccNotLessEq x -> Some (desc x)
         | _ -> None
 
     (* Expression functions for derived rules *)
