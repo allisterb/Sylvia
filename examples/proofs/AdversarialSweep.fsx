@@ -61,18 +61,41 @@ let mutable attempted = 0
 // which takes a quotation.
 let metaProvers = Set.ofList [ "auto"; "autoident"; "autodeduce"; "decide" ]
 
+// A schema over a TEMPLATE takes its hole as a `PropVar` (Replace by true/false, Shannon — Gries
+// 3.87–3.89). The hole is never trapped: it gets the fixed variable `z`, which no trap mentions. The
+// adversarial patterns go in the `Prop` arguments as for every other schema, and each instantiation
+// is ALSO run with `z` conjoined into the last `Prop` argument — the template — since a template
+// with no hole would only exercise the degenerate case.
+let propVarTy = typeof<PropVar>
+let z = boolvar "z"
+
 let sweep (name: string) (ps: Reflection.ParameterInfo[]) (invoke: obj[] -> unit) =
     let n = ps.Length
-    if n > 0 && n <= 4 && not (metaProvers.Contains name) && ps |> Array.forall (fun x -> x.ParameterType = propTy) then
+    let isProp (x: Reflection.ParameterInfo) = x.ParameterType = propTy
+    let isHole (x: Reflection.ParameterInfo) = x.ParameterType = propVarTy
+    let props = ps |> Array.filter isProp |> Array.length
+    let hasHole = ps |> Array.exists isHole
+    if n > 0 && props > 0 && props <= 4 && not (metaProvers.Contains name) && ps |> Array.forall (fun x -> isProp x || isHole x) then
         let tuples =
-            [ yield "baseline", (List.truncate n baseArgs)
-              for i in 0 .. n - 1 do
+            [ yield "baseline", (List.truncate props baseArgs)
+              for i in 0 .. props - 1 do
                 for (tn, t) in traps do
                     yield sprintf "arg%d=%s" (i + 1) tn,
-                          (List.truncate n baseArgs |> List.mapi (fun j a -> if j = i then t else a)) ]
-        for (label, args) in tuples do
+                          (List.truncate props baseArgs |> List.mapi (fun j a -> if j = i then t else a)) ]
+        let variants =
+            [ for (label, args) in tuples do
+                yield label, args
+                if hasHole then
+                    yield label + "+hole", (args |> List.mapi (fun j a -> if j = props - 1 then (a * z) else a)) ]
+        for (label, args) in variants do
             attempted <- attempted + 1
-            try invoke (args |> List.map box |> Array.ofList)
+            // Interleave: each hole parameter gets `z`, each Prop parameter the next argument.
+            let mutable k = 0
+            let full =
+                ps |> Array.map (fun x ->
+                    if isHole x then box z
+                    else let a = args.[k] in k <- k + 1; box a)
+            try invoke full
             with e ->
                 let rec root (x: exn) = if isNull x.InnerException then x else root x.InnerException
                 let msg = (root e).Message.Split('\n').[0]
@@ -95,8 +118,9 @@ let sideCondition, misTargeted =
 
 printfn "\nexcluded — also fails at baseline, so a side condition rather than mis-targeting:\n  %s"
     (String.Join(", ", sideCondition |> List.map fst))
-printfn "\nKNOWN AND INTENDED: `replace_eq` requires VARIABLE arguments (Leibniz substitution of one"
-printfn "variable for another; `subst_and` matches (Var = Var) ∧ E). It is expected below."
+// `replace_eq` (3.51) used to be the one standing exception here: proved with `subst_and`, which
+// matches only (Var = Var) ∧ E, it failed at 43 compound instantiations. It is now an instance of
+// Substitution (3.84a) and holds at all of them, so there are no expected failures left.
 
 printfn "\n%d failing instantiations across %d schemas"
     (misTargeted |> List.sumBy (snd >> Seq.length)) (List.length misTargeted)
@@ -106,6 +130,6 @@ for (name, fs) in misTargeted do
     printfn "\n  %-28s %d/%d  [%s]" name (Seq.length fs) (1 + List.length traps * 4) (String.Join(", ", labels))
     printfn "       %s" msg
 
-let unexpected = misTargeted |> List.filter (fun (n, _) -> n <> "replace_eq")
-printfn "\n%s" (if unexpected.IsEmpty then "ALL CLEAR (only the documented replace_eq precondition)"
+let unexpected = misTargeted
+printfn "\n%s" (if unexpected.IsEmpty then "ALL CLEAR"
                 else sprintf "MIS-TARGETED SCHEMAS: %s" (String.Join(", ", unexpected |> List.map fst)))

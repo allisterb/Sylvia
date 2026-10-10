@@ -95,26 +95,44 @@ module EquationalLogic =
             pattern_desc' (lazy "Leibniz") (lazy <@fun p q R E  -> (R ===> (p = q)) ===> E(p) = E(q) @>) |> Some
         | _ -> None
 
-    /// (3.84a) Substitution:  `(z = e ∧ E) = (z = e ∧ E[z := e])`.
+    /// True iff `b` is `a` with SOME occurrences of `e` exchanged for `f` (in either direction), and
+    /// identical everywhere else. That is exactly "there is a template `T` with `a = T[z := …]` and
+    /// `b = T[z := …]`" — the template having `z` at the exchanged positions — which is the shape
+    /// Gries' (3.84a) quantifies over. The two heads at each position are compared by rebuilding
+    /// `a`'s node over `b`'s children, so only a same-typed exchange is ever rebuilt.
+    let rec private exchanges_some (e: Expr) (f: Expr) (a: Expr) (b: Expr) : bool =
+        sequal a b
+        || (sequal a e && sequal b f) || (sequal a f && sequal b e)
+        || (match a, b with
+            | ExprShape.ShapeLambda(v1, b1), ExprShape.ShapeLambda(v2, b2) -> vequal v1 v2 && exchanges_some e f b1 b2
+            | ExprShape.ShapeCombination(o, xs), ExprShape.ShapeCombination(_, ys) ->
+                xs.Length = ys.Length && xs.Length > 0
+                && List.forall2 (fun (x: Expr) (y: Expr) -> x.Type = y.Type) xs ys
+                && sequal (ExprShape.RebuildShapeCombination(o, ys)) b
+                && List.forall2 (exchanges_some e f) xs ys
+            | _ -> false)
+
+    /// (3.84a) Substitution:  `(e = f ∧ E[z := e]) = (e = f ∧ E[z := f])`.
     ///
-    /// Leibniz (3.83) above only substitutes a VARIABLE for a variable; this substitutes an arbitrary
-    /// EXPRESSION `e`, of any type, for the variable `z` under the conjunct that equates them — which
-    /// is what any argument about an integer range needs (`i = n+1 ∧ i ≤ n` to `i = n+1 ∧ n+1 ≤ n`).
-    /// Gries proves it from Leibniz as an inference rule over arbitrary expressions; this kernel's
-    /// Leibniz is narrower, so it is stated directly.
+    /// Leibniz (3.83) above only substitutes a VARIABLE for a variable. This is Gries' form: any
+    /// EXPRESSIONS `e`, `f`, of any type, exchanged under the conjunct that equates them, at whichever
+    /// occurrences the template `E` marks — not necessarily all of them. Integer ranges need it
+    /// (`i = n+1 ∧ i ≤ n` to `i = n+1 ∧ n+1 ≤ n`), and so does (3.51) `replace_eq` at compound
+    /// arguments, where only SOME occurrences change: `(p = q) ∧ ((p ∨ p) = p)` becomes
+    /// `(p = q) ∧ ((p ∨ p) = q)`.
     ///
-    /// The right-hand side is RECONSTRUCTED by substitution and compared, so the only obligation is
-    /// that the naive `replace_var_expr` be capture-free: `z` is not re-bound inside `E` (or a binder's
-    /// own occurrences would be rewritten), and no variable free in `e` is bound inside `E` (or the
-    /// substituted `e` would be captured). `e` may mention `z` — the identity is still Leibniz.
+    /// No template is given — an axiom recognizer sees only the statement — so it is recovered: the
+    /// two conjuncts must agree everywhere except at positions where one holds `e` and the other `f`
+    /// (`exchanges_some`). Sound because, under `e = f`, each such exchange is Leibniz. The one
+    /// obligation is that the exchange be capture-free: no variable of `e` or `f` is bound anywhere
+    /// inside either conjunct, so no exchanged position sits under a binder that would capture it.
     let (|Substitution|_|) =
         function
-        | Equals(And(Equals(Var z, e), E), And(Equals(Var z', e'), E'))
-            when vequal z z' && sequal e e'
-                 && not (rebinds z E)
-                 && (get_vars e |> List.forall (fun v -> not (rebinds v E)))
-                 && sequal E' (replace_var_expr z e E) ->
-            pattern_desc' (lazy "Substitution") (lazy <@ fun z e E E' -> (z = e && E) = (z = e && E') @>) |> Some
+        | Equals(And(Equals(e, f), E), And(Equals(e', f'), E'))
+            when sequal e e' && sequal f f'
+                 && (get_vars e @ get_vars f |> List.forall (fun v -> not (rebinds v E) && not (rebinds v E')))
+                 && exchanges_some e f E E' ->
+            pattern_desc' (lazy "Substitution") (lazy <@ fun e f E E' -> (e = f && E) = (e = f && E') @>) |> Some
         | _ -> None
 
     let (|EmptyRange|_|) =

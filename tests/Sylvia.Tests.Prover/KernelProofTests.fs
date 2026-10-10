@@ -239,12 +239,54 @@ type KernelProofTests() =
         Assert.True(failed.Count = 0, sprintf "schemas that fail at an adversarial instantiation:\n%s" (String.Join("\n", failed)))
 
     [<Fact>]
-    member _.``replace_eq's variable precondition is real (documented, not a mis-targeting bug)`` () =
-        // Leibniz substitution of one VARIABLE for another: `subst_and` matches (Var = Var) ∧ E,
-        // so unlike its neighbours this schema genuinely does not hold at compound arguments.
-        // Pinned so the distinction stays explicit rather than looking like an unfixed defect.
+    member _.``replace_eq holds at compound arguments (Substitution 3.84a)`` () =
+        // It used to be proved by `subst_and`, which matches only (Var = Var) ∧ E and substitutes
+        // at EVERY occurrence, so it failed at compound arguments. Gries' (3.84a) exchanges e and f
+        // at SOME occurrences of a template, and (3.51) is an instance of it at any propositions —
+        // including r := (p ∨ p), where only the bare p may change.
         PropCalculus.replace_eq p q r |> ignore
-        Assert.ThrowsAny<exn>(fun () -> PropCalculus.replace_eq (p + p) q r |> ignore) |> ignore
+        PropCalculus.replace_eq (p + p) q r |> ignore
+        PropCalculus.replace_eq p (q * r) r |> ignore
+        PropCalculus.replace_eq p q (p + p) |> ignore
+        PropCalculus.replace_eq (p ==> q) (!!q) (p * (p ==> q)) |> ignore
+
+    [<Fact>]
+    member _.``Shannon (3.89) and Replace by true/false, derived through Substitution (3.84a)`` () =
+        let z = boolvar "z"
+        let E = (z ==> q) * ((z :> Prop) == (r + z))
+        PropCalculus.ident_eq_false (p * q) |> ignore
+        PropCalculus.replace_true_and z p E |> ignore
+        PropCalculus.replace_false_and z p E |> ignore
+        PropCalculus.shannon z p E |> ignore
+        PropCalculus.shannon z (p * q) E |> ignore                       // a compound case-split
+        // The template already mentions p outside its hole: only the hole may change.
+        PropCalculus.shannon z p ((z :> Prop) * p) |> ignore
+        // Its statement is the one Gries writes, with E[z := …] computed from the template.
+        let stmt = match PropCalculus.shannon z p E with Derive(_, pf, _) -> pf.Stmt | _ -> failwith "not derived"
+        let expected = (PropCalculus.subst_prop z p E) == ((p * PropCalculus.subst_prop z T E) + (!!p * PropCalculus.subst_prop z F E))
+        Assert.True(sequal (expand stmt) (expand expected.Expr))
+
+    [<Fact>]
+    member _.``Shannon refuses a template whose binder would capture the case-split`` () =
+        // E = (∀x |: z ≡ x = 0) with p := (x = 0). Substituted naively, p's x lands under the ∀ that
+        // binds x and the statement is FALSE: the left side is (∀x |: (x = 0) ≡ (x = 0)) = true, while
+        // the right is (p ∧ (∀x |: x = 0)) ∨ (¬p ∧ (∀x |: x ≠ 0)) = false over the integers. (3.84a)
+        // refuses any exchange of a variable bound inside the template, so the derivation does not close.
+        let z = boolvar "z"
+        let x = IntVar "x"
+        let px = (x :> Term<int>) == (IntTerm 0 :> Term<int>)
+        let E = PredCalculus.qall x T ((z :> Prop) == px)
+        Assert.ThrowsAny<exn>(fun () -> PropCalculus.shannon z px E |> ignore) |> ignore
+
+    [<Fact>]
+    member _.``Substitution (3.84a) refuses what Leibniz does not license`` () =
+        let S = Theory.S
+        // An exchange of something other than e for f.
+        Assert.False(S.AxEquiv (((p == q) * (r == p)) == ((p == q) * (r == r))).Expr)
+        // A change outside the exchanged positions.
+        Assert.False(S.AxEquiv (((p == q) * (r * p)) == ((p == q) * (r + q))).Expr)
+        // Without the equating conjunct on both sides.
+        Assert.False(S.AxEquiv (((p == q) * (r == p)) == ((p == r) * (r == q))).Expr)
 
     [<Fact>]
     member _.``subst_or_and (Shannon) fires and preserves equivalence`` () =

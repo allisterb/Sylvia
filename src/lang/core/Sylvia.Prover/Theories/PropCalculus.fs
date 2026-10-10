@@ -954,14 +954,12 @@ module PropCalculus =
 
     /// (p = q) ∧ (r = p) = (p = q) ∧ (r = q)  (Gries 3.51)
     ///
-    /// PRECONDITION: `p` and `q` must be VARIABLES. This is Leibniz substitution of one variable
-    /// for another — the underlying `subst_and` rule matches `(Var e = Var f) ∧ E` and replaces
-    /// `e` by `f` throughout `E`, so it does not fire at compound arguments. Unlike the schemas
-    /// around it, this one is not valid to instantiate at arbitrary `Prop`s.
+    /// An instance of Substitution (3.84a) at the template `r = z`, valid at ANY propositions. It
+    /// used to be proved with the `subst_and` rule, which matches only `(Var = Var) ∧ E` and
+    /// substitutes at EVERY occurrence, so it failed at compound arguments — and at `r := (p ∨ p)`,
+    /// where only the bare `p` may change. That was a limit of the proof, not of the schema.
     [<DerivedRule "(p = q) ∧ (r = p) = (p = q) ∧ (r = q)">]
-    let replace_eq (p:Prop) (q:Prop) (r:Prop) = ident prop_calculus (((p == q) * (r == p)) == ((p == q) * (r == q))) [
-        subst_and |> at_left
-    ]
+    let replace_eq (p:Prop) (q:Prop) (r:Prop) = ax_ident prop_calculus (((p == q) * (r == p)) == ((p == q) * (r == q)))
 
     /// p ∧ q == (p ∧ -q == -p)  (Gries 3.48)
     [<DerivedRule "p ∧ q = (p ∧ -q = -p)">]
@@ -1444,13 +1442,73 @@ module PropCalculus =
         weaken_or ( p ==> q ) r |> Taut |> apply
     ]
 
-    // NOTE: Shannon's expansion (Gries 3.89), E_z = (p ∧ E[z:=true]) ∨ (¬p ∧ E[z:=false]),
-    // is intentionally NOT formalized here. It is schematic in an arbitrary expression E with
-    // the textual-substitution metavariable E[z:=…], which the prover does not yet support as
-    // first-class machinery (the subst_true/subst_false/subst_or_and admissible rules only cover
-    // restricted, structurally-matched cases). It is not needed by any theorem in this module and
-    // its uses can be discharged by other propositional theorems, so it is left unimplemented
-    // pending metavariable support in the kernel.
+    (* Replacing variables by boolean constants, and Shannon's expansion (Gries 3.85–3.89)
+
+       These are schematic in an expression E with a hole z — Gries writes E[z := p] — and they were
+       parked until the kernel could substitute an EXPRESSION for a variable under an equation, which
+       is Substitution (3.84a) in the logic. With that, each is a short derivation: over booleans
+       `p ≡ (p = true)` and `¬p ≡ (p = false)`, which turns "replace p by a constant" into an
+       instance of (3.84a) at e := p, f := true/false.
+
+       E[z := …] is not a metavariable here, the same way no schema in this module needs one: the
+       rules are F# functions of the template `E` and its hole `z`, and compute the substitution. *)
+
+    /// `E[z := v]` — textual substitution of a proposition for a propositional variable.
+    let subst_prop (z: PropVar) (v: Prop) (E: Prop) : Prop =
+        let zv = match z.Expr with Patterns.Var x -> x | _ -> failwith "subst_prop: the hole must be a variable."
+        Prop(replace_var_expr zv (expand v.Expr) (expand E.Expr) |> expand_as<bool>)
+
+    /// (p = F) = ¬p  (Gries 3.15, rearranged)
+    [<DerivedRule "(p = F) = ¬p">]
+    let ident_eq_false (p: Prop) = ident prop_calculus ((p == F) == !!p) [
+        def_false p                   |> at [left_branch; right_branch]   // F → (¬p = p)
+        commute                       |> at [left_branch; right_branch]   // (¬p = p) → (p = ¬p)
+        left_assoc                    |> at_left                          // p = (p = ¬p) → (p = p) = ¬p
+        def_true p |> Commute         |> at [left_branch; left_branch]    // (p = p) → T
+        commute                       |> at_left                          // T = ¬p → ¬p = T
+        ident_eq (!!p)                |> at_left                          // ¬p = T → ¬p
+    ]
+
+    /// p ∧ E[z := p] = p ∧ E[z := true]  (Gries 3.87, Replace by true)
+    ///
+    /// `p` becomes `p = true` on both sides (3.3), and what is left IS Substitution (3.84a) with
+    /// e := p, f := true — at exactly the template's holes, so occurrences of `p` that were already
+    /// in `E` are left alone.
+    [<DerivedRule "p ∧ E[z := p] = p ∧ E[z := true]">]
+    let replace_true_and (z: PropVar) (p: Prop) (E: Prop) =
+        ident prop_calculus ((p * subst_prop z p E) == (p * subst_prop z T E)) [
+            ident_eq p |> Commute |> at [left_branch; left_branch]
+            ident_eq p |> Commute |> at [right_branch; left_branch]
+        ]
+
+    /// ¬p ∧ E[z := p] = ¬p ∧ E[z := false]
+    ///
+    /// The `¬p` counterpart of (3.87), and what Shannon (3.89) needs. NOT Gries' (3.88), which is the
+    /// disjunctive `p ∨ E[z := p] = p ∨ E[z := false]`. Same derivation through `¬p = (p = false)`.
+    [<DerivedRule "¬p ∧ E[z := p] = ¬p ∧ E[z := false]">]
+    let replace_false_and (z: PropVar) (p: Prop) (E: Prop) =
+        ident prop_calculus ((!!p * subst_prop z p E) == (!!p * subst_prop z F E)) [
+            ident_eq_false p |> Commute |> at [left_branch; left_branch]
+            ident_eq_false p |> Commute |> at [right_branch; left_branch]
+        ]
+
+    /// E[z := p] = (p ∧ E[z := true]) ∨ (¬p ∧ E[z := false])  (Gries 3.89, Shannon)
+    ///
+    /// Case analysis on `p`, by excluded middle: the right side is turned back into
+    /// `E[z := p] ∧ (p ∨ ¬p)` — Replace by true/false in reverse, then distributivity (3.46) — and
+    /// `p ∨ ¬p` is true. `p` may be any proposition, not only a variable.
+    [<DerivedRule "E[z := p] = (p ∧ E[z := true]) ∨ (¬p ∧ E[z := false])">]
+    let shannon (z: PropVar) (p: Prop) (E: Prop) =
+        let Ep = subst_prop z p E
+        ident prop_calculus (Ep == ((p * subst_prop z T E) + (!!p * subst_prop z F E))) [
+            replace_true_and z p E |> Commute  |> at [right_branch; left_branch]   // p ∧ E[true] → p ∧ E[p]
+            replace_false_and z p E |> Commute |> at [right_branch; right_branch]  // ¬p ∧ E[false] → ¬p ∧ E[p]
+            commute_and p Ep                   |> at [right_branch; left_branch]
+            commute_and (!!p) Ep               |> at [right_branch; right_branch]
+            distrib_and_or Ep p (!!p) |> Commute |> at_right                       // → E[p] ∧ (p ∨ ¬p)
+            excluded_middle' p                 |> at [right_branch; right_branch]   // p ∨ ¬p → T
+            ident_and Ep                       |> at_right                          // E[p] ∧ T → E[p]
+        ]
 
 
     (* Combinators that USE a completed theorem, rather than state one *)

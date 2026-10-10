@@ -289,7 +289,7 @@ in `n:ℕ`.
 
 | Piece | Where | Statement |
 |---|---|---|
-| **Substitution (3.84a)** | the logic (`EquationalLogic`) | `(z = e ∧ E) = (z = e ∧ E[z := e])`, any type |
+| **Substitution (3.84a)** | the logic (`EquationalLogic`) | `(e = f ∧ E[z := e]) = (e = f ∧ E[z := f])`, any type — generalized in §13 |
 | **Discreteness** | `Integers`, `int` only | `(x ≤ y+1) = (x ≤ y ∨ x = y+1)` |
 | **Successor is not ≤** | `Integers`, `int` only | `(x+1 ≤ x) = false` |
 
@@ -335,3 +335,77 @@ Sledgehammer ALL PASS, VerifyRuleFixes passed, Prop/Pred/IntegerAlgebra close. (
 `equational_logic_axioms`, which every proof step probes, so it was A/B'd (stash + rebuild, min of
 3): PropCalculus 1755 → 1704 ms, PredCalculus 2328 → 2219 ms, SetTheory 5024 → 4827 ms; the suite ran
 in 34–35 s either side. No regression — most expressions fail its first structural match.
+
+## 13. Substitution (3.84a) in full, and what it unblocked in ch.3
+
+§12 added (3.84a) in the narrow form the integer ranges needed — `(z = e ∧ E) = (z = e ∧ E[z := e])`,
+a VARIABLE on the left of the equation. It is now Gries' full form:
+
+```
+(e = f ∧ E[z := e])  =  (e = f ∧ E[z := f])       e, f any expressions, of any type
+```
+
+No template is given to an axiom recognizer, so it is recovered: the two conjuncts must agree
+everywhere except at positions where one holds `e` and the other `f` (`exchanges_some`). Two things
+follow from that, both needed:
+
+- **Some occurrences, not all.** `replace_eq` (3.51) at `r := (p ∨ p)` is
+  `(p = q) ∧ ((p ∨ p) = p)  =  (p = q) ∧ ((p ∨ p) = q)` — only the bare `p` changes. A
+  substitute-everywhere rule produces `(q ∨ q) = q` and fails; that was the shape of most of the
+  AdversarialSweep's standing exceptions.
+- **Compound `e`.** The old form needed `z` to be a variable, so `replace_eq` with a compound `p`
+  could not even be stated as an instance.
+
+The capture obligation is unchanged in kind: no variable of `e` or `f` may be bound anywhere inside
+either conjunct.
+
+### `replace_eq` (3.51) holds at any arguments
+
+It is now the axiom instance itself (`ax_ident`). Its old doc comment said the schema "is not valid
+to instantiate at arbitrary `Prop`s"; that was wrong as logic — (3.51) holds for any propositions —
+and was only a limit of the proof (`subst_and` matches `(Var = Var) ∧ E` and substitutes everywhere).
+The kernel test that PINNED the failure now asserts success at five compound instantiations, and a
+new test pins three refusals. The AdversarialSweep's one standing exception — 43 failing
+instantiations — is gone: it reports a plain **ALL CLEAR**, with the exception list removed, so a
+regression would now fail loudly.
+
+### Shannon (3.89), and Replace by true/false
+
+Parked since the ch.3 work "pending metavariable support in the kernel" (the note at the end of
+`PropCalculus.fs`, now replaced). It needed (3.84a), not metavariables: the rules are F# functions of
+a template `E` and its hole `z`, and compute `E[z := …]` (`subst_prop`), the way every schema in the
+module already works.
+
+| Export | Statement |
+|---|---|
+| `subst_prop z v E` | `E[z := v]` |
+| `ident_eq_false p` | `(p = F) = ¬p` — Gries (3.15), rearranged |
+| `replace_true_and z p E` | `p ∧ E[z := p] = p ∧ E[z := true]` — Gries (3.87) |
+| `replace_false_and z p E` | `¬p ∧ E[z := p] = ¬p ∧ E[z := false]` — the `¬p` counterpart; NOT Gries (3.88), which is `p ∨ …` |
+| `shannon z p E` | `E[z := p] = (p ∧ E[z := true]) ∨ (¬p ∧ E[z := false])` — Gries (3.89) |
+
+Over booleans `p ≡ (p = true)` and `¬p ≡ (p = false)`, so each "replace" is two rewrites to put the
+equation in front and then IS (3.84a) at `e := p`, `f := true/false` — at exactly the template's
+holes, so occurrences of `p` already in `E` are left alone. Shannon is excluded middle, distributivity
+(3.46) and the two replace rules. `p` may be compound.
+
+A template whose binder would capture `p`'s variables is REFUSED rather than proved. The kernel test
+uses one where capture would prove a falsehood: `E = (∀x |: z ≡ x = 0)`, `p := (x = 0)` — naively
+the left side is `(∀x |: (x = 0) ≡ (x = 0)) = true` and the right is false over ℤ.
+
+Gries' (3.85)/(3.86) (the `⇒` forms) and (3.88) (the `∨` form) are now short derivations from these
+and were not needed here, so they are not stated.
+
+### Checks
+
+- **Semantic fuzz** (3000 random templates, exchanges and corruptions, checked by truth table): every
+  one of the 1978 genuine instances is recognized, and every one of the 2027 accepted statements is a
+  tautology. Propositional only — capture is covered by the kernel and `Induction.fsx` tests instead.
+- **AdversarialSweep** now covers template schemas too (a `PropVar` hole gets a fixed `z`, and each
+  instantiation also runs with `z` conjoined into the template): 3556 instantiations, ALL CLEAR.
+- Suite **138/138** (three new tests), `Induction.fsx` 50/50, SetTheory 167/167, Sledgehammer,
+  VerifyRuleFixes, Prop/Pred/IntegerAlgebra.
+- **Perf**, A/B'd against `HEAD` (stash + rebuild, min of 3): PropCalculus 1736 → 1684 ms, PredCalculus
+  2238 → 2157 ms, SetTheory 4890 → 4869 ms. Suite timing was re-done back to back because it moved
+  during the session — `HEAD` itself went from 34 s to 42 s with no code change — and back to back the
+  difference is the ~1.3 s of the new tests.

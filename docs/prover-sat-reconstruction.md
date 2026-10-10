@@ -737,9 +737,10 @@ concern that motivates a fresh-start redesign.
    with an exact `at [ ... ]` path, annotated with the intermediate state. Two of them previously
    carried comments *documenting* the reliance on first-match order — that reliance is now gone.
 
-   `replace_eq` still fails at compound arguments and is the one case that is not a bug: it is
-   Leibniz substitution of one variable for another (`subst_and` matches `(Var = Var) ∧ E`), so the
-   variable precondition is real. It is now documented on the schema and pinned by a test.
+   `replace_eq` then still failed at compound arguments, and this note called the variable
+   precondition real. It was not: (3.51) holds for any propositions, and the limit was the proof's
+   `subst_and` rule. With Substitution (3.84a) in its full form, `replace_eq` is an axiom instance at
+   any arguments and the sweep has no exceptions (`prover-induction.md` §13).
 6. ~~**Schema-instantiation gap**~~ **DONE (2026-07-28) — `Tactics.Instantiate`.** Derived rules are
    F# functions that *replay*, so instantiating a lemma at fresh arguments cost a full derivation
    rather than a substitution. Memoization only ever fixed repeats, and a reconstruction's arguments
