@@ -69,7 +69,9 @@ measured ~27 ms per kernel step these are seconds, not hours.
 - **`rup`** — reverse unit propagation. **We already replay this**: `SAT.rup_chain` unfolds an LRAT
   RUP step into binary resolutions through `PropCalculus.resolve`, and `SatProof.refute` folds them.
   It is also the *majority* of every goal measured, and 100% of pigeonhole.
-- **`euf`** — congruence. Maps onto Leibniz substitution, the kernel's native move.
+- **`euf`** — congruence. Maps onto substitution of equals for equals — but see the correction in §4:
+  the kernel's Leibniz (3.83) matched only `Var = Var` when this was written, which covers the
+  smallest goal and not the compound-term congruences real `euf` hints carry.
 - **`farkas`** — the linear-arithmetic certificate Böhme & Weber asked Z3's authors for in 2010 and
   did not have. It exists now.
 - **`tseitin`** — definitional clauses; each a small propositional tautology, dischargeable by
@@ -121,6 +123,24 @@ That exercises every layer in miniature and is the honest test of feasibility:
    representation is currently DIMACS integers keyed by `CnfProblem.AtomOfVar`; it needs generalizing
    so atoms can be keyed by Z3 terms.
 3. Discharge the single `euf` hint by congruence — a Leibniz step.
+
+> **Correction (2026-10-10).** Step 3 called this "a Leibniz step", and §2 called congruence "the
+> kernel's native move". At the time it was only half true: the kernel's Leibniz (3.83) matched
+> `Var = Var` only. That covers the smallest goal's congruence `a = b ⇒ f(a) = f(b)` with `a`, `b`
+> plain constants (both sides are variables), but not what `euf` hints generally carry — congruences
+> over COMPOUND terms (`g(a) = g(b) ⇒ f(g(a)) = f(g(b))`) and transitivity chains
+> (`a = b ∧ b = c ⇒ a = c`). Step 3 would have failed on anything past the first goal.
+>
+> Substitution (3.84a) is now in the logic in Gries' full form, `(e = f ∧ E[z:=e]) = (e = f ∧ E[z:=f])`
+> for any expressions `e`, `f` at any subset of a template's occurrences (`prover-induction.md` §13).
+> Congruence is the template `F(z)` with the left conjunct `F(e) = F(e)` true by reflexivity;
+> transitivity exchanges `b` for `a` in the second conjunct. So the substitution machinery an `euf`
+> hint needs exists. What does NOT yet:
+>
+> - **The implication form**, `(e = f) ⇒ (E[z:=e] = E[z:=f])` — what an `euf` clause states. That is
+>   Gries' (3.84b), or a short derivation from (3.84a); neither is in the kernel.
+> - Steps 1 and 2 above are unchanged: **Z3-AST → `Prop` translation** is still the main missing
+>   piece, and `CnfProblem`'s clause atoms are still DIMACS integers.
 
 If that closes, EUF is real and the same skeleton extends to `tseitin` and `inst`. If it does not, we
 have learned it cheaply and on the smallest possible instance.
