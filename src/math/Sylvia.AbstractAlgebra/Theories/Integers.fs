@@ -1,4 +1,4 @@
-﻿namespace Sylvia
+namespace Sylvia
 
 open System
 open FSharp.Quotations
@@ -59,6 +59,41 @@ module Integers =
             pattern_name "Discreteness of ≤" |> Some
         | _ -> None
 
+    /// `(x ≤ y ∧ y ≤ z) ⇒ x ≤ z` — transitivity of ≤.
+    ///
+    /// With literal comparison below, this is what makes a NUMERIC empty range provably empty:
+    /// `1 ≤ i ∧ i ≤ 0 ⇒ 1 ≤ 0`, and `1 ≤ 0` is false. Stated for `int`, the theory's carrier, like
+    /// the other order axioms here.
+    let (|TransLessEq|_|) =
+        function
+        | Implies(And(LessEq(x, y), LessEq(y', z)), LessEq(x', z'))
+            when x.Type = typeof<int> && sequal y y' && sequal x x' && sequal z z' ->
+            pattern_name "Transitivity of ≤" |> Some
+        | _ -> None
+
+    /// `(a ≤ b) = true` or `= false` for integer LITERALS `a`, `b`, by evaluation.
+    ///
+    /// The same trust as `reduce` folding `2 * 0` to `0` — but an axiom rather than another case of
+    /// `reduce`, so proofs that already run `reduce` do not change shape. Only the correct truth
+    /// value is recognized: `(1 ≤ 0) = true` is not an axiom.
+    let (|LiteralLessEq|_|) =
+        function
+        | Equals(LessEq(Int32 a, Int32 b), True) when a <= b -> pattern_name "Comparison of integer literals" |> Some
+        | Equals(LessEq(Int32 a, Int32 b), False) when a > b -> pattern_name "Comparison of integer literals" |> Some
+        | _ -> None
+
+    /// `(x ≤ y) = (x + 1 ≤ y + 1)` — ≤ is invariant under translation by one.
+    ///
+    /// What turns an induction hypothesis's range `0 ≤ n` into the proviso `1 ≤ n + 1` that Split off
+    /// term needs (after `reduce` folds `0 + 1`). Transitivity cannot: nothing relates `0 ≤ n` to a `1`
+    /// on the left.
+    let (|TranslateLessEq|_|) =
+        function
+        | Equals(LessEq(x, y), LessEq(Add(x', Int32 1), Add(y', Int32 1)))
+            when x.Type = typeof<int> && sequal x x' && sequal y y' ->
+            pattern_name "Translation of ≤" |> Some
+        | _ -> None
+
     /// `(x + 1 ≤ x) = false` — a successor is never at or below its predecessor. Together with
     /// Substitution (3.84a) it is what makes the two halves of a split integer range DISJOINT
     /// (`i ≤ n ∧ i = n + 1` is false).
@@ -94,7 +129,10 @@ module Integers =
         | DefLessThan x
         | ReflexLessEq x
         | DiscreteLessEq x
-        | SuccNotLessEq x -> Some (desc x)
+        | SuccNotLessEq x
+        | TransLessEq x
+        | TranslateLessEq x
+        | LiteralLessEq x -> Some (desc x)
         | _ -> None
 
     (* Expression functions for derived rules *)
@@ -147,15 +185,18 @@ module Integers =
 
         | expr -> traverse expr _reduce_constants
 
+    // Both right-associativity rules used to rewrite `(a·b)·c` to `a·(b + c)` — an ADDITION where the
+    // multiplication belongs — so the kernel accepted `(2·3)·4 = 2·(3+4)`, i.e. 24 = 14. The addition
+    // rule also had no business touching products; like its `_left_assoc_add` sibling it now has only
+    // the `+` case.
     let rec _right_assoc_add =
         function
         | Add(Add(a1, a2), a3) -> call_add a1 (call_add a2 a3)
-        | Multiply(Multiply(a1, a2), a3) -> call_mul a1 (call_add a2 a3)
         | expr -> traverse expr _right_assoc_add
 
     let rec _right_assoc_mul =
         function
-        | Multiply(Multiply(a1, a2), a3) -> call_mul a1 (call_add a2 a3)
+        | Multiply(Multiply(a1, a2), a3) -> call_mul a1 (call_mul a2 a3)
         | expr -> traverse expr _right_assoc_mul
 
     let rec _left_assoc_add =
@@ -167,6 +208,13 @@ module Integers =
         function
         | Multiply(a1, Multiply(a2, a3)) -> call_mul (call_mul a1 a2) a3
         | expr -> traverse expr _left_assoc_mul
+
+    /// `(a + b) − c → a + (b − c)`. No other rule reassociates across a subtraction, so without it
+    /// `(2·n + 2) − 1` cannot become `2·n + 1`.
+    let rec _assoc_add_sub =
+        function
+        | Subtract(Add(a1, a2), a3) -> call_add a1 (call_sub a2 a3)
+        | expr -> traverse expr _assoc_add_sub
 
     let rec _commute_add =
         function
@@ -224,7 +272,10 @@ module Integers =
     let left_assoc_add = Admit("Addition operations in (expression) are left-associative", _left_assoc_add)
 
     /// Multiplication is left associative.
-    let left_assoc_mul = Admit("Addition operations in (expression) are left-associative", _left_assoc_mul)
+    let left_assoc_mul = Admit("Multiplication operations in (expression) are left-associative", _left_assoc_mul)
+
+    /// (a + b) − c is a + (b − c).
+    let assoc_add_sub = Admit("(a + b) − c is a + (b − c) in (expression)", _assoc_add_sub)
 
     /// Addition is comutative.
     let commute_add = Admit("Addition operation in (expression) is commutative", _commute_add)
@@ -264,6 +315,7 @@ module Integers =
         collect_mul_sub
         ident_add
         ident_mul
+        assoc_add_sub
     ])
     
     let integers = Integers()

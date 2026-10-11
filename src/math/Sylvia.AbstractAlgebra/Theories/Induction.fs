@@ -219,6 +219,45 @@ module Induction =
             zero_and ieq                                                 |> at_left
         ]
 
+    /// `(lo ≤ i ∧ i ≤ hi) = false`, for integer LITERALS `lo > hi` — a numeric empty range.
+    ///
+    /// What a base case needs: `(Σi | 1 ≤ i ∧ i ≤ 0 : E)` is empty by ARITHMETIC, and `Sums`' Empty
+    /// range (8.13) matches only the syntactic `false`. The derivation is propositional around one
+    /// fact: `A = false` is `¬A` (3.15) is `A ⇒ false` (3.74), the `false` is `lo ≤ hi` evaluated, and
+    /// `(lo ≤ i ∧ i ≤ hi) ⇒ lo ≤ hi` IS Transitivity. Refuses (the evaluation step does not close)
+    /// when `lo`, `hi` are not literals with `lo > hi`.
+    let empty_range (th: Theory) (lo: Term<int>) (hi: Term<int>) (i: #ISymbolicVar<int>) : Theorem =
+        let A = (leq lo (tm i)) * (leq (tm i) hi)
+        theorem th (A == F) [
+            ident_eq_false A                                                    // (A = F) → ¬A
+            ident_implies_false_not A |> Commute |> apply                       // ¬A → (A ⇒ F)
+            ax_ident th ((leq lo hi) == F) |> Commute |> at_right               // F → (lo ≤ hi)
+            // and (lo ≤ i ∧ i ≤ hi) ⇒ lo ≤ hi is Transitivity of ≤.
+        ]
+
+    /// `(Σi | lo ≤ i ∧ i ≤ hi : E) = 0`, for integer literals `lo > hi` — the numeric range is empty
+    /// (`empty_range`), and Σ over the empty range is the unit of `+` (8.13).
+    let empty_sum (th: Theory) (lo: Term<int>) (hi: Term<int>) (i: #ISymbolicVar<int>) (E: Term<int>) : Theorem =
+        theorem th ((qsum i ((leq lo (tm i)) * (leq (tm i) hi)) E) == IntTerm 0) [
+            Ident (empty_range th lo hi i) |> at [left_branch; select_range]
+            // and (Σi | false : E) = 0 is Empty range (8.13).
+        ]
+
+    /// `lo ≤ n ⇒ lo′ ≤ n + 1`, where `lo′` is `lo + 1` with literals folded (`0 ≤ n ⇒ 1 ≤ n + 1`).
+    ///
+    /// The bridge from an inductive case's antecedent to Split off term's proviso: the step has
+    /// `n₀ ≤ n`, and splitting the last term off `(Σi | n₀+1 ≤ i ≤ n+1 : E)` wants `n₀+1 ≤ n+1`.
+    /// Translation of ≤ (`Integers`) then constant folding. Meant for `Establish`, which records the
+    /// consequent as usable while leaving `n₀ ≤ n` available for `hypothesis_at`.
+    let shift_bound (th: Theory) (lo: Term<int>) (n: Term<int>) : Theorem =
+        let lo1 = IntTerm(Integers._reduce_constants (call_add lo.Expr (Expr.Value 1)) |> expand_as<int>)
+        let n1 = IntTerm(n.Expr) + 1
+        theorem th ((leq lo n) ==> (leq lo1 n1)) [
+            ax_ident th ((leq lo n) == (leq (IntTerm(lo.Expr) + 1) n1)) |> at_left   // Translation of ≤
+            Integers.reduce |> at [left_branch; left_branch]                          // lo + 1 folded
+            Taut (reflex_implies (leq lo1 n1)) |> apply
+        ]
+
     /// **Split off term (Gries 8.23)**, for Σ:
     ///
     /// ```

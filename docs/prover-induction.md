@@ -5,7 +5,7 @@ Design and implementation notes for Gries & Schneider, *A Logical Approach to Di
 [`prover-predicate-calculus.md`](prover-predicate-calculus.md) and
 [`prover-set-theory.md`](prover-set-theory.md).
 
-Runnable check: `dotnet fsi examples/proofs/Induction.fsx` (**50/50**).
+Runnable check: `dotnet fsi examples/proofs/Induction.fsx` (**75/75**).
 
 **Status.** Induction over the integers is mechanized as **one axiom** — Gries (12.8), induction over
 `{n₀, n₀+1, …}` — plus a combinator that discharges it, and a lemma (`hypothesis_at`) that packages
@@ -218,7 +218,7 @@ the point: an admitted rule that silently does nothing is invisible until someth
 ```bash
 dotnet build src/Sylvia.sln                                        # 0 errors
 SYLVIA_SEQUAL_CHECK=1 dotnet test tests/Sylvia.Tests.Prover/...    # 135/135
-dotnet fsi examples/proofs/Induction.fsx                           # 50/50 ALL PASS
+dotnet fsi examples/proofs/Induction.fsx                           # 75/75 ALL PASS
 dotnet fsi examples/proofs/SetTheory.fsx                           # 167/167 ALL PASS
 dotnet fsi examples/proofs/AdversarialSweep.fsx                    # ALL CLEAR
 dotnet fsi examples/atp/Sledgehammer.fsx                           # ALL PASS
@@ -318,7 +318,7 @@ term needs Σ's axioms and the integer order in ONE theory, and so does any indu
 
 `(∀n | 0 ≤ n : (Σi | 1 ≤ i ≤ n : 2i−1) = n²)` now has its key step. Three smaller pieces remain:
 
-1. **The base case's empty range** — `(1 ≤ i ∧ i ≤ 0) = false`. Arithmetic, not the syntactic
+1. ~~**The base case's empty range**~~ **— done, §14.** `(1 ≤ i ∧ i ≤ 0) = false`. Arithmetic, not the syntactic
    `false` (8.13) matches; it needs something like transitivity of `≤` plus `(1 ≤ 0) = false`.
 2. **The proviso from the inductive hypothesis's range** — the step has `0 ≤ n` and Split off term
    wants `1 ≤ n+1`: translation, `(x ≤ y) = (x+1 ≤ y+1)`, then constant folding.
@@ -409,3 +409,114 @@ and were not needed here, so they are not stated.
   2238 → 2157 ms, SetTheory 4890 → 4869 ms. Suite timing was re-done back to back because it moved
   during the session — `HEAD` itself went from 34 s to 42 s with no code change — and back to back the
   difference is the ~1.3 s of the new tests.
+
+## 14. The base case of (12.7)
+
+```
+⊢ (Σi | 1 ≤ i ∧ i ≤ 0 : 2i−1) = 0·0          P.0 of (12.7), with P exactly as Gries states it
+```
+
+The range `1 ≤ i ≤ 0` is empty by ARITHMETIC, which Σ's Empty range (8.13) cannot see — it matches the
+syntactic `false`. Rather than an axiom about empty ranges, two general order facts, so that EVERY
+literal empty range is a derivation:
+
+| Axiom | Where | Statement |
+|---|---|---|
+| **Transitivity of ≤** | `Integers`, `int` | `(x ≤ y ∧ y ≤ z) ⇒ x ≤ z` |
+| **Comparison of literals** | `Integers` | `(a ≤ b) = true` / `= false` for integer literals, by evaluation — only the correct value |
+
+The literal comparison is the same trust as `reduce` folding `2·0` to `0`. It is an axiom rather than a
+new case of `reduce` so that proofs already running `reduce` do not change shape.
+
+| Export | Statement |
+|---|---|
+| `empty_range th lo hi i` | `(lo ≤ i ∧ i ≤ hi) = false`, for literals `lo > hi` |
+| `empty_sum th lo hi i E` | `(Σi | lo ≤ i ∧ i ≤ hi : E) = 0`, the same |
+
+`empty_range` is propositional around one fact: `A = false` is `¬A` (3.15, `ident_eq_false`) is
+`A ⇒ false` (3.74), the `false` is `lo ≤ hi` evaluated, and `(lo ≤ i ∧ i ≤ hi) ⇒ lo ≤ hi` IS
+Transitivity. It REFUSES — at the evaluation step, which is the right place — a non-empty range
+(`0..1`) and a symbolic bound (`1..n`). The base case is then two steps: `empty_sum` rewrites the Σ to
+`0`, and `reduce` folds `0·0`.
+
+Section (H) of `Induction.fsx` checks both axioms firing and refusing (no shared middle term; `⇔` in
+place of `⇒`; the wrong truth value; a non-literal), `empty_range` at `1..0` and `5..−3`, its two
+refusals, `empty_sum`, and the base case.
+
+Neither axiom is in the logic `S`, so neither is on the per-step hot path, and neither bears on
+`Tactics.Instantiate`'s soundness: it substitutes BOOLEAN variables, and neither axiom mentions one.
+
+**Gate.** Suite 138/138, `Induction.fsx` 63/63, SetTheory 167/167, AdversarialSweep ALL CLEAR,
+Sledgehammer, VerifyRuleFixes, Prop/Pred/IntegerAlgebra.
+
+**(12.7) now needed only its inductive step** — done, §15. It needed two things:
+
+- **The proviso.** Split off term wants `1 ≤ n+1`; the step's antecedent supplies `0 ≤ n`.
+  Transitivity does not bridge them — nothing here relates `0 ≤ n` to a `1` on the left. The clean
+  single axiom is translation, `(x ≤ y) = (x + 1 ≤ y + 1)`, after which `reduce` folds `0 + 1`.
+- **The algebra** `n·n + (2(n+1) − 1) = (n+1)·(n+1)`, with `Integers`' one-direction rewrite rules
+  (§12, item 3).
+
+## 15. The inductive step of (12.7) — and (12.7) proved
+
+```
+⊢ (∀n | 0 ≤ n : (Σi | 1 ≤ i ∧ i ≤ n : 2i−1) = n·n)
+```
+
+Gries' (12.7), by `by_induction` from the §14 base case and this step. The step body is FIVE proof
+steps, and they are Gries' calculation:
+
+```
+(0 ≤ n ∧ IH) ⇒ (Σi | 1 ≤ i ≤ n+1 : 2i−1) = (n+1)·(n+1)
+  Establish 1 ≤ n+1                              shift_bound, from the antecedent's 0 ≤ n
+  Σ(1..n+1)  →  Σ(1..n) + (2(n+1)−1)             Split off term (8.23), under that proviso
+  Σ(1..n)    →  n·n                              hypothesis_at — the inductive hypothesis
+  n·n + (2(n+1)−1) = (n+1)·(n+1)  →  T            the algebra, a separate theorem
+```
+
+`Establish` is what makes the two order facts coexist: Split off term wants `1 ≤ n+1`, `hypothesis_at`
+wants `0 ≤ n`, and the step uses them in an order that needs both. `Establish` records the first as
+usable without rewriting the antecedent, so the second is still there. The example also checks that the
+step does NOT close with the inductive-hypothesis line removed.
+
+The hypothesis dummy is `j`, not `i`: (12.8)'s side condition is that the hypothesis dummy not occur in
+`P.n` AT ALL, and `P.n` binds `i` inside its Σ.
+
+### New pieces
+
+| Piece | Where | |
+|---|---|---|
+| **Translation of ≤** | `Integers` axiom, `int` | `(x ≤ y) = (x+1 ≤ y+1)` |
+| `assoc_add_sub` | `Integers` rule | `(a + b) − c → a + (b − c)` — nothing else reassociates across `−` |
+| `shift_bound th lo n` | `Induction` | `lo ≤ n ⇒ lo′ ≤ n+1`, `lo′` = `lo + 1` folded |
+
+The algebra `n·n + (2(n+1) − 1) = (n+1)·(n+1)` takes both sides to `n·n + (2n + 1)` in sixteen
+addressed rewrites with `Integers`' rules. Its one awkward move is `n + n → 2·n`: there is no rule for
+it, so each `n` becomes `n·1` (the Identity axiom used right-to-left, as a local lemma — nothing flips
+an integer identity), then `collect_mul_add` and folding. That is a sign of how thin `Integers`'
+rewrite toolkit is, not of difficulty; a polynomial normalizer would make this one step.
+
+### A soundness bug this found: right-associativity of `·` was `a·(b + c)`
+
+```fsharp
+| Multiply(Multiply(a1, a2), a3) -> call_mul a1 (call_add a2 a3)     // (a·b)·c → a·(b + c)
+```
+
+in BOTH `_right_assoc_mul` and `_right_assoc_add`. Measured before the fix: the kernel proved
+`(a·b)·c = a·(b + c)` through either rule, and `(2·3)·4 = 2·(3+4)` — **24 = 14**. Every proof in a theory
+carrying these rules (`Integers`, `RealNumbers`) could reach a false statement. Fixed: `_right_assoc_mul`
+multiplies, and `_right_assoc_add` — which had no business touching products, unlike its
+`_left_assoc_add` sibling — keeps only its `+` case. No proof called either rule directly, so nothing
+else changed shape. (`left_assoc_mul`'s description also said "Addition"; corrected.)
+
+The bug survived because an admitted rule is TRUSTED and nothing checked these semantically. So the
+example now does: **every `Integers` rewrite rule is fuzzed for value preservation** — random integer
+expressions, rewritten, evaluated at random points, before and after. All fourteen pass (600 expressions
+each in the example; 4000 each when first run). It is the check that would have caught this, and it is
+cheap.
+
+**Gate.** Suite 138/138, `Induction.fsx` 75/75, SetTheory 167/167, AdversarialSweep ALL CLEAR,
+Sledgehammer, VerifyRuleFixes, Prop/Pred/IntegerAlgebra. (`examples/math/Statistics.fsx`, the one
+other script opening `RealNumbers`, fails on a missing external data file before any proof runs; it does
+not use these rules.) None of the new axioms is in the logic `S`, and none mentions a boolean variable, so
+neither the hot path nor `Tactics.Instantiate`'s soundness is affected.

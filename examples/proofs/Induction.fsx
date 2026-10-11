@@ -26,6 +26,7 @@ open Formula
 open Descriptions
 open PropCalculus
 open PredCalculus
+open Sums
 open Induction
 
 fsi.PrintWidth <- 300
@@ -254,6 +255,152 @@ named "... at a symbolic lower bound and body"                          (fun () 
 // is false — at lo = n+2 the left range is empty while the right is {n+1}.
 ok "the proviso is part of the theorem"
    (match expand sot.Stmt with Implies(LessEq(_, _), _) -> true | _ -> false)
+
+printfn "\n===== (H) The base case of Gries (12.7):  (Σi | 1 ≤ i ≤ n : 2i−1) = n·n ====="
+// At n = 0 the range 1 ≤ i ≤ 0 is empty by ARITHMETIC, which Σ's Empty range (8.13) cannot see — it
+// matches the syntactic `false`. Two general order facts make every such range provably empty:
+// Transitivity of ≤, and evaluation of a comparison between integer literals.
+let z' = IntVar "z"
+ok "Transitivity:  (x ≤ y ∧ y ≤ z) ⇒ x ≤ z"
+   (ind.AxEquiv (((leq x y) * (leq y z')) ==> (leq x z')).Expr)
+ok "Transitivity needs a shared middle term"
+   (not (ind.AxEquiv (((leq x y) * (leq z' y)) ==> (leq x y)).Expr))
+ok "Transitivity is an implication, not an equivalence"
+   (not (ind.AxEquiv ((((leq x y) * (leq y z')) == (leq x z'))).Expr))
+ok "(1 ≤ 0) = false, by evaluation"           (ind.AxEquiv ((leq (IntTerm 1) zero) == F).Expr)
+ok "(0 ≤ 1) = true, by evaluation"            (ind.AxEquiv ((leq zero (IntTerm 1)) == T).Expr)
+ok "... but only the CORRECT value: (1 ≤ 0) = true is no axiom"
+   (not (ind.AxEquiv ((leq (IntTerm 1) zero) == T).Expr))
+ok "... and only for literals: (1 ≤ n) = false is no axiom"
+   (not (ind.AxEquiv ((leq (IntTerm 1) n) == F).Expr))
+
+named "empty_range  (1 ≤ i ∧ i ≤ 0) = false"                      (fun () -> empty_range ind (IntTerm 1) zero i)
+named "empty_range  (5 ≤ i ∧ i ≤ -3) = false"                     (fun () -> empty_range ind (IntTerm 5) (IntTerm -3) i)
+named "empty_sum    (Σi | 1 ≤ i ≤ 0 : 2i−1) = 0"                  (fun () -> empty_sum ind (IntTerm 1) zero i (2 * i - 1))
+ok "empty_range refuses a non-empty range (0..1)"
+   (not (proves "empty_range 0..1" (fun () -> empty_range ind zero (IntTerm 1) i)))
+ok "empty_range refuses a symbolic bound (1..n)"
+   (not (proves "empty_range 1..n" (fun () -> empty_range ind (IntTerm 1) n i)))
+
+// (12.7)  P.n : (Σi | 1 ≤ i ≤ n : 2i−1) = n·n  — the predicate exactly as Gries states it.
+let P127 = pred_of n ((qsum i ((leq (IntTerm 1) i) * (leq i n)) (2 * i - 1)) == (n * n))
+printfn "  P.0 = %s" (ind.PrintFormula (expand (base_case zero P127).Expr))
+named "(12.7) BASE CASE  (Σi | 1 ≤ i ≤ 0 : 2i−1) = 0·0"
+      (fun () -> theorem ind (base_case zero P127) [
+                     Ident (empty_sum ind (IntTerm 1) zero i (2 * i - 1)) |> at_left   // Σ over 1..0 → 0
+                     Integers.reduce                                                    // 0·0 → 0
+                 ])
+
+printfn "\n===== (I) The inductive step of (12.7), and (12.7) itself ====="
+// The step, in Gries' own words: split off the last term, use the inductive hypothesis, arithmetic.
+//   (Σi | 1 ≤ i ≤ n+1 : 2i−1)  =  (Σi | 1 ≤ i ≤ n : 2i−1) + (2(n+1)−1)   Split off term (8.23)
+//                              =  n·n + (2(n+1)−1)                      inductive hypothesis P.n
+//                              =  (n+1)·(n+1)                           arithmetic
+// Split off term's proviso `1 ≤ n+1` comes from the step's `0 ≤ n` by Translation of ≤.
+
+ok "Translation:  (x ≤ y) = (x+1 ≤ y+1)"        (ind.AxEquiv ((leq x y) == (leq (x + 1) (y + 1))).Expr)
+ok "Translation does not hold by different amounts"
+   (not (ind.AxEquiv ((leq x y) == (leq (x + 1) (y + 2))).Expr))
+
+// REGRESSION: both right-associativity rules used to rewrite (a·b)·c to a·(b + c), so the kernel
+// accepted (2·3)·4 = 2·(3+4), i.e. 24 = 14.
+ok "right_assoc_mul no longer proves (2·3)·4 = 2·(3+4)"
+   (not (proves "24 = 14" (fun () ->
+        theorem ind (((IntTerm 2 * IntTerm 3) * IntTerm 4) == (IntTerm 2 * (IntTerm 3 + IntTerm 4))) [ Integers.right_assoc_mul ])))
+named "right_assoc_mul proves (a·b)·c = a·(b·c)"
+      (fun () -> theorem ind (((x * y) * z') == (x * (y * z'))) [ Integers.right_assoc_mul ])
+
+// Every Integers rewrite rule must preserve the VALUE of what it rewrites — checked on random
+// integer expressions, evaluated at random points. This is the check that would have caught the above.
+let int_rules_preserve_value =
+    let rnd = System.Random(20261011)
+    let vs = [| Var("a", typeof<int>); Var("b", typeof<int>); Var("c", typeof<int>) |]
+    let rec gen d : Expr =
+        if d = 0 || rnd.Next 4 = 0 then (if rnd.Next 2 = 0 then Expr.Var vs.[rnd.Next 3] else Expr.Value(rnd.Next(-3, 4)))
+        else let l, r = gen (d - 1), gen (d - 1) in (match rnd.Next 3 with 0 -> call_add l r | 1 -> call_sub l r | _ -> call_mul l r)
+    let eval (e: Expr) (v: int[]) =
+        FSharp.Quotations.Evaluator.QuotationEvaluator.EvaluateUntyped
+            (e.Substitute(fun x -> vs |> Array.tryFindIndex (fun y -> y.Name = x.Name) |> Option.map (fun k -> Expr.Value v.[k]))) :?> int
+    [ Integers._reduce_constants; Integers._right_assoc_add; Integers._right_assoc_mul; Integers._left_assoc_add
+      Integers._left_assoc_mul; Integers._commute_add; Integers._commute_mul; Integers._distrib_mul_add
+      Integers._distrib_mul_sub; Integers._collect_mul_add; Integers._collect_mul_sub; Integers._ident_add
+      Integers._ident_mul; Integers._assoc_add_sub ]
+    |> List.forall (fun rule ->
+        [ 1 .. 600 ] |> List.forall (fun _ ->
+            let e = gen 4
+            let e' = rule e
+            sequal e e' || ([ 1 .. 4 ] |> List.forall (fun _ ->
+                               let v = [| rnd.Next(-9, 10); rnd.Next(-9, 10); rnd.Next(-9, 10) |] in eval e v = eval e' v))))
+ok "every Integers rewrite rule preserves value (14 rules × 600 random expressions)" int_rules_preserve_value
+
+named "shift_bound  0 ≤ n ⇒ 1 ≤ n+1"                     (fun () -> shift_bound ind zero n)
+
+// The arithmetic: both sides to n·n + (2n + 1). `n → n·1` uses the Identity axiom right-to-left,
+// which nothing in the logic can flip for an integer identity — so it is a local lemma proved by
+// rewriting the other side.
+let unit_mul_intro = ident ind ((n :> Term<int>) == (n * 1)) [ ax_ident ind ((n * 1) == (n :> Term<int>)) |> at_right ]
+let algebra127 =
+    theorem ind ((n * n + (2 * (n + 1) - 1)) == ((n + 1) * (n + 1))) [
+        Integers.distrib_mul_add |> at [left_branch; right_branch; left_branch]      // 2(n+1) → 2n + 2·1
+        Integers.reduce          |> at [left_branch; right_branch; left_branch]      // 2·1 → 2
+        Integers.assoc_add_sub   |> at [left_branch; right_branch]                   // (2n + 2) − 1 → 2n + (2 − 1)
+        Integers.reduce          |> at [left_branch; right_branch]                   // 2 − 1 → 1
+        Integers.distrib_mul_add |> at_right                                         // (n+1)·n + (n+1)·1
+        Integers.ident_mul       |> at [right_branch; right_branch]                  // (n+1)·1 → n+1
+        Integers.commute_mul     |> at [right_branch; left_branch]                   // (n+1)·n → n·(n+1)
+        Integers.distrib_mul_add |> at [right_branch; left_branch]                   // n·n + n·1
+        Integers.ident_mul       |> at [right_branch; left_branch; right_branch]     // n·1 → n
+        Integers.right_assoc_add |> at_right                                         // n·n + (n + (n+1))
+        Integers.left_assoc_add  |> at [right_branch; right_branch]                  // (n + n) + 1
+        unit_mul_intro           |> at [right_branch; right_branch; left_branch; left_branch]   // n → n·1
+        unit_mul_intro           |> at [right_branch; right_branch; left_branch; right_branch]  // n → n·1
+        Integers.collect_mul_add |> at [right_branch; right_branch; left_branch]     // n·(1+1)
+        Integers.reduce          |> at [right_branch; right_branch; left_branch]     // n·2
+        Integers.commute_mul     |> at [right_branch; right_branch; left_branch]     // 2n
+    ]
+named "algebra      n·n + (2(n+1) − 1) = (n+1)·(n+1)"     (fun () -> algebra127)
+
+// The hypothesis dummy must not occur in P.n at all — and P.n binds `i` inside its Σ — so it is `j`.
+let j = IntVar "j"
+let E127 = 2 * i - 1
+let a127 = leq zero n
+let ih127 = hypothesis zero n j P127
+let pn1_127 = P127.[n + 1]
+let body127 =
+    theorem ind (a127 ==> (ih127 ==> pn1_127)) [
+        (shunt' a127 ih127 pn1_127 |> Commute) |> apply                     // (0 ≤ n ∧ IH) ⇒ P(n+1)
+        Establish (shift_bound ind zero n) |> apply                         // 1 ≤ n+1, Split off term's proviso
+        Deduce' (split_off_term ind (IntTerm 1) n i E127) |> apply_right    // Σ(1..n+1) → Σ(1..n) + (2(n+1)−1)
+        Deduce' (hypothesis_at ind zero n j P127) |> apply_right            // Σ(1..n) → n·n — THE INDUCTIVE HYPOTHESIS
+        Taut algebra127 |> apply_right                                      // n·n + (2(n+1)−1) = (n+1)·(n+1)
+    ]
+let step127 =
+    theorem ind (inductive_case zero n j P127) [
+        trade_forall_implies n (pred_of n a127) (pred_of n (ih127 ==> pn1_127)) |> apply
+        Taut body127 |> at [select_body]
+        ident_forall_true' n
+    ]
+let base127 =
+    theorem ind (base_case zero P127) [
+        Ident (empty_sum ind (IntTerm 1) zero i E127) |> at_left
+        Integers.reduce
+    ]
+named "step body    0 ≤ n ⇒ (IH ⇒ P(n+1))"                 (fun () -> body127)
+named "inductive case"                                      (fun () -> step127)
+ok "the step does not close without the inductive hypothesis"
+   (not (proves "step without IH" (fun () ->
+        theorem ind (a127 ==> (ih127 ==> pn1_127)) [
+            (shunt' a127 ih127 pn1_127 |> Commute) |> apply
+            Establish (shift_bound ind zero n) |> apply
+            Deduce' (split_off_term ind (IntTerm 1) n i E127) |> apply_right
+            Taut algebra127 |> apply_right
+        ])))
+
+let thm127 = by_induction ind zero n j P127 base127 step127
+printfn "  %s" (ind.PrintFormula (expand thm127.Stmt))
+named "(12.7) BY INDUCTION   (∀n | 0 ≤ n : (Σi | 1 ≤ i ≤ n : 2i−1) = n·n)"   (fun () -> thm127)
+ok "(12.7) is the statement Gries gives"
+   (sequal (expand thm127.Stmt) (expand (qall n (leq zero n) ((qsum i ((leq (IntTerm 1) i) * (leq i n)) (2 * i - 1)) == (n * n))).Expr))
 
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1
