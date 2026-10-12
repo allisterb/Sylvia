@@ -630,5 +630,52 @@ ok "(8.13) Σ empty range is an axiom of the theory, not of the logic"
    (st.AxEquiv (expand ((qsum szx F (intv 1)) == intv 0).Expr)
     && not (Theory.S.AxEquiv (expand ((qsum szx F (intv 1)) == intv 0).Expr)))
 
+printfn "\n===== (T) The Boolean-algebra rewrite rules (SetAlgebra), checked ====="
+// REGRESSION. `BooleanAlgebra._right_assoc` rebuilt a meet chain with JOIN, so `(S ∩ T) ∩ U` became
+// `S ∪ (T ∪ U)` — and the kernel applied that step. Separately, the operator-splicing rules returned
+// unreduced applications the kernel crashed on, `_idemp` crashed at every instantiation, and `_ident`
+// never matched: four of the seven rules had never worked inside a proof.
+let stT = st :> Theory
+let inProof (label: string) (stmt: Prop) (step: RuleApplication) = named label (fun () -> theorem stT stmt [ step ])
+ok "right_assoc no longer proves ((S ∩ T) ∩ U) ∪ U = (S ∪ (T ∪ U)) ∪ U"
+   (not (proves "meet-as-join" (fun () ->
+        theorem stT ((((sS * sT) * sU) + sU) == ((sS + (sT + sU)) + sU)) [ SetAlgebra.right_assoc<int> |> at_left ])))
+inProof "right_assoc  ((S ∩ T) ∩ U) ∪ U = (S ∩ (T ∩ U)) ∪ U"  ((((sS * sT) * sU) + sU) == ((sS * (sT * sU)) + sU)) (SetAlgebra.right_assoc<int> |> at_left)
+inProof "right_assoc  ((S ∪ T) ∪ U) ∩ U = (S ∪ (T ∪ U)) ∩ U"  ((((sS + sT) + sU) * sU) == ((sS + (sT + sU)) * sU)) (SetAlgebra.right_assoc<int> |> at_left)
+inProof "left_assoc   (S ∩ (T ∩ U)) ∪ U = ((S ∩ T) ∩ U) ∪ U"  (((sS * (sT * sU)) + sU) == (((sS * sT) * sU) + sU)) (SetAlgebra.left_assoc<int> |> at_left)
+inProof "commute      (S ∩ T) ∪ U = (T ∩ S) ∪ U"              ((((sS * sT)) + sU) == ((sT * sS) + sU)) (SetAlgebra.commute<int> |> at [left_branch; left_branch])
+inProof "idemp        (S ∪ S) ∩ T = S ∩ T"                    (((sS + sS) * sT) == (sS * sT)) (SetAlgebra.idemp<int> |> at_left)
+inProof "ident_set    (S ∪ ∅) ∩ T = S ∩ T"                    (((sS + emptyT) * sT) == (sS * sT)) (SetAlgebra.ident_set<int> |> at_left)
+
+// Every rule, checked for VALUE preservation at a concrete Boolean algebra — the integers under bitwise
+// OR / AND / NOT with 0 and −1 — on random expressions. The check that would have caught the above.
+let ba_rules_preserve_value =
+    let join : Expr<int -> int -> int> = <@ (|||) @>
+    let meet : Expr<int -> int -> int> = <@ (&&&) @>
+    let comp : Expr<int -> int> = <@ (~~~) @>
+    let zero, one : Expr<int> * Expr<int> = <@ 0 @>, <@ -1 @>
+    let rnd = System.Random(20261013)
+    let vs = [| Var("a", typeof<int>); Var("b", typeof<int>); Var("c", typeof<int>) |]
+    let rec gen d : Expr =
+        if d = 0 || rnd.Next 4 = 0 then (match rnd.Next 5 with 0 -> <@@ 0 @@> | 1 -> <@@ -1 @@> | _ -> Expr.Var vs.[rnd.Next 3])
+        else
+            let l, r = gen (d - 1), gen (d - 1)
+            match rnd.Next 3 with
+            | 0 -> <@@ (%%l : int) ||| (%%r : int) @@>
+            | 1 -> <@@ (%%l : int) &&& (%%r : int) @@>
+            | _ -> <@@ ~~~ (%%l : int) @@>
+    let eval (e: Expr) (v: int[]) =
+        FSharp.Quotations.Evaluator.QuotationEvaluator.EvaluateUntyped
+            (e.Substitute(fun x -> vs |> Array.tryFindIndex (fun y -> y.Name = x.Name) |> Option.map (fun k -> Expr.Value v.[k]))) :?> int
+    [ BooleanAlgebra._left_assoc join meet; BooleanAlgebra._right_assoc join meet; BooleanAlgebra._commute join meet
+      BooleanAlgebra._idemp join meet zero one comp; BooleanAlgebra._ident join meet zero one comp
+      BooleanAlgebra._comp join meet zero one comp; BooleanAlgebra._distrib join meet ]
+    |> List.forall (fun rule ->
+        [ 1 .. 600 ] |> List.forall (fun _ ->
+            let e = FsExpr.expand (gen 4)
+            let e' = rule e
+            FsExpr.sequal e e' || ([ 1 .. 4 ] |> List.forall (fun _ -> let v = [| rnd.Next(); rnd.Next(); rnd.Next() |] in eval e v = eval e' v))))
+ok "every Boolean-algebra rule preserves value (7 rules × 600 random expressions)" ba_rules_preserve_value
+
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1

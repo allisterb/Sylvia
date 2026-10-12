@@ -142,6 +142,9 @@ and IntTerm(expr: Expr<int>) =
     static member (+) (l: int, r: IntTerm)       = call_add (Expr.Value l) (r.Expr) |> expand_as<int> |> IntTerm
     static member (-) (l: int, r: IntTerm)       = call_sub (Expr.Value l) (r.Expr) |> expand_as<int> |> IntTerm
     static member ( * ) (l: IntTerm, r: int)     = call_mul (l.Expr) (Expr.Value r) |> expand_as<int> |> IntTerm
+    /// Unary minus. F#'s `~-` is typed `^a -> ^a`, so it does not apply to an `IntVar` directly
+    /// (it would have to return an `IntVar`): write `-(n :> IntTerm)`, as with `SetVar`.
+    static member (~-) (l: IntTerm) = <@ - %l.Expr @> |> expand_as<int> |> IntTerm
 
 /// An integer VARIABLE that is also an integer TERM — the `SetVar` design, at `int`.
 ///

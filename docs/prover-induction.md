@@ -5,7 +5,7 @@ Design and implementation notes for Gries & Schneider, *A Logical Approach to Di
 [`prover-predicate-calculus.md`](prover-predicate-calculus.md) and
 [`prover-set-theory.md`](prover-set-theory.md).
 
-Runnable check: `dotnet fsi examples/proofs/Induction.fsx` (**75/75**).
+Runnable check: `dotnet fsi examples/proofs/Induction.fsx` (**86/86**).
 
 **Status.** Induction over the integers is mechanized as **one axiom** — Gries (12.8), induction over
 `{n₀, n₀+1, …}` — plus a combinator that discharges it, and a lemma (`hypothesis_at`) that packages
@@ -218,7 +218,7 @@ the point: an admitted rule that silently does nothing is invisible until someth
 ```bash
 dotnet build src/Sylvia.sln                                        # 0 errors
 SYLVIA_SEQUAL_CHECK=1 dotnet test tests/Sylvia.Tests.Prover/...    # 135/135
-dotnet fsi examples/proofs/Induction.fsx                           # 75/75 ALL PASS
+dotnet fsi examples/proofs/Induction.fsx                           # 86/86 ALL PASS
 dotnet fsi examples/proofs/SetTheory.fsx                           # 167/167 ALL PASS
 dotnet fsi examples/proofs/AdversarialSweep.fsx                    # ALL CLEAR
 dotnet fsi examples/atp/Sledgehammer.fsx                           # ALL PASS
@@ -494,7 +494,8 @@ The algebra `n·n + (2(n+1) − 1) = (n+1)·(n+1)` takes both sides to `n·n + (
 addressed rewrites with `Integers`' rules. Its one awkward move is `n + n → 2·n`: there is no rule for
 it, so each `n` becomes `n·1` (the Identity axiom used right-to-left, as a local lemma — nothing flips
 an integer identity), then `collect_mul_add` and folding. That is a sign of how thin `Integers`'
-rewrite toolkit is, not of difficulty; a polynomial normalizer would make this one step.
+rewrite toolkit is, not of difficulty; a polynomial normalizer would make this one step — and now
+does: the example proves it with `ring_ident` (§16).
 
 ### A soundness bug this found: right-associativity of `·` was `a·(b + c)`
 
@@ -520,3 +521,128 @@ Sledgehammer, VerifyRuleFixes, Prop/Pred/IntegerAlgebra. (`examples/math/Statist
 other script opening `RealNumbers`, fails on a missing external data file before any proof runs; it does
 not use these rules.) None of the new axioms is in the logic `S`, and none mentions a boolean variable, so
 neither the hot path nor `Tactics.Instantiate`'s soundness is affected.
+
+## 16. Ring normalization — Gries' "(Arithmetic)" step as a tactic
+
+```fsharp
+ring_ident th L R : Theorem      // ⊢ L = R, for an identity of commutative-ring arithmetic over ℤ
+ring th L R       : Rule         // the same, as a rewrite L → R inside a larger proof
+ring_normal_form th e : Expr     // the canonical polynomial, no proof
+```
+
+Gries' ch.15 proofs justify steps with "(Arithmetic)" constantly; here each was hand-addressed rewrites
+(the (12.7) algebra took sixteen). `ring_ident` takes both sides to ONE canonical polynomial and
+closes on syntactic equality. (12.7)'s algebra is now this one call.
+
+**It produces a proof; it is not trusted.** Every rewrite it makes is an EXISTING rule of `Integers`
+applied at an explicit address — or the Identity axiom right-to-left, through a local lemma — and the
+kernel re-checks every step of the theorem it returns. The tactic only SEARCHES: it simulates each step
+with the very function the kernel will run, to know where the next one goes. So a bug in it makes it
+FAIL; it cannot make it prove a falsehood. (This is the "compose existing rules" design rather than a
+trusted normalizer — the choice agreed before building it.)
+
+**Canonical form.** A right-nested sum of monomials sorted by their atoms, constants last; each
+monomial its atoms sorted and left-nested times a literal coefficient, `((x·y)·z)·c`, with `·1`
+written. An ATOM is anything not `+`, `−`, `·`, unary `−` or an integer literal — a variable, `f n`, a
+Σ — and the normalizer never looks inside one, so `f(n)·2 + f(n) = 3·f(n)` proves with `f(n)` opaque.
+
+**Phases:** eliminate `−` (binary and unary); distribute `·` over `+` on either side; flatten the sum;
+per monomial — flatten, bubble-sort the factors (each adjacent swap is `left_assoc_mul`, `commute_mul`
+on the left child, `right_assoc_mul`), fold the literals into one trailing coefficient, add `·1` if
+there is none, zero the monomial on a `0` coefficient, left-nest the atoms; bubble-sort the monomials;
+combine like terms (`collect_mul_add` then folding the coefficient); drop zeros.
+
+### Three primitive rules — since retired (§17)
+
+`sub_to_add_neg` (`a − b → a + b·(−1)`), `neg_to_mul` (`−a → a·(−1)`), `zero_mul` (`x·0 → 0`) were added
+as primitives, value-checked, pending the integral-domain theory. §17 replaced all three with theorems. `IntTerm` also
+gained unary minus — which, as with `SetVar`, does not apply to an `IntVar` directly (`~-` is
+`^a -> ^a`): write `-(n :> IntTerm)`.
+
+### Two bugs the tests caught before they shipped
+
+Both made the tactic FAIL on valid identities — the failure mode that matters, since soundness is the
+kernel's:
+
+- **`reduce` is one bottom-up pass that does not re-fold a parent**: `1·(1·1)` becomes `1·1`, not `1`.
+  Folding a monomial's literals now repeats until one is left. (Found on the cube `(x+1)³`.)
+- **`0 + 0`** sent zero-removal into a `commute_add` that changes nothing; two literals are now folded.
+
+### Completeness, measured
+
+Soundness is the kernel's; what needed testing is that the tactic does not MISS identities:
+
+- **Equal pairs:** a random expression scrambled by random value-preserving rule applications — the
+  tactic proved **300 / 300** equal (100 in the example's gate).
+- **Independent random pairs:** the tactic proved exactly those equal by evaluation — **300 / 300**
+  agreement (100 in the example).
+- Named identities: square of a sum, difference of squares, the cube (121 steps), cancellation to 0,
+  unary minus, opaque atoms; and three refusals, each reported with both normal forms.
+
+The whole example runs in ~4 s with its ~230 kernel-checked `ring_ident` proofs.
+
+### What it does not do
+
+No division, no order (`≤` is not arithmetic here), and no reasoning INSIDE atoms — two atoms that are
+equal only by some other theorem are different atoms to it. It is commutative-ring arithmetic over ℤ,
+which is exactly Gries' "(Arithmetic)" in ch.15's integral-domain sections.
+
+**Gate.** Suite 138/138, `Induction.fsx` 86/86, SetTheory 167/167, AdversarialSweep ALL CLEAR,
+Sledgehammer, VerifyRuleFixes, Prop/Pred/IntegerAlgebra.
+
+## 17. Integral domains (Gries ch.15 §15.1) — and the normalizer's primitives retired
+
+```fsharp
+type DomainOps<'t> = { Name; Add; Mul; Zero; One; Neg; Sub }       // the carrier's operations
+type IntegralDomain<'t>(ops, ?axioms, ?rules)                       // a Theory
+type Integers(...) = inherit IntegralDomain<int>(int_ops, integer_axioms, [...])
+```
+
+Ch.12 only needed enough of ℤ for induction; ch.15 develops it properly, and the agreed order was:
+normalization tactic (§16) → integral domain → ordered domain → well-ordering. This is step two.
+
+**One theory, any carrier.** `IntegralDomain.fs` states Gries' ring axioms ONCE, over `DomainOps<'t>`:
+associativity, commutativity, identity (both sides, `+ 0` and `· 1`), distributivity (both sides),
+additive inverse (15.13), subtraction (15.14) and cancellation of `·` (15.7, `c ≠ 0` or `¬(c = 0)`
+accepted). `Integers` is now `IntegralDomain<int>`; its own axioms shrank to the order facts (and the
+legacy ∃ form). Theorems proved over `IntegralDomain<'t>` apply in `Integers` and `Induction` because
+those theories derive from it — the kernel's `IsAssignableFrom` check.
+
+**(15.8)–(15.29) are theorems**, each proved from those axioms, mostly following Gries' own proofs —
+cancellation (15.8, by mutual implication), zero (15.9, verbatim Gries: cancel `a·a`), unique zero/one
+(15.10), zero divisors (15.11, via `autoproof_anf` glue), unique inverse (15.12), the negation laws
+(15.15)–(15.23) and the subtraction laws (15.24)–(15.29). `sub_def` exposes (15.14) as a rewrite. With no
+symmetry of `=` at non-bool types, the workhorses are `rev` (an axiom right-to-left), `flip` (a derived
+identity right-to-left) and `by_cancel` (prove `x = y` by cancelling `c` from `c + x = c + y`).
+
+**The payoff: the ring normalizer has no trusted rules for minus or zero.** §16's three primitives are
+gone from `Integers`. The normalizer now takes `a − b → a + (−b)` from (15.14), `−x → (−1)·x` from (15.20)
+followed by `reduce` (which now folds `−(1)` to `−1`), and `x·0 → 0` from (15.9). What remains trusted are
+the associativity / commutativity / distributivity / identity / constant-folding rules (14 now, all
+value-checked).
+
+**Cost, measured.** Those three are THEOREMS, so each new argument replays a derivation — (15.20) goes
+through (15.8)'s mutual implication. The normalizer keeps them per theory instance and argument
+(`ConditionalWeakTable<Theory, …>`). Per goal, one fresh `Induction` instance, JIT warmed elsewhere:
+
+| goal | cold | cached |
+|---|---|---|
+| `(x+y)(x−y) = x² − y²` | 177 ms | 6 ms |
+| `−(x − y) = y − x` | 290 ms | 9 ms |
+| `(x−x) + y·0 = 0` | 83 ms | 1 ms |
+| `(x−y)² = x² − 2xy + y²` | 106 ms | 9 ms |
+| `(x+1)³` (no minus, no zero) | 20 ms | 17 ms |
+
+About 100–150 ms per distinct negated subterm, cold. The fix is the same one the SAT reconstruction got:
+derive each lemma ONCE at a variable and instantiate it. `Tactics.Instantiate` is bool-variable only;
+extending it to term variables is Gries' Substitution inference rule, but its admissibility argument has
+to be re-made for the integer axioms and for `reduce` (constant folding does not commute with
+substitution literally, only in value) — a soundness decision, deliberately not taken here.
+
+**Checks.** `Induction.fsx` (K): all of (15.8)–(15.29), mostly at a compound argument to catch
+mis-targeting; (15.9) used inside an `Integers` proof; two refusals; and two theorems at a SECOND carrier
+(`IntegralDomain<int64>`) to show the theory is generic. The (J) completeness fuzz now exercises the
+theorem-based normalizer (its scrambler keeps a local `a − b → a + b·(−1)`).
+
+**Gate.** Suite 138/138, `Induction.fsx` 112/112, SetTheory ALL PASS, AdversarialSweep ALL CLEAR (3556
+instantiations), IntegerAlgebra.

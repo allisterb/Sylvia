@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -26,6 +26,7 @@
     <Compile Include="Definitions\SetAlgebra.fs" />
     <Compile Include="Definitions\Combination.fs" />
     <Compile Include="Theories\BooleanAlgebra.fs" />
+    <Compile Include="Theories\IntegralDomain.fs" />
     <Compile Include="Theories\SetAlgebra.fs" />
     <Compile Include="Theories\Sums.fs" />
     <Compile Include="Theories\SetTheory.fs" />

@@ -10,7 +10,9 @@
 //       a proof by induction touches the order on ℤ;
 //   (D) a worked induction end to end: an inductively defined function (§12.2) `f.0 = 0`,
 //       `f(n+1) = f.n + 2`, and `(∀n | 0 ≤ n : f.n = 2·n)`;
-//   (E) `by_induction` refuses proofs of anything but the two obligations.
+//   (E) `by_induction` refuses proofs of anything but the two obligations;
+//   …
+//   (K) the integral-domain theorems of Gries ch.15 §15.1, which the ring normalizer of (J) rests on.
 //
 // The dummies are `IntVar`s — integer variables that are ALSO integer terms — so the statements are
 // written over the variables themselves: `2 * n`, `n + 1`, `f n`.
@@ -27,6 +29,7 @@ open Descriptions
 open PropCalculus
 open PredCalculus
 open Sums
+open Integers
 open Induction
 
 fsi.PrintWidth <- 300
@@ -317,7 +320,7 @@ let int_rules_preserve_value =
     let vs = [| Var("a", typeof<int>); Var("b", typeof<int>); Var("c", typeof<int>) |]
     let rec gen d : Expr =
         if d = 0 || rnd.Next 4 = 0 then (if rnd.Next 2 = 0 then Expr.Var vs.[rnd.Next 3] else Expr.Value(rnd.Next(-3, 4)))
-        else let l, r = gen (d - 1), gen (d - 1) in (match rnd.Next 3 with 0 -> call_add l r | 1 -> call_sub l r | _ -> call_mul l r)
+        else let l, r = gen (d - 1), gen (d - 1) in (match rnd.Next 4 with 0 -> call_add l r | 1 -> call_sub l r | 2 -> <@@ - (%%l : int) @@> | _ -> call_mul l r)
     let eval (e: Expr) (v: int[]) =
         FSharp.Quotations.Evaluator.QuotationEvaluator.EvaluateUntyped
             (e.Substitute(fun x -> vs |> Array.tryFindIndex (fun y -> y.Name = x.Name) |> Option.map (fun k -> Expr.Value v.[k]))) :?> int
@@ -335,29 +338,10 @@ ok "every Integers rewrite rule preserves value (14 rules × 600 random expressi
 
 named "shift_bound  0 ≤ n ⇒ 1 ≤ n+1"                     (fun () -> shift_bound ind zero n)
 
-// The arithmetic: both sides to n·n + (2n + 1). `n → n·1` uses the Identity axiom right-to-left,
-// which nothing in the logic can flip for an integer identity — so it is a local lemma proved by
-// rewriting the other side.
-let unit_mul_intro = ident ind ((n :> Term<int>) == (n * 1)) [ ax_ident ind ((n * 1) == (n :> Term<int>)) |> at_right ]
-let algebra127 =
-    theorem ind ((n * n + (2 * (n + 1) - 1)) == ((n + 1) * (n + 1))) [
-        Integers.distrib_mul_add |> at [left_branch; right_branch; left_branch]      // 2(n+1) → 2n + 2·1
-        Integers.reduce          |> at [left_branch; right_branch; left_branch]      // 2·1 → 2
-        Integers.assoc_add_sub   |> at [left_branch; right_branch]                   // (2n + 2) − 1 → 2n + (2 − 1)
-        Integers.reduce          |> at [left_branch; right_branch]                   // 2 − 1 → 1
-        Integers.distrib_mul_add |> at_right                                         // (n+1)·n + (n+1)·1
-        Integers.ident_mul       |> at [right_branch; right_branch]                  // (n+1)·1 → n+1
-        Integers.commute_mul     |> at [right_branch; left_branch]                   // (n+1)·n → n·(n+1)
-        Integers.distrib_mul_add |> at [right_branch; left_branch]                   // n·n + n·1
-        Integers.ident_mul       |> at [right_branch; left_branch; right_branch]     // n·1 → n
-        Integers.right_assoc_add |> at_right                                         // n·n + (n + (n+1))
-        Integers.left_assoc_add  |> at [right_branch; right_branch]                  // (n + n) + 1
-        unit_mul_intro           |> at [right_branch; right_branch; left_branch; left_branch]   // n → n·1
-        unit_mul_intro           |> at [right_branch; right_branch; left_branch; right_branch]  // n → n·1
-        Integers.collect_mul_add |> at [right_branch; right_branch; left_branch]     // n·(1+1)
-        Integers.reduce          |> at [right_branch; right_branch; left_branch]     // n·2
-        Integers.commute_mul     |> at [right_branch; right_branch; left_branch]     // 2n
-    ]
+// The arithmetic — Gries' "(Arithmetic)" step — by the ring normalizer (`Integers.ring_ident`, section J):
+// both sides go to one canonical polynomial, and every rewrite is an existing rule at an explicit
+// address, re-checked by the kernel. (It was sixteen hand-addressed rewrites before the normalizer.)
+let algebra127 = ring_ident ind (n * n + (2 * (n + 1) - 1)) ((n + 1) * (n + 1))
 named "algebra      n·n + (2(n+1) − 1) = (n+1)·(n+1)"     (fun () -> algebra127)
 
 // The hypothesis dummy must not occur in P.n at all — and P.n binds `i` inside its Σ — so it is `j`.
@@ -402,5 +386,104 @@ named "(12.7) BY INDUCTION   (∀n | 0 ≤ n : (Σi | 1 ≤ i ≤ n : 2i−1) = 
 ok "(12.7) is the statement Gries gives"
    (sequal (expand thm127.Stmt) (expand (qall n (leq zero n) ((qsum i ((leq (IntTerm 1) i) * (leq i n)) (2 * i - 1)) == (n * n))).Expr))
 
+printfn "\n===== (J) Ring normalization: Gries' \"(Arithmetic)\" step as a tactic ====="
+// `ring_ident th L R` rewrites both sides to one canonical polynomial and closes on syntactic
+// equality. It PRODUCES A PROOF — every step an existing rule at an explicit address, re-checked by
+// the kernel — so a bug in it can only make it fail. Completeness is what needs testing.
+let ringProves (label: string) (L: Term<int>) (R: Term<int>) = named label (fun () -> ring_ident ind L R)
+let ringRefuses (label: string) (L: Term<int>) (R: Term<int>) =
+    ok label (not (proves label (fun () -> ring_ident ind L R)))
+
+ringProves "square of a sum        (x+y)² = x² + 2xy + y²"   ((x + y) * (x + y)) (x * x + 2 * (x * y) + y * y)
+ringProves "difference of squares  (x+y)(x−y) = x² − y²"     ((x + y) * (x - y)) (x * x - y * y)
+ringProves "cube                   (x+1)³"                    ((x + 1) * ((x + 1) * (x + 1))) (x * (x * x) + 3 * (x * x) + 3 * x + 1)
+ringProves "cancellation           (x − x) + y·0 = 0"        (x - x + (y * 0)) zero
+ringProves "unary minus            −(x − y) = y − x"          (-(x - y)) (y - x)
+ringProves "atoms are opaque       f(n)·2 + f(n) = 3·f(n)"    (f n * 2 + f n) (3 * f n)
+ringRefuses "refuses an off-by-one  (x+1)² = x² + 2x"        ((x + 1) * (x + 1)) (x * x + 2 * x)
+ringRefuses "refuses a wrong cross term"                       ((x + y) * (x + y)) (x * x + x * y + y * y)
+ringRefuses "refuses x − y = y − x"                            (x - y) (y - x)
+
+// Completeness, fuzzed: a random expression scrambled by random value-preserving rule applications
+// must still be proved equal to itself; and on independent random pairs the tactic must succeed
+// EXACTLY when the two agree by evaluation.
+let ring_fuzz =
+    let rnd = System.Random(20261012)
+    let vs = [| Var("a", typeof<int>); Var("b", typeof<int>); Var("c", typeof<int>) |]
+    let rec gen d : Expr =
+        if d = 0 || rnd.Next 4 = 0 then (if rnd.Next 3 > 0 then Expr.Var vs.[rnd.Next 3] else Expr.Value(rnd.Next(-2, 4)))
+        else
+            match rnd.Next 7 with
+            | 0 | 1 -> call_add (gen (d - 1)) (gen (d - 1))
+            | 2 -> call_sub (gen (d - 1)) (gen (d - 1))
+            | 3 -> <@@ - (%%(gen (d - 1)) : int) @@>
+            | _ -> call_mul (gen (d - 1)) (gen (d - 1))
+    let eval (e: Expr) (v: int[]) =
+        FSharp.Quotations.Evaluator.QuotationEvaluator.EvaluateUntyped
+            (e.Substitute(fun x -> vs |> Array.tryFindIndex (fun y -> y.Name = x.Name) |> Option.map (fun k -> Expr.Value v.[k]))) :?> int
+    let sameValues e1 e2 = [ 1 .. 8 ] |> List.forall (fun _ -> let v = [| rnd.Next(-20, 21); rnd.Next(-20, 21); rnd.Next(-20, 21) |] in eval e1 v = eval e2 v)
+    // a − b → a + b·(−1), locally: the normalizer gets this from (15.14) and (15.20), not from a rule
+    let subToAddNeg (e: Expr) = match e with Subtract(a, b) -> <@@ (%%a: int) + (%%b: int) * -1 @@> | _ -> e
+    let scramblers = [| Integers._commute_add; Integers._commute_mul; Integers._distrib_mul_add; Integers._right_assoc_add
+                        Integers._left_assoc_add; Integers._right_assoc_mul; Integers._left_assoc_mul
+                        Integers._collect_mul_add; Integers._reduce_constants; subToAddNeg |]
+    let rec scrambleAt (e: Expr) : Expr =
+        match e, rnd.Next 3 with
+        | (Add _ | Subtract _ | Multiply _), 1 -> (match e with Patterns.Call(None, m, [l; r]) -> Expr.Call(m, [ scrambleAt l; r ]) | _ -> e)
+        | (Add _ | Subtract _ | Multiply _), 2 -> (match e with Patterns.Call(None, m, [l; r]) -> Expr.Call(m, [ l; scrambleAt r ]) | _ -> e)
+        | _ -> scramblers.[rnd.Next scramblers.Length] e
+    let proves (e1: Expr) (e2: Expr) =
+        try ring_ident ind (IntTerm(expand_as<int> e1)) (IntTerm(expand_as<int> e2)) |> ignore; true with _ -> false
+    let equalPairs = [ 1 .. 100 ] |> List.forall (fun _ -> let e = gen 3 in proves e (Seq.fold (fun acc _ -> scrambleAt acc) e [ 1 .. 6 ]))
+    let agree = [ 1 .. 100 ] |> List.forall (fun _ -> let e1, e2 = gen 2, gen 2 in proves e1 e2 = sameValues e1 e2)
+    equalPairs, agree
+ok "completeness: 100 scrambled pairs all proved equal"                (fst ring_fuzz)
+ok "100 independent pairs: proved exactly when equal by evaluation"    (snd ring_fuzz)
+
+printfn "\n===== (K) Integral domains (Gries ch.15 §15.1): the theorems behind (Arithmetic) ====="
+// `Integers` is an `IntegralDomain<int>`: its ring axioms are Gries' (15.1)–(15.7), (15.13), (15.14),
+// stated once for any carrier, and (15.8)–(15.29) are THEOREMS proved from them in `IntegralDomain.fs`.
+// The ring normalizer of (J) gets minus and zero from three of them — (15.9), (15.14), (15.20) —
+// where it previously used three trusted rewrite rules.
+let dom = induction :> IntegralDomain.IntegralDomain<int>
+let proved (label: string) (f: unit -> Rule) =
+    ok label (try (match f () with Derive(_, p, _) -> p.Complete | _ -> false) with e -> why label e)
+let xe, ye, ze, we = x.Expr, y.Expr, (IntVar "z").Expr, (IntVar "w").Expr
+let xy = (x + y).Expr                                      // a compound argument, to catch mis-targeting
+proved "(15.8)  cancellation   (a + b = a + c) = (b = c)"   (fun () -> IntegralDomain.cancel_add dom xe ye ze)
+proved "(15.9)  zero           a·0 = 0"                     (fun () -> IntegralDomain.zero_mul dom xy)
+proved "(15.10a) unique zero   (a + z = a) = (z = 0)"       (fun () -> IntegralDomain.unique_zero dom xe ze)
+named  "(15.10b) unique one    a ≠ 0 ⇒ ((a·z = a) = (z = 1))" (fun () -> IntegralDomain.unique_one dom xe ze)
+proved "(15.11) zero divisors  (a·b = 0) = (a = 0 ∨ b = 0)" (fun () -> IntegralDomain.zero_divisors dom xe ye)
+named  "(15.12) unique inverse"                              (fun () -> IntegralDomain.unique_inverse dom xe ye ze)
+proved "(15.15) (x + a = 0) = (x = −a)"                     (fun () -> IntegralDomain.add_eq_zero dom xe ye)
+proved "(15.16) (−a = −b) = (a = b)"                        (fun () -> IntegralDomain.neg_eq dom xe ye)
+proved "(15.17) −(−a) = a"                                  (fun () -> IntegralDomain.neg_neg dom xy)
+proved "(15.18) −0 = 0"                                     (fun () -> IntegralDomain.neg_zero dom)
+proved "(15.19) −(a + b) = (−a) + (−b)"                     (fun () -> IntegralDomain.neg_add dom xe ye)
+proved "(15.20) −a = (−1)·a"                                (fun () -> IntegralDomain.neg_as_mul dom xy)
+proved "(15.21) (−a)·b = a·(−b)"                            (fun () -> IntegralDomain.neg_mul_comm dom xe ye)
+proved "(15.22) a·(−b) = −(a·b)"                            (fun () -> IntegralDomain.mul_neg dom xe ye)
+proved "(15.23) (−a)·(−b) = a·b"                            (fun () -> IntegralDomain.neg_mul_neg dom xe ye)
+proved "(15.24) a − 0 = a"                                  (fun () -> IntegralDomain.sub_zero dom xe)
+proved "(15.25) (a − b) + (c − d) = (a + c) − (b + d)"      (fun () -> IntegralDomain.sub_add_sub dom xe ye ze we)
+proved "(15.26) (a − b) − (c − d) = (a + d) − (b + c)"      (fun () -> IntegralDomain.sub_sub_sub dom xe ye ze we)
+proved "(15.27) (a − b)·(c − d) = (a·c + b·d) − (a·d + b·c)" (fun () -> IntegralDomain.sub_mul_sub dom xe ye ze we)
+proved "(15.28) (a − b = c − d) = (a + d = b + c)"          (fun () -> IntegralDomain.sub_eq_sub dom xe ye ze we)
+proved "(15.29) (a − b)·c = a·c − b·c"                      (fun () -> IntegralDomain.sub_mul dom xe ye ze)
+named  "used in an Integers proof   (x − y)·0 = 0"
+    (fun () -> theorem ind ((x - y) * zero == zero) [ IntegralDomain.zero_mul dom (x - y).Expr |> at_left ])
+ok "refuses x·0 = x by (15.9)"
+    (not (proves "x·0 = x" (fun () -> theorem ind (x * zero == x) [ IntegralDomain.zero_mul dom xe |> at_left ])))
+ok "(15.9) for x does not rewrite y·0"
+    (not (proves "y·0 = 0 by x·0" (fun () -> theorem ind (y * zero == zero) [ IntegralDomain.zero_mul dom xe |> at_left ])))
+
+// The theory is GENERIC: the same theorems, at a second carrier.
+let ops64 : IntegralDomain.DomainOps<int64> =
+    { Name = "Int64"; Add = <@ (+) @>; Mul = <@ (*) @>; Zero = <@ 0L @>; One = <@ 1L @>; Neg = <@ (~-) @>; Sub = <@ (-) @> }
+let dom64 = IntegralDomain.IntegralDomain<int64>(ops64)
+let p64, q64 = Expr.Var(Var("p", typeof<int64>)) |> Expr.Cast<int64>, Expr.Var(Var("q", typeof<int64>)) |> Expr.Cast<int64>
+proved "(15.23) at int64   (−p)·(−q) = p·q"                 (fun () -> IntegralDomain.neg_mul_neg dom64 p64 q64)
+proved "(15.11) at int64   (p·q = 0) = (p = 0 ∨ q = 0)"     (fun () -> IntegralDomain.zero_divisors dom64 p64 q64)
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1

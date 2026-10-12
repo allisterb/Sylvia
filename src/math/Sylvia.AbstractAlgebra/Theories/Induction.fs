@@ -1,4 +1,4 @@
-﻿namespace Sylvia
+namespace Sylvia
 // A bare rule as a proof step implicitly means "apply to the whole expression" (Rule -> RuleApplication).
 #nowarn "3391"
 
@@ -128,17 +128,18 @@ module Induction =
 
     (* Theory *)
 
-    /// Integer arithmetic, Σ (`Sums`), and (12.8). A caller with its own axioms — the two equations
+    /// Integer arithmetic — an integral domain at `int` (`Integers` inherits `IntegralDomain<int>`) —
+    /// Σ (`Sums`), and (12.8). It INHERITS `Integers`, so every integral-domain theorem proved in an
+    /// `IntegralDomain<int>` is usable here. A caller with its own axioms — the two equations
     /// of an inductively defined function, say (§12.2) — passes them in, so that everything a proof
     /// by induction touches lives in ONE theory: the base case, the inductive case, and the axiom
     /// instance the two are detached from must all be proved in the same one. Σ is here because the
     /// classic inductions are about sums, and Split off term (below) needs Σ's axioms and the
     /// integer order in the same theory.
     type Induction(?axioms: Axioms, ?rules: Rules) =
-        inherit Theory(BooleanAlgebra.combine_axioms (defaultArg axioms (fun _ -> None))
-                         (BooleanAlgebra.combine_axioms induction_axioms
-                            (BooleanAlgebra.combine_axioms Sums.sum_axioms Integers.integer_axioms)),
-                       (defaultArg rules []) @ Integers.integers.Rules)
+        inherit Integers.Integers(BooleanAlgebra.combine_axioms (defaultArg axioms (fun _ -> None))
+                                    (BooleanAlgebra.combine_axioms induction_axioms Sums.sum_axioms),
+                                  defaultArg rules [])
 
     /// The theory: integer arithmetic, Σ, and (12.8), with nothing extra.
     let induction = Induction()

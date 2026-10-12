@@ -1,4 +1,4 @@
-﻿namespace Sylvia
+namespace Sylvia
 
 open FSharp.Quotations
 open FSharp.Quotations.Patterns
@@ -41,34 +41,44 @@ module BooleanAlgebra =
 
     (* Expression functions for admitted rules *)
     
+    // Operator-splicing results are expanded: spliced, they are unreduced applications of the operator
+    // lambda, which the kernel's later steps could not handle (a NullReferenceException on the very next
+    // step), so these rules had never worked inside a proof.
+    //
+    // The meet case used to rebuild with JOIN — `(a ∧ b) ∧ c → a ∨ (b ∨ c)`, for sets
+    // `(S ∩ T) ∩ U → S ∪ (T ∪ U)` — the same slip as Integers' right-associativity of `·`.
     let rec _right_assoc (join: Expr<'t->'t->'t>) (meet: Expr<'t->'t->'t>) =
         function
-        | Binary join (Binary join (a1, a2), a3) -> <@@ (%join) %%a1  ((%join) %%a2 %%a3) @@>
-        | Binary meet (Binary meet (a1, a2), a3) -> <@@ (%join) %%a1  ((%join) %%a2 %%a3) @@>
+        | Binary join (Binary join (a1, a2), a3) -> expand <@@ (%join) %%a1  ((%join) %%a2 %%a3) @@>
+        | Binary meet (Binary meet (a1, a2), a3) -> expand <@@ (%meet) %%a1  ((%meet) %%a2 %%a3) @@>
         | expr -> traverse expr (_right_assoc join meet)
 
     let rec _left_assoc (join: Expr<'t->'t->'t>) (meet: Expr<'t->'t->'t>) =
         function
-        | Binary join (a1, Binary join (a2, a3)) -> <@@ (%join) ((%join) %%a1 %%a2) %%a3 @@>
-        | Binary meet (a1, Binary meet (a2, a3)) -> <@@ (%meet) ((%meet) %%a1 %%a2) %%a3 @@>
+        | Binary join (a1, Binary join (a2, a3)) -> expand <@@ (%join) ((%join) %%a1 %%a2) %%a3 @@>
+        | Binary meet (a1, Binary meet (a2, a3)) -> expand <@@ (%meet) ((%meet) %%a1 %%a2) %%a3 @@>
         | expr -> traverse expr (_left_assoc join meet)
 
     let rec _commute (join: Expr<'t->'t->'t>) (meet: Expr<'t->'t->'t>) =
         function
-        | Binary join (a1, a2) -> <@@ (%join) %%a2 %%a1 @@>
-        | Binary meet (a1, a2) -> <@@ (%meet) %%a2 %%a1 @@>
+        | Binary join (a1, a2) -> expand <@@ (%join) %%a2 %%a1 @@>
+        | Binary meet (a1, a2) -> expand <@@ (%meet) %%a2 %%a1 @@>
         | expr -> traverse expr (_commute join meet)
 
+    // `_idemp` and `_ident` never worked: `<@@ %%a1 @@>` in a generic function splices `a1` at `obj`,
+    // so it threw a type mismatch at every instantiation but `obj`; and `Val zero` compares a VALUE of
+    // type `Expr<'t>` with the expression node, so it never matched — for sets, ∅ is not even a literal.
+    // The result is just `a1`, and the identity is matched structurally.
     let rec _idemp (join: Expr<'t->'t->'t>) (meet: Expr<'t->'t->'t>) (zero: Expr<'t>)  (one: Expr<'t>) (comp:Expr<'t -> 't>) =
          function
-         | Binary join (a1, a2) when sequal a1 a2 -> <@@ %%a1 @@>
-         | Binary meet (a1, a2) when sequal a1 a2 -> <@@ %%a1 @@> 
+         | Binary join (a1, a2) when sequal a1 a2 -> a1
+         | Binary meet (a1, a2) when sequal a1 a2 -> a1
          | expr -> traverse expr (_idemp join meet zero one comp)
 
     let rec _ident (join: Expr<'t->'t->'t>) (meet: Expr<'t->'t->'t>) (zero: Expr<'t>)  (one: Expr<'t>) (comp:Expr<'t -> 't>) =
          function
-         | Binary join (a1, Val zero _) -> <@@ %%a1 @@>
-         | Binary meet (a1, Val one _) -> <@@ %%a1 @@>
+         | Binary join (a1, z) when sequal z (expand zero.Raw) -> a1
+         | Binary meet (a1, o) when sequal o (expand one.Raw) -> a1
          | expr -> traverse expr (_ident join meet zero one comp)
 
     let rec _comp (join: Expr<'t->'t->'t>) (meet: Expr<'t->'t->'t>) (zero: Expr<'t>) (one: Expr<'t>) (comp:Expr<'t -> 't>) =
@@ -81,9 +91,9 @@ module BooleanAlgebra =
     let rec _distrib (join: Expr<'t->'t->'t>) (meet: Expr<'t->'t->'t>) =
         function
         // x * ( y + z) == x * y + x * z
-        | Binary meet (a1, Binary join (a2, a3)) -> <@@ (%join) ((%meet) %%a1 %%a2)  ((%meet) %%a1 %%a3) @@> 
+        | Binary meet (a1, Binary join (a2, a3)) -> expand <@@ (%join) ((%meet) %%a1 %%a2)  ((%meet) %%a1 %%a3) @@> 
         // x + ( y * z) == x + y * x * z
-        | Binary join (a1, Binary meet (a2, a3)) -> <@@ (%meet) ((%join) %%a1 %%a2)  ((%join) %%a1 %%a3) @@> 
+        | Binary join (a1, Binary meet (a2, a3)) -> expand <@@ (%meet) ((%join) %%a1 %%a2)  ((%join) %%a1 %%a3) @@> 
         | expr -> traverse expr (_distrib join meet)
 
     (* Admitted rules *)
