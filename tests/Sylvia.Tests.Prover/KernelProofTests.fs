@@ -962,8 +962,19 @@ type InstantiateTests() =
         // discharges `¬occurs_free` side conditions that substitution can invalidate. Neither is
         // covered by the admissibility argument, so the whole case is out of scope by construction.
         let x = intvar "x"
-        let quantified = PredCalculus.forall_conseq x p            // p ⇒ (∀ x |: p)
-        Assert.True(fails (fun () -> Tactics.Instantiate quantified [ p, q ]))
+        let quantified = PredCalculus.forall_conseq x a            // ?a ⇒ (∀ x |: ?a)
+        Assert.True(fails (fun () -> Tactics.Instantiate quantified [ a, q ]))
+
+    [<Fact>]
+    member _.``only schema METAVARIABLES are substituted for`` () =
+        // A theory may name a propositional variable in an axiom (a hypothesis `p`, a definition),
+        // making it a constant of that theory rather than a schema position: substituting F for it
+        // would prove F. Only `?`-variables, minted by Schema after the theory exists, qualify.
+        let plain = PropCalculus.reflex_implies (p ==> q)
+        Assert.True(fails (fun () -> Tactics.Instantiate plain [ p, r ]))
+        // the same statement over metavariables instantiates as before
+        let schematic = PropCalculus.reflex_implies (a ==> b)
+        Assert.True((Tactics.Instantiate schematic [ a, r ]).Proof.Complete)
 
     [<Fact>]
     member _.``Schema wrappers agree with the functions they wrap`` () =
@@ -982,3 +993,73 @@ type InstantiateTests() =
         let step = Calc.chain_imp (PropCalculus.reflex_implies (p * q)) (PropCalculus.strengthen_and p q)
         Assert.True(sequal step.Stmt (expand ((p * q) ==> p).Expr))
         Assert.True(sequal t1.Stmt (PropCalculus.strengthen_and p q).Stmt)
+
+/// Tests for `Tactics.InstantiateTerms` — Gries' Substitution rule at TERM metavariables. Its soundness
+/// argument is semantic and needs the substituted variable to be unconstrained, so the domain is
+/// restricted to `?`-metavariables; these check that restriction and the other guards.
+type InstantiateTermsTests() =
+    inherit Sylvia.Tests.Prover.TestsRuntime()
+
+    do Proof.LogLevel <- 0
+
+    let iv (name: string) = Expr.Var(Var(name, typeof<int>))
+    let m, n = iv "?m", iv "?n"
+    let x, y = iv "x", iv "y"
+    let eq (l: Expr) (r: Expr) = Prop(expand_as<bool> (Expr.Cast<bool> <@@ (%%l: int) = (%%r: int) @@>))
+    let plus1 (e: Expr) = <@@ (%%e: int) + 1 @@>
+    let fails (f: unit -> 'a) = try f () |> ignore; false with _ -> true
+
+    /// `(?m + 1 = ?n) ⇒ (?m + 1 = ?n)`, by instantiating Reflexivity of ⇒ at a proposition that
+    /// contains integer arithmetic.
+    let schema () =
+        let pv = boolvar "?p"
+        Tactics.Instantiate (PropCalculus.reflex_implies pv) [ pv, eq (plus1 m) n ]
+
+    [<Fact>]
+    member _.``Instantiate accepts statements with integer arithmetic`` () =
+        // REGRESSION: the binder guard walked into the trait-call witnesses F# attaches to inline
+        // operators (closed lambdas implementing `+`), and refused every such statement.
+        Assert.True((schema ()).Proof.Complete)
+
+    [<Fact>]
+    member _.``instantiating term metavariables gives exactly the theorem replaying gives`` () =
+        let xy = <@@ (%%x: int) * (%%y: int) @@>
+        let inst = Tactics.InstantiateTerms (schema ()) [ m, xy; n, <@@ 3 @@> ]
+        let replayed = PropCalculus.reflex_implies (eq (plus1 xy) <@@ 3 @@>)
+        Assert.True(sequal inst.Stmt replayed.Stmt, sprintf "instantiated %s, replay gives %s" (src inst.Stmt) (src replayed.Stmt))
+        Assert.True(inst.Proof.Complete)
+
+    [<Fact>]
+    member _.``the term substitution is simultaneous`` () =
+        let inst = Tactics.InstantiateTerms (schema ()) [ m, n; n, m ]
+        let expected = PropCalculus.reflex_implies (eq (plus1 n) m)
+        Assert.True(sequal inst.Stmt expected.Stmt, sprintf "expected %s, got %s" (src expected.Stmt) (src inst.Stmt))
+
+    [<Fact>]
+    member _.``only schema metavariables may be substituted for`` () =
+        // An ordinary variable may be named by a theory's axioms (a defined function, a hypothesis
+        // such as c = 3), and substituting for it is unsound — so it is refused outright.
+        let plain = PropCalculus.reflex_implies (eq (plus1 x) y)
+        Assert.True(fails (fun () -> Tactics.InstantiateTerms plain [ x, <@@ 5 @@> ]))
+        // a compound term is not a variable at all
+        Assert.True(fails (fun () -> Tactics.InstantiateTerms (schema ()) [ plus1 m, x ]))
+
+    [<Fact>]
+    member _.``values must have their variable's type, and each variable appears once`` () =
+        Assert.True(fails (fun () -> Tactics.InstantiateTerms (schema ()) [ m, <@@ true @@> ]))
+        Assert.True(fails (fun () -> Tactics.InstantiateTerms (schema ()) [ m, x; m, y ]))
+
+    [<Fact>]
+    member _.``a Schema wrapper derives once and instantiates per call`` () =
+        let calls = ref 0
+        let f (e: Expr<int>) =
+            calls.Value <- calls.Value + 1
+            Ident (PropCalculus.reflex_implies (eq (plus1 e.Raw) e.Raw))
+        let s = Tactics.Schema.t1 "test" f
+        let r1, r2 = s (Expr.Cast<int> x), s (Expr.Cast<int> <@@ (%%x: int) * (%%y: int) @@>)
+        Assert.Equal(1, calls.Value)
+        match r1, r2 with
+        | Derive(_, p1, _), Derive(_, p2, _) ->
+            Assert.True(sequal p1.Stmt (PropCalculus.reflex_implies (eq (plus1 x) x)).Stmt)
+            Assert.True(p1.Complete && p2.Complete)
+        | _ -> Assert.Fail "Schema.t1 did not return derived rules"

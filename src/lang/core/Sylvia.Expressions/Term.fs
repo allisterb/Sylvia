@@ -1,4 +1,4 @@
-﻿namespace Sylvia
+namespace Sylvia
 
 open System
 open System.Collections.Generic
@@ -145,6 +145,10 @@ and IntTerm(expr: Expr<int>) =
     /// Unary minus. F#'s `~-` is typed `^a -> ^a`, so it does not apply to an `IntVar` directly
     /// (it would have to return an `IntVar`): write `-(n :> IntTerm)`, as with `SetVar`.
     static member (~-) (l: IntTerm) = <@ - %l.Expr @> |> expand_as<int> |> IntTerm
+    /// `t = c` / `c = t` with an integer literal — exactly the tree `t == IntTerm c` builds. Overloads,
+    /// not an implicit conversion: F# never applies conversions during operator resolution.
+    static member (==) (l: IntTerm, r: int) = (l :> Term<int>) == (IntTerm r :> Term<int>)
+    static member (==) (l: int, r: IntTerm) = (IntTerm l :> Term<int>) == (r :> Term<int>)
 
 /// An integer VARIABLE that is also an integer TERM — the `SetVar` design, at `int`.
 ///
@@ -733,6 +737,7 @@ type Pred<'t when 't: equality>(?func:Expr<'t -> bool>, ?symbol:string) =
     override x.ToString() = x.Prop.ToString()
 
     member x.Item(arg:Term<'t>) = Expr.Application(x.Func, arg.Expr) |> expand_as<bool> |> Prop
+
     
     static member op_Implicit(expr:Expr<'t -> bool>) :Pred<'t> = Pred<'t> expr
     
@@ -762,6 +767,17 @@ type Pred<'t when 't: equality>(?func:Expr<'t -> bool>, ?symbol:string) =
        let func = <@ fun (x:'t) -> (%l.Func) x ===> (%r.Func) x @>
        let symbol = sprintf "(%s ⇒ %s)" l.Symbol r.Symbol
        Pred(func = func, symbol = symbol)
+
+/// A predicate over the integers that can also be applied to an integer LITERAL: `P.[0]` is exactly
+/// `P.[IntTerm 0]`. A subclass rather than a second indexer on `Pred<'t>`: an `Item('t)` overload
+/// there made every `P.[x]` whose `'t` was still being inferred ambiguous (`'t` could be `x`'s own
+/// type), which broke callers that rely on the indexer to fix it. `intpred` and
+/// `Induction.pred_of` return one; the `Pred` operators (`*`, `+`, …) still return a `Pred<int>`.
+type IntPred(?func:Expr<int -> bool>, ?symbol:string) =
+    inherit Pred<int>(?func = func, ?symbol = symbol)
+    member x.Item(n:int) = x.[IntTerm n :> Term<int>]
+    /// Negation. F#'s unary `~-` is typed `^a -> ^a`, so the inherited `Pred` one, returning a`n    /// `Pred<int>`, does not apply to an `IntPred` at all: `-P` would not compile.
+    static member (~-) (l:IntPred) : IntPred = let p = -(l :> Pred<int>) in IntPred(func = p.Func, symbol = p.Symbol)
 
 [<RequireQualifiedAccess>]
 module NumericLiteralR = 
@@ -995,8 +1011,20 @@ module Pred =
 
     let realpred s = symbolic_pred<real> s
 
-    let intpred s = symbolic_pred<int> s
+    let intpred s = IntPred(symbol=s)
 
     let ratpred s = symbolic_pred<rat> s
 
     let boolpred s = symbolic_pred<bool> s
+
+/// An `int` OR any `Term<int>` where an integer term is expected, for let-bound functions — which
+/// cannot be overloaded, and at which an implicit conversion would not fire for `Term<int>`
+/// parameters. A function written `let inline f lo = let lo = int_term lo in …` accepts `0`, an
+/// `IntVar`, `n + 1`, or any other `Term<int>`; `int_term 0` is exactly `IntTerm 0`.
+[<AutoOpen>]
+module IntArgs =
+    type IntArg = IntArg with
+        static member ($) (IntArg, x: int) : Term<int> = upcast IntTerm x
+        static member ($) (IntArg, x: Term<int>) : Term<int> = x
+
+    let inline int_term x : Term<int> = IntArg $ x

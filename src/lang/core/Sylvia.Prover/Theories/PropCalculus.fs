@@ -1539,7 +1539,7 @@ module PropCalculus =
         if not (sequal (expand ant.Stmt) (expand a.Expr)) then
             failwithf "mp: the antecedent proved is\n  %s\nbut the implication needs\n  %s"
                 (theory.PrintFormula (expand ant.Stmt)) (theory.PrintFormula (expand a.Expr))
-        theorem theory b [
+        lemma theory b [
             ident_conseq_true b |> Commute |> apply     // B → (T ⇒ B)
             Taut ant |> Commute |> at_left              // T → A
             Taut imp |> apply                           // (A ⇒ B) → T
@@ -1551,7 +1551,7 @@ module PropCalculus =
     let conj (l: Theorem) (r: Theorem) : Theorem =
         let theory = l.Proof.Theory
         let lp, rp = Prop(Expr.Cast<bool> l.Stmt), Prop(Expr.Cast<bool> r.Stmt)
-        theorem theory (lp * rp) [
+        lemma theory (lp * rp) [
             Taut l |> at_left
             Taut r |> at_right
             reduce

@@ -47,7 +47,6 @@ let n = IntVar "n"
 let i = IntVar "i"
 let m = IntVar "m"
 let k = IntVar "k"
-let zero = IntTerm 0
 
 printfn "\n===== (A) (12.8) Mathematical Induction over {n₀, n₀+1, …} ====="
 
@@ -55,18 +54,25 @@ let P = intpred "P"
 let ind = induction :> Theory
 
 // P.n₀ ∧ (∀n | n₀ ≤ n : (∀i | n₀ ≤ i ∧ i ≤ n : P.i) ⇒ P(n+1))  ⇒  (∀n | n₀ ≤ n : P.n)
-let ax0 = induction_axiom zero n i P
+let ax0 = induction_axiom 0 n i P
+// Bounds, predicate arguments and `==` take plain ints (`int_term`, `IntPred`, `IntTerm.(==)`);
+// each builds EXACTLY the tree its `IntTerm` form does — the kernel matches syntactically.
+ok "int literals build the same terms as IntTerm literals"
+   (sequal (leq 0 n).Expr (leq (IntTerm 0) n).Expr
+    && sequal P.[0].Expr P.[IntTerm 0].Expr
+    && sequal (n == 0).Expr (n == IntTerm 0).Expr && sequal (0 == n).Expr (IntTerm 0 == n).Expr
+    && sequal ax0.Expr (induction_axiom (IntTerm 0) n i P).Expr)
 printfn "  (12.5)  %s" (ind.PrintFormula (expand ax0.Expr))
 ok "(12.5) induction over ℕ is an axiom of the theory"      (ind.AxEquiv ax0.Expr)
 ok "(12.5) is NOT an axiom of the ambient logic"            (not (Theory.S.AxEquiv ax0.Expr))
 
 // The base point is a parameter: (12.5) is the n₀ := 0 instance of (12.8), not a separate axiom.
 ok "(12.8) at a symbolic base point n₀ = k"                 (ind.AxEquiv (induction_axiom k n i P).Expr)
-ok "(12.8) at base point 1"                                 (ind.AxEquiv (induction_axiom (IntTerm 1) n i P).Expr)
+ok "(12.8) at base point 1"                                 (ind.AxEquiv (induction_axiom 1 n i P).Expr)
 
 // The API takes any `#ISymbolicVar<int>`: a dummy with no arithmetic of its own works as well.
 ok "(12.8) with ElemVar dummies, which carry no arithmetic"
-   (ind.AxEquiv (induction_axiom zero (ElemVar<int> "n") (ElemVar<int> "i") P).Expr)
+   (ind.AxEquiv (induction_axiom 0 (ElemVar<int> "n") (ElemVar<int> "i") P).Expr)
 
 printfn "\n===== (B) The side conditions are checked ====="
 // `P` is not a syntactic argument of an axiom — the recognizer sees only the statement — so the
@@ -76,39 +82,39 @@ printfn "\n===== (B) The side conditions are checked ====="
 let mk (bse: Prop) (stp: Prop) (con: Prop) = ((bse * stp) ==> con)
 
 ok "wrong base case (P.1 against a conclusion from 0) rejected"
-   (not (ind.AxEquiv (mk P.[IntTerm 1] (inductive_case zero n i P) (conclusion zero n P)).Expr))
+   (not (ind.AxEquiv (mk P.[1] (inductive_case 0 n i P) (conclusion 0 n P)).Expr))
 ok "wrong step consequent (P(n+2)) rejected"
-   (not (ind.AxEquiv (mk P.[zero]
-                         (qall n (leq zero n) ((hypothesis zero n i P) ==> P.[n + 2]))
-                         (conclusion zero n P)).Expr))
+   (not (ind.AxEquiv (mk P.[0]
+                         (qall n (leq 0 n) ((hypothesis 0 n i P) ==> P.[n + 2]))
+                         (conclusion 0 n P)).Expr))
 ok "a strict hypothesis range (i < n) rejected"
-   (not (ind.AxEquiv (mk P.[zero]
-                         (qall n (leq zero n)
-                               ((qall i ((leq zero i) * (Prop <@ %i.Expr < %n.Expr @>)) P.[i]) ==> P.[n + 1]))
-                         (conclusion zero n P)).Expr))
+   (not (ind.AxEquiv (mk P.[0]
+                         (qall n (leq 0 n)
+                               ((qall i ((leq 0 i) * (Prop <@ %i.Expr < %n.Expr @>)) P.[i]) ==> P.[n + 1]))
+                         (conclusion 0 n P)).Expr))
 ok "step and conclusion quantifying different dummies rejected"
-   (not (ind.AxEquiv (mk P.[zero] (inductive_case zero m i P) (conclusion zero n P)).Expr))
+   (not (ind.AxEquiv (mk P.[0] (inductive_case 0 m i P) (conclusion 0 n P)).Expr))
 ok "the two dummies being the SAME variable rejected"
-   (not (ind.AxEquiv (mk P.[zero] (inductive_case zero n n P) (conclusion zero n P)).Expr))
+   (not (ind.AxEquiv (mk P.[0] (inductive_case 0 n n P) (conclusion 0 n P)).Expr))
 ok "base points that disagree rejected"
-   (not (ind.AxEquiv (mk P.[zero] (inductive_case (IntTerm 1) n i P) (conclusion zero n P)).Expr))
+   (not (ind.AxEquiv (mk P.[0] (inductive_case 1 n i P) (conclusion 0 n P)).Expr))
 // A base point mentioning a dummy would be CAPTURED by the range that quantifies it.
 ok "a base point mentioning the dummy rejected"
    (not (ind.AxEquiv (induction_axiom n n i P).Expr))
 // A P mentioning `i` would have its `i` captured when the hypothesis body is formed.
 let Pi = pred_of n (P.[i] * P.[n])
 ok "a predicate mentioning the hypothesis dummy rejected"
-   (not (ind.AxEquiv (induction_axiom zero n i Pi).Expr))
+   (not (ind.AxEquiv (induction_axiom 0 n i Pi).Expr))
 // A P that re-binds n inside itself would have that binder substituted under.
-let Pbind = pred_of n (qall n (leq zero n) P.[n])
+let Pbind = pred_of n (qall n (leq 0 n) P.[n])
 ok "a predicate re-binding the dummy rejected"
-   (not (ind.AxEquiv (induction_axiom zero n i Pbind).Expr))
+   (not (ind.AxEquiv (induction_axiom 0 n i Pbind).Expr))
 
 printfn "\n===== (C) The inductive hypothesis, at its own upper bound ====="
 // (n₀ ≤ n ∧ (∀i | n₀ ≤ i ∧ i ≤ n : P.i)) ⇒ P.n — Trading (9.2), Instantiation (9.13), and the one
 // order fact induction needs, reflexivity of ≤. Both premises are load-bearing: `n₀ ≤ n` is what
 // discharges the instance's range obligation, and it can come from nowhere else.
-named "hypothesis_at:  (n₀ ≤ n ∧ IH) ⇒ P.n"  (fun () -> hypothesis_at ind zero n i P)
+named "hypothesis_at:  (n₀ ≤ n ∧ IH) ⇒ P.n"  (fun () -> hypothesis_at ind 0 n i P)
 named "hypothesis_at at a symbolic base point" (fun () -> hypothesis_at ind k n i P)
 ok "reflexivity of ≤ is an axiom (Integers)"   (ind.AxEquiv ((leq n n) == T).Expr)
 ok "≤ is NOT symmetric-by-accident: n ≤ m is not an axiom"
@@ -119,7 +125,7 @@ printfn "\n===== (D) A worked induction: an inductively defined function (§12.2
 // The caller's axioms are passed to the theory, so the base case, the inductive case and the
 // induction axiom instance all live in ONE theory, which is what lets them be detached.
 let fv = Var("f", typeof<int -> int>)
-let f (x: Term<int>) : IntTerm = IntTerm(Expr.Application(Expr.Var fv, x.Expr) |> expand_as<int>)
+let inline f x : IntTerm = let x = int_term x in IntTerm(Expr.Application(Expr.Var fv, x.Expr) |> expand_as<int>)
 
 let (|FApp|_|) =
     function
@@ -134,22 +140,22 @@ let f_axioms =
     | _ -> None
 
 let th = Induction(f_axioms) :> Theory
-ok "f.0 = 0 is an axiom of the extended theory"        (th.AxEquiv ((f zero) == zero).Expr)
+ok "f.0 = 0 is an axiom of the extended theory"        (th.AxEquiv ((f 0) == 0).Expr)
 ok "f(n+1) = f.n + 2 is an axiom"                      (th.AxEquiv ((f (n + 1)) == (f n + 2)).Expr)
 ok "(12.8) survives the extension"                     (th.AxEquiv ax0.Expr)
-ok "the extension is not free: f.n = 0 is no axiom"    (not (th.AxEquiv ((f n) == zero).Expr))
+ok "the extension is not free: f.n = 0 is no axiom"    (not (th.AxEquiv ((f n) == 0).Expr))
 
 // P.n :  f.n = 2·n
 let Pf = pred_of n ((f n) == (2 * n))
-let a = leq zero n
-let ih = hypothesis zero n i Pf
+let a = leq 0 n
+let ih = hypothesis 0 n i Pf
 let pn1 = Pf.[n + 1]
 let rhs = 2 * n + 2
 
 // Base case: f.0 = 2·0 — the definition, then constant folding.
 let bse =
-    theorem th (base_case zero Pf) [
-        ax_ident th ((f zero) == zero) |> at_left
+    theorem th (base_case 0 Pf) [
+        ax_ident th ((f 0) == 0) |> at_left
         Integers.reduce
     ]
 
@@ -159,7 +165,7 @@ let body =
     theorem th (a ==> (ih ==> pn1)) [
         (shunt' a ih pn1 |> Commute) |> apply                                 // → (0 ≤ n ∧ IH) ⇒ P(n+1)
         ax_ident th ((f (n + 1)) == (f n + 2)) |> at [right_branch; left_branch]
-        Deduce' (hypothesis_at th zero n i Pf) |> apply_right                 // f.n → 2·n, from the IH
+        Deduce' (hypothesis_at th 0 n i Pf) |> apply_right                 // f.n → 2·n, from the IH
         Integers.distrib_mul_add |> at [right_branch; right_branch]           // 2·(n+1) → 2·n + 2·1
         Integers.reduce |> at [right_branch; right_branch]                    // 2·1 → 2
         ax_ident th (T == (rhs == rhs)) |> Commute |> at_right
@@ -168,7 +174,7 @@ let body =
 // Generalize the body over n: Trading (9.2) puts the range in the body, the body is replaced by its
 // own theorem, and `(∀n |: T) = T` closes it.
 let stp =
-    theorem th (inductive_case zero n i Pf) [
+    theorem th (inductive_case 0 n i Pf) [
         trade_forall_implies n (pred_of n a) (pred_of n (ih ==> pn1)) |> apply
         Taut body |> at [select_body]
         ident_forall_true' n
@@ -177,9 +183,9 @@ let stp =
 named "base case      f.0 = 2·0"                                  (fun () -> bse)
 named "body of step   0 ≤ n ⇒ (IH ⇒ f(n+1) = 2·(n+1))"            (fun () -> body)
 named "inductive case (∀n | 0 ≤ n : IH ⇒ P(n+1))"                 (fun () -> stp)
-named "BY INDUCTION   (∀n | 0 ≤ n : f.n = 2·n)"                   (fun () -> by_induction th zero n i Pf bse stp)
+named "BY INDUCTION   (∀n | 0 ≤ n : f.n = 2·n)"                   (fun () -> by_induction th 0 n i Pf bse stp)
 ok "the conclusion is what was claimed"
-   (sequal (expand (by_induction th zero n i Pf bse stp).Stmt) (expand (conclusion zero n Pf).Expr))
+   (sequal (expand (by_induction th 0 n i Pf bse stp).Stmt) (expand (conclusion 0 n Pf).Expr))
 // Same thing through the ℕ-specific entry point.
 named "by_induction_nat gives the same theorem"                   (fun () -> by_induction_nat th n i Pf bse stp)
 
@@ -200,11 +206,11 @@ let refuses (what: string) (f: unit -> Theorem) =
     ok what (try f () |> ignore; false with _ -> true)
 
 refuses "a base case proved at the wrong point"
-        (fun () -> by_induction th (IntTerm 1) n i Pf bse stp)
+        (fun () -> by_induction th 1 n i Pf bse stp)
 refuses "the base case and inductive case swapped"
-        (fun () -> by_induction th zero n i Pf stp bse)
+        (fun () -> by_induction th 0 n i Pf stp bse)
 refuses "an inductive case for a different predicate"
-        (fun () -> by_induction th zero n i P bse stp)
+        (fun () -> by_induction th 0 n i P bse stp)
 
 printfn "\n===== (F) IntVar: a variable that is also a term ====="
 // `n + 1` from the operator and `succ n` from the theory build the SAME tree, which is what lets the
@@ -250,7 +256,7 @@ ok "... but not (x+1 ≤ y) = false"                          (not (ind.AxEquiv 
 // The two range lemmas and the theorem, at a symbolic lower bound and at 1.
 named "range_extend    lo ≤ n+1 ⇒ (lo≤i≤n+1) = (lo≤i≤n ∨ i=n+1)"  (fun () -> range_extend ind k n i)
 named "range_disjoint  ((lo≤i≤n) ∧ i=n+1) = false"                 (fun () -> range_disjoint ind k n i)
-let sot = split_off_term ind (IntTerm 1) n i (2 * i - 1)
+let sot = split_off_term ind 1 n i (2 * i - 1)
 printfn "  %s" (ind.PrintFormula (expand sot.Stmt))
 named "SPLIT OFF TERM  (Σi | 1≤i≤n+1 : 2i−1) = (Σi | 1≤i≤n : 2i−1) + (2(n+1)−1)"  (fun () -> sot)
 named "... at a symbolic lower bound and body"                          (fun () -> split_off_term ind k n i (f i))
@@ -270,27 +276,27 @@ ok "Transitivity needs a shared middle term"
    (not (ind.AxEquiv (((leq x y) * (leq z' y)) ==> (leq x y)).Expr))
 ok "Transitivity is an implication, not an equivalence"
    (not (ind.AxEquiv ((((leq x y) * (leq y z')) == (leq x z'))).Expr))
-ok "(1 ≤ 0) = false, by evaluation"           (ind.AxEquiv ((leq (IntTerm 1) zero) == F).Expr)
-ok "(0 ≤ 1) = true, by evaluation"            (ind.AxEquiv ((leq zero (IntTerm 1)) == T).Expr)
+ok "(1 ≤ 0) = false, by evaluation"           (ind.AxEquiv ((leq 1 0) == F).Expr)
+ok "(0 ≤ 1) = true, by evaluation"            (ind.AxEquiv ((leq 0 1) == T).Expr)
 ok "... but only the CORRECT value: (1 ≤ 0) = true is no axiom"
-   (not (ind.AxEquiv ((leq (IntTerm 1) zero) == T).Expr))
+   (not (ind.AxEquiv ((leq 1 0) == T).Expr))
 ok "... and only for literals: (1 ≤ n) = false is no axiom"
-   (not (ind.AxEquiv ((leq (IntTerm 1) n) == F).Expr))
+   (not (ind.AxEquiv ((leq 1 n) == F).Expr))
 
-named "empty_range  (1 ≤ i ∧ i ≤ 0) = false"                      (fun () -> empty_range ind (IntTerm 1) zero i)
-named "empty_range  (5 ≤ i ∧ i ≤ -3) = false"                     (fun () -> empty_range ind (IntTerm 5) (IntTerm -3) i)
-named "empty_sum    (Σi | 1 ≤ i ≤ 0 : 2i−1) = 0"                  (fun () -> empty_sum ind (IntTerm 1) zero i (2 * i - 1))
+named "empty_range  (1 ≤ i ∧ i ≤ 0) = false"                      (fun () -> empty_range ind 1 0 i)
+named "empty_range  (5 ≤ i ∧ i ≤ -3) = false"                     (fun () -> empty_range ind 5 (-3) i)
+named "empty_sum    (Σi | 1 ≤ i ≤ 0 : 2i−1) = 0"                  (fun () -> empty_sum ind 1 0 i (2 * i - 1))
 ok "empty_range refuses a non-empty range (0..1)"
-   (not (proves "empty_range 0..1" (fun () -> empty_range ind zero (IntTerm 1) i)))
+   (not (proves "empty_range 0..1" (fun () -> empty_range ind 0 1 i)))
 ok "empty_range refuses a symbolic bound (1..n)"
-   (not (proves "empty_range 1..n" (fun () -> empty_range ind (IntTerm 1) n i)))
+   (not (proves "empty_range 1..n" (fun () -> empty_range ind 1 n i)))
 
 // (12.7)  P.n : (Σi | 1 ≤ i ≤ n : 2i−1) = n·n  — the predicate exactly as Gries states it.
-let P127 = pred_of n ((qsum i ((leq (IntTerm 1) i) * (leq i n)) (2 * i - 1)) == (n * n))
-printfn "  P.0 = %s" (ind.PrintFormula (expand (base_case zero P127).Expr))
+let P127 = pred_of n ((qsum i ((leq 1 i) * (leq i n)) (2 * i - 1)) == (n * n))
+printfn "  P.0 = %s" (ind.PrintFormula (expand (base_case 0 P127).Expr))
 named "(12.7) BASE CASE  (Σi | 1 ≤ i ≤ 0 : 2i−1) = 0·0"
-      (fun () -> theorem ind (base_case zero P127) [
-                     Ident (empty_sum ind (IntTerm 1) zero i (2 * i - 1)) |> at_left   // Σ over 1..0 → 0
+      (fun () -> theorem ind (base_case 0 P127) [
+                     Ident (empty_sum ind 1 0 i (2 * i - 1)) |> at_left   // Σ over 1..0 → 0
                      Integers.reduce                                                    // 0·0 → 0
                  ])
 
@@ -336,7 +342,7 @@ let int_rules_preserve_value =
                                let v = [| rnd.Next(-9, 10); rnd.Next(-9, 10); rnd.Next(-9, 10) |] in eval e v = eval e' v))))
 ok "every Integers rewrite rule preserves value (14 rules × 600 random expressions)" int_rules_preserve_value
 
-named "shift_bound  0 ≤ n ⇒ 1 ≤ n+1"                     (fun () -> shift_bound ind zero n)
+named "shift_bound  0 ≤ n ⇒ 1 ≤ n+1"                     (fun () -> shift_bound ind 0 n)
 
 // The arithmetic — Gries' "(Arithmetic)" step — by the ring normalizer (`Integers.ring_ident`, section J):
 // both sides go to one canonical polynomial, and every rewrite is an existing rule at an explicit
@@ -347,26 +353,26 @@ named "algebra      n·n + (2(n+1) − 1) = (n+1)·(n+1)"     (fun () -> algebra
 // The hypothesis dummy must not occur in P.n at all — and P.n binds `i` inside its Σ — so it is `j`.
 let j = IntVar "j"
 let E127 = 2 * i - 1
-let a127 = leq zero n
-let ih127 = hypothesis zero n j P127
+let a127 = leq 0 n
+let ih127 = hypothesis 0 n j P127
 let pn1_127 = P127.[n + 1]
 let body127 =
     theorem ind (a127 ==> (ih127 ==> pn1_127)) [
         (shunt' a127 ih127 pn1_127 |> Commute) |> apply                     // (0 ≤ n ∧ IH) ⇒ P(n+1)
-        Establish (shift_bound ind zero n) |> apply                         // 1 ≤ n+1, Split off term's proviso
-        Deduce' (split_off_term ind (IntTerm 1) n i E127) |> apply_right    // Σ(1..n+1) → Σ(1..n) + (2(n+1)−1)
-        Deduce' (hypothesis_at ind zero n j P127) |> apply_right            // Σ(1..n) → n·n — THE INDUCTIVE HYPOTHESIS
+        Establish (shift_bound ind 0 n) |> apply                         // 1 ≤ n+1, Split off term's proviso
+        Deduce' (split_off_term ind 1 n i E127) |> apply_right    // Σ(1..n+1) → Σ(1..n) + (2(n+1)−1)
+        Deduce' (hypothesis_at ind 0 n j P127) |> apply_right            // Σ(1..n) → n·n — THE INDUCTIVE HYPOTHESIS
         Taut algebra127 |> apply_right                                      // n·n + (2(n+1)−1) = (n+1)·(n+1)
     ]
 let step127 =
-    theorem ind (inductive_case zero n j P127) [
+    theorem ind (inductive_case 0 n j P127) [
         trade_forall_implies n (pred_of n a127) (pred_of n (ih127 ==> pn1_127)) |> apply
         Taut body127 |> at [select_body]
         ident_forall_true' n
     ]
 let base127 =
-    theorem ind (base_case zero P127) [
-        Ident (empty_sum ind (IntTerm 1) zero i E127) |> at_left
+    theorem ind (base_case 0 P127) [
+        Ident (empty_sum ind 1 0 i E127) |> at_left
         Integers.reduce
     ]
 named "step body    0 ≤ n ⇒ (IH ⇒ P(n+1))"                 (fun () -> body127)
@@ -375,29 +381,29 @@ ok "the step does not close without the inductive hypothesis"
    (not (proves "step without IH" (fun () ->
         theorem ind (a127 ==> (ih127 ==> pn1_127)) [
             (shunt' a127 ih127 pn1_127 |> Commute) |> apply
-            Establish (shift_bound ind zero n) |> apply
-            Deduce' (split_off_term ind (IntTerm 1) n i E127) |> apply_right
+            Establish (shift_bound ind 0 n) |> apply
+            Deduce' (split_off_term ind 1 n i E127) |> apply_right
             Taut algebra127 |> apply_right
         ])))
 
-let thm127 = by_induction ind zero n j P127 base127 step127
+let thm127 = by_induction ind 0 n j P127 base127 step127
 printfn "  %s" (ind.PrintFormula (expand thm127.Stmt))
 named "(12.7) BY INDUCTION   (∀n | 0 ≤ n : (Σi | 1 ≤ i ≤ n : 2i−1) = n·n)"   (fun () -> thm127)
 ok "(12.7) is the statement Gries gives"
-   (sequal (expand thm127.Stmt) (expand (qall n (leq zero n) ((qsum i ((leq (IntTerm 1) i) * (leq i n)) (2 * i - 1)) == (n * n))).Expr))
+   (sequal (expand thm127.Stmt) (expand (qall n (leq 0 n) ((qsum i ((leq 1 i) * (leq i n)) (2 * i - 1)) == (n * n))).Expr))
 
 printfn "\n===== (J) Ring normalization: Gries' \"(Arithmetic)\" step as a tactic ====="
 // `ring_ident th L R` rewrites both sides to one canonical polynomial and closes on syntactic
 // equality. It PRODUCES A PROOF — every step an existing rule at an explicit address, re-checked by
 // the kernel — so a bug in it can only make it fail. Completeness is what needs testing.
-let ringProves (label: string) (L: Term<int>) (R: Term<int>) = named label (fun () -> ring_ident ind L R)
-let ringRefuses (label: string) (L: Term<int>) (R: Term<int>) =
-    ok label (not (proves label (fun () -> ring_ident ind L R)))
+let inline ringProves (label: string) L R = named label (fun () -> ring_ident ind (int_term L) (int_term R))
+let inline ringRefuses (label: string) L R =
+    ok label (not (proves label (fun () -> ring_ident ind (int_term L) (int_term R))))
 
 ringProves "square of a sum        (x+y)² = x² + 2xy + y²"   ((x + y) * (x + y)) (x * x + 2 * (x * y) + y * y)
 ringProves "difference of squares  (x+y)(x−y) = x² − y²"     ((x + y) * (x - y)) (x * x - y * y)
 ringProves "cube                   (x+1)³"                    ((x + 1) * ((x + 1) * (x + 1))) (x * (x * x) + 3 * (x * x) + 3 * x + 1)
-ringProves "cancellation           (x − x) + y·0 = 0"        (x - x + (y * 0)) zero
+ringProves "cancellation           (x − x) + y·0 = 0"        (x - x + (y * 0)) 0
 ringProves "unary minus            −(x − y) = y − x"          (-(x - y)) (y - x)
 ringProves "atoms are opaque       f(n)·2 + f(n) = 3·f(n)"    (f n * 2 + f n) (3 * f n)
 ringRefuses "refuses an off-by-one  (x+1)² = x² + 2x"        ((x + 1) * (x + 1)) (x * x + 2 * x)
@@ -472,11 +478,11 @@ proved "(15.27) (a − b)·(c − d) = (a·c + b·d) − (a·d + b·c)" (fun () 
 proved "(15.28) (a − b = c − d) = (a + d = b + c)"          (fun () -> IntegralDomain.sub_eq_sub dom xe ye ze we)
 proved "(15.29) (a − b)·c = a·c − b·c"                      (fun () -> IntegralDomain.sub_mul dom xe ye ze)
 named  "used in an Integers proof   (x − y)·0 = 0"
-    (fun () -> theorem ind ((x - y) * zero == zero) [ IntegralDomain.zero_mul dom (x - y).Expr |> at_left ])
+    (fun () -> theorem ind ((x - y) * 0 == 0) [ IntegralDomain.zero_mul dom (x - y).Expr |> at_left ])
 ok "refuses x·0 = x by (15.9)"
-    (not (proves "x·0 = x" (fun () -> theorem ind (x * zero == x) [ IntegralDomain.zero_mul dom xe |> at_left ])))
+    (not (proves "x·0 = x" (fun () -> theorem ind (x * 0 == x) [ IntegralDomain.zero_mul dom xe |> at_left ])))
 ok "(15.9) for x does not rewrite y·0"
-    (not (proves "y·0 = 0 by x·0" (fun () -> theorem ind (y * zero == zero) [ IntegralDomain.zero_mul dom xe |> at_left ])))
+    (not (proves "y·0 = 0 by x·0" (fun () -> theorem ind (y * 0 == 0) [ IntegralDomain.zero_mul dom xe |> at_left ])))
 
 // The theory is GENERIC: the same theorems, at a second carrier.
 let ops64 : IntegralDomain.DomainOps<int64> =

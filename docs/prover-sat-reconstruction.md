@@ -762,6 +762,12 @@ concern that motivates a fresh-start redesign.
    case needs its own argument. Eight tests in `KernelProofTests.fs` pin the behaviour, most of them
    on what it refuses.
 
+   **2026-10-12: the domain is now schema METAVARIABLES only** (names beginning `?`, as `Schema.pN`
+   mints them). Admissibility covers variables a derivation is merely parametric in; a theory can
+   instead NAME a propositional variable in an axiom (a hypothesis `p`), and substituting `F` for it
+   would prove `F`. Every production caller already went through `Schema.pN`, so no proof changed.
+   The same guard is on the term version, `InstantiateTerms` (`prover-induction.md` §17). Also fixed:
+   the binder check walked F# trait-call witnesses and refused any statement with integer arithmetic.
    Measured on implication chains, Release, warm — `Calc.chain_imp` routed through the instantiated
    `trans_implies`, and `SatProof` through instantiated `resolve` / `combine_implies` /
    `strengthen_and` / `weaken_or` / `reflex_implies`:

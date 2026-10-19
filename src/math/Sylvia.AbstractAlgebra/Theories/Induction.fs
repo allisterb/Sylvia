@@ -38,8 +38,12 @@ module Induction =
 
     (* Building blocks *)
 
-    /// `l ≤ r` over the integers, as a proposition.
-    let leq (l: Term<int>) (r: Term<int>) : Prop = <@ %l.Expr <= %r.Expr @> |> expand_as<bool> |> Prop
+    /// `l ≤ r` over the integers, as a proposition. Each side is an `int` or any `Term<int>`
+    /// (`int_term`), so `leq 0 n` and `leq n (n + 1)` both work. The same holds for every bound
+    /// (`n0`, `lo`, `hi`, `n`) taken by the functions below, which are `inline` for that reason.
+    let inline leq l r : Prop =
+        let l, r = int_term l, int_term r
+        <@ %l.Expr <= %r.Expr @> |> expand_as<bool> |> Prop
 
     /// A dummy as an integer term.
     let tm (x: #ISymbolicVar<int>) : IntTerm = IntTerm(x.Expr)
@@ -50,31 +54,31 @@ module Induction =
     /// Abstract a dummy back out of a proposition written in it, giving the `Pred` the
     /// predicate-calculus theorems take. Binds the `Var` OBJECT occurring in the body rather than a
     /// structurally equal copy, so `Q.[x]` beta-reduces back to exactly the proposition given.
-    let pred_of (x: #ISymbolicVar<int>) (p: Prop) : Pred<int> =
+    let pred_of (x: #ISymbolicVar<int>) (p: Prop) : IntPred =
         let body = expand p.Expr
         let xv = x.Var
         let v = match get_vars body |> List.tryFind (fun w -> vequal w xv) with Some w -> w | None -> xv
-        Pred<int>(func = Expr.Cast<int -> bool>(expand (Expr.Lambda(v, body))))
+        IntPred(func = Expr.Cast<int -> bool>(expand (Expr.Lambda(v, body))))
 
     /// The base case `P.n₀`.
-    let base_case (n0: Term<int>) (P: Pred<int>) : Prop = P.[n0]
+    let inline base_case n0 (P: Pred<int>) : Prop = P.[int_term n0]
 
     /// The conclusion `(∀n | n₀ ≤ n : P.n)`.
-    let conclusion (n0: Term<int>) (n: #ISymbolicVar<int>) (P: Pred<int>) : Prop =
+    let inline conclusion n0 (n: #ISymbolicVar<int>) (P: Pred<int>) : Prop =
         qall n (leq n0 (tm n)) P.[tm n]
 
     /// The INDUCTIVE HYPOTHESIS at `n`: `(∀i | n₀ ≤ i ∧ i ≤ n : P.i)` — all of `P.n₀ … P.n`, not
     /// just `P.n`. Gries folds weak and strong induction into this one form deliberately (§12.1): a
     /// proof that happens to use only `P.n` is a weak induction and needs no different principle.
-    let hypothesis (n0: Term<int>) (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>) : Prop =
+    let inline hypothesis n0 (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>) : Prop =
         qall i ((leq n0 (tm i)) * (leq (tm i) (tm n))) P.[tm i]
 
     /// The inductive case `(∀n | n₀ ≤ n : (∀i | n₀ ≤ i ∧ i ≤ n : P.i) ⇒ P(n+1))`.
-    let inductive_case (n0: Term<int>) (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>) : Prop =
+    let inline inductive_case n0 (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>) : Prop =
         qall n (leq n0 (tm n)) ((hypothesis n0 n i P) ==> P.[succ n])
 
     /// The (12.8) instance for `P` — `base_case ∧ inductive_case ⇒ conclusion`.
-    let induction_axiom (n0: Term<int>) (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>) : Prop =
+    let inline induction_axiom n0 (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>) : Prop =
         ((base_case n0 P) * (inductive_case n0 n i P)) ==> (conclusion n0 n P)
 
     (* Axiom *)
@@ -155,13 +159,13 @@ module Induction =
     /// `n₀ ≤ n ∧ n ≤ n`, is discharged by the ANTECEDENT together with reflexivity of `≤`
     /// (`Integers`). `n₀ ≤ n` can come from nowhere else, which is why it is a premise here rather
     /// than something the caller can skip.
-    let hypothesis_at (th: Theory) (n0: Term<int>) (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>) : Theorem =
+    let inline hypothesis_at (th: Theory) n0 (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>) : Theorem =
         let range = pred_of i ((leq n0 (tm i)) * (leq (tm i) (tm n)))
         let q = pred_of i ((range.[tm i]) ==> P.[tm i])          // the traded hypothesis body
         let a = leq n0 (tm n)
         let f = forall'(tm i, q)
         let pn = P.[tm n]
-        theorem th ((a * (hypothesis n0 n i P)) ==> pn) [
+        lemma th ((a * (hypothesis n0 n i P)) ==> pn) [
             trade_forall_implies i range P      |> at [left_branch; right_branch]   // IH → (∀i |: R ⇒ P)
             commute_and a f                     |> at_left                          // (A ∧ F) → (F ∧ A)
             shunt' f a pn                                                           // (F ∧ A) ⇒ P → F ⇒ (A ⇒ P)
@@ -185,7 +189,8 @@ module Induction =
        ------------------------------------------------------------------------------------------ *)
 
     /// `E[i := v]`, for an integer body written in the dummy `i`.
-    let subst_body (i: #ISymbolicVar<int>) (v: Term<int>) (E: Term<int>) : IntTerm =
+    let inline subst_body (i: #ISymbolicVar<int>) v E : IntTerm =
+        let v, E = int_term v, int_term E
         IntTerm(replace_var_expr i.Var (expand v.Expr) (expand E.Expr) |> expand_as<int>)
 
     /// `lo ≤ n+1 ⇒ ((lo ≤ i ∧ i ≤ n+1) = ((lo ≤ i ∧ i ≤ n) ∨ i = n+1))` — extending a range by one.
@@ -193,11 +198,12 @@ module Induction =
     /// Discreteness splits `i ≤ n+1`; ∧ distributes over the split; Substitution (3.84a) turns
     /// `lo ≤ i ∧ i = n+1` into `lo ≤ n+1 ∧ i = n+1`; and the antecedent discharges `lo ≤ n+1`. The
     /// proviso is genuine: with `lo = n+2` the left range is empty and the right is `{n+1}`.
-    let range_extend (th: Theory) (lo: Term<int>) (n: Term<int>) (i: #ISymbolicVar<int>) : Theorem =
+    let inline range_extend (th: Theory) lo n (i: #ISymbolicVar<int>) : Theorem =
+        let lo, n = int_term lo, int_term n
         let n1 = IntTerm(n.Expr) + 1
         let a = leq lo n1
         let loi, ile, ieq = leq lo (tm i), leq (tm i) n, (tm i :> Term<int>) == (n1 :> Term<int>)
-        theorem th (a ==> ((loi * (leq (tm i) n1)) == ((loi * ile) + ieq))) [
+        lemma th (a ==> ((loi * (leq (tm i) n1)) == ((loi * ile) + ieq))) [
             ax_ident th ((leq (tm i) n1) == (ile + ieq)) |> at [right_branch; left_branch; right_branch]  // Discreteness
             distrib_and_or loi ile ieq                   |> at [right_branch; left_branch]
             commute_and loi ieq                          |> at [right_branch; left_branch; right_branch]
@@ -209,10 +215,11 @@ module Induction =
 
     /// `((lo ≤ i ∧ i ≤ n) ∧ i = n+1) = false` — the two parts of an extended range are DISJOINT.
     /// Substitution (3.84a) puts `n+1` for `i`, and `n+1 ≤ n` is false.
-    let range_disjoint (th: Theory) (lo: Term<int>) (n: Term<int>) (i: #ISymbolicVar<int>) : Theorem =
+    let inline range_disjoint (th: Theory) lo n (i: #ISymbolicVar<int>) : Theorem =
+        let lo, n = int_term lo, int_term n
         let n1 = IntTerm(n.Expr) + 1
         let loi, ile, ieq = leq lo (tm i), leq (tm i) n, (tm i :> Term<int>) == (n1 :> Term<int>)
-        theorem th (((loi * ile) * ieq) == F) [
+        lemma th (((loi * ile) * ieq) == F) [
             commute_and (loi * ile) ieq                                  |> at_left
             ax_ident th ((ieq * (loi * ile)) == (ieq * ((leq lo n1) * (leq n1 n)))) |> at_left  // (3.84a)
             ax_ident th ((leq n1 n) == F)                                |> at [left_branch; right_branch; right_branch]
@@ -227,9 +234,10 @@ module Induction =
     /// fact: `A = false` is `¬A` (3.15) is `A ⇒ false` (3.74), the `false` is `lo ≤ hi` evaluated, and
     /// `(lo ≤ i ∧ i ≤ hi) ⇒ lo ≤ hi` IS Transitivity. Refuses (the evaluation step does not close)
     /// when `lo`, `hi` are not literals with `lo > hi`.
-    let empty_range (th: Theory) (lo: Term<int>) (hi: Term<int>) (i: #ISymbolicVar<int>) : Theorem =
+    let inline empty_range (th: Theory) lo hi (i: #ISymbolicVar<int>) : Theorem =
+        let lo, hi = int_term lo, int_term hi
         let A = (leq lo (tm i)) * (leq (tm i) hi)
-        theorem th (A == F) [
+        lemma th (A == F) [
             ident_eq_false A                                                    // (A = F) → ¬A
             ident_implies_false_not A |> Commute |> apply                       // ¬A → (A ⇒ F)
             ax_ident th ((leq lo hi) == F) |> Commute |> at_right               // F → (lo ≤ hi)
@@ -238,8 +246,9 @@ module Induction =
 
     /// `(Σi | lo ≤ i ∧ i ≤ hi : E) = 0`, for integer literals `lo > hi` — the numeric range is empty
     /// (`empty_range`), and Σ over the empty range is the unit of `+` (8.13).
-    let empty_sum (th: Theory) (lo: Term<int>) (hi: Term<int>) (i: #ISymbolicVar<int>) (E: Term<int>) : Theorem =
-        theorem th ((qsum i ((leq lo (tm i)) * (leq (tm i) hi)) E) == IntTerm 0) [
+    let inline empty_sum (th: Theory) lo hi (i: #ISymbolicVar<int>) E : Theorem =
+        let lo, hi, E = int_term lo, int_term hi, int_term E
+        lemma th ((qsum i ((leq lo (tm i)) * (leq (tm i) hi)) E) == IntTerm 0) [
             Ident (empty_range th lo hi i) |> at [left_branch; select_range]
             // and (Σi | false : E) = 0 is Empty range (8.13).
         ]
@@ -250,10 +259,11 @@ module Induction =
     /// `n₀ ≤ n`, and splitting the last term off `(Σi | n₀+1 ≤ i ≤ n+1 : E)` wants `n₀+1 ≤ n+1`.
     /// Translation of ≤ (`Integers`) then constant folding. Meant for `Establish`, which records the
     /// consequent as usable while leaving `n₀ ≤ n` available for `hypothesis_at`.
-    let shift_bound (th: Theory) (lo: Term<int>) (n: Term<int>) : Theorem =
+    let inline shift_bound (th: Theory) lo n : Theorem =
+        let lo, n = int_term lo, int_term n
         let lo1 = IntTerm(Integers._reduce_constants (call_add lo.Expr (Expr.Value 1)) |> expand_as<int>)
         let n1 = IntTerm(n.Expr) + 1
-        theorem th ((leq lo n) ==> (leq lo1 n1)) [
+        lemma th ((leq lo n) ==> (leq lo1 n1)) [
             ax_ident th ((leq lo n) == (leq (IntTerm(lo.Expr) + 1) n1)) |> at_left   // Translation of ≤
             Integers.reduce |> at [left_branch; left_branch]                          // lo + 1 folded
             Taut (reflex_implies (leq lo1 n1)) |> apply
@@ -279,7 +289,8 @@ module Induction =
     /// Three of those steps rewrite an INTEGER identity right-to-left, which nothing in the logic can
     /// do directly (its symmetry is symmetry of ≡); each is a local lemma proved by rewriting the
     /// other side of its own goal — see the note on orientation in `docs/prover-set-theory.md` §10.
-    let split_off_term (th: Theory) (lo: Term<int>) (n: Term<int>) (i: #ISymbolicVar<int>) (E: Term<int>) : Theorem =
+    let inline split_off_term (th: Theory) lo n (i: #ISymbolicVar<int>) E : Theorem =
+        let lo, n, E = int_term lo, int_term n, int_term E
         let n1 = IntTerm(n.Expr) + 1
         let a = leq lo n1
         let R = (leq lo (tm i)) * (leq (tm i) n)
@@ -290,7 +301,7 @@ module Induction =
         let zero = IntTerm 0
         let unit_intro = ident th (sRQ == sRQ + zero) [ ax_ident th (sRQ + zero == sRQ) |> at_right ]   // x → x + 0
         let zero_intro = ident th (zero == sF) [ ax_ident th (sF == zero) |> at_right ]                 // 0 → Σ(false)
-        theorem th (a ==> (lhs == rhs)) [
+        lemma th (a ==> (lhs == rhs)) [
             Deduce' (range_extend th lo n i)                 |> apply_right
             unit_intro                                       |> at [right_branch; left_branch]
             zero_intro                                       |> at [right_branch; left_branch; right_branch]
@@ -311,7 +322,7 @@ module Induction =
     /// theorems and detaches by modus ponens (`PropCalculus.conj` / `PropCalculus.mp`). The axiom is
     /// what carries the induction; this does the plumbing, and refuses unless each theorem proves
     /// exactly the obligation it is supposed to. `th` must recognize (12.8) — i.e. be an `Induction`.
-    let by_induction (th: Theory) (n0: Term<int>) (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>)
+    let inline by_induction (th: Theory) n0 (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>)
                      (bse: Theorem) (stp: Theorem) : Theorem =
         let check (what: string) (t: Theorem) (obligation: Prop) =
             if not t.Proof.Complete then failwithf "by_induction: the %s proof is not complete." what
@@ -325,7 +336,7 @@ module Induction =
     /// **Proof by induction over ℕ** — Gries (12.5), the `n₀ := 0` instance of (12.8).
     let by_induction_nat (th: Theory) (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>)
                          (bse: Theorem) (stp: Theorem) : Theorem =
-        by_induction th (IntTerm 0) n i P bse stp
+        by_induction th 0 n i P bse stp
 
     (* Module information members *)
 

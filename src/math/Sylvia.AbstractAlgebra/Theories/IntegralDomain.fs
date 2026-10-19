@@ -157,7 +157,7 @@ module IntegralDomain =
         let H = eq_t (bin o.Add a b) (bin o.Add a c)
         let Q = eq_t b c
         let fwd =
-            theorem th (H ==> Q) [
+            lemma th (H ==> Q) [
                 rev th (bin o.Add o.Zero b) b                       |> at [right_branch; left_branch]                // b → 0 + b
                 flip th (left_inverse d a)                          |> at [right_branch; left_branch; left_branch]  // 0 → (−a) + a
                 ax th (bin o.Add (bin o.Add na a) b) (bin o.Add na (bin o.Add a b)) |> at [right_branch; left_branch]
@@ -168,7 +168,7 @@ module IntegralDomain =
                 refl_true th c                                      |> apply_right
             ]
         let bwd =
-            theorem th (Q ==> H) [
+            lemma th (Q ==> H) [
                 Deduce' (reflex_implies Q)                          |> at [right_branch; left_branch; right_branch] // b → c
                 refl_true th (bin o.Add a c)                        |> apply_right
             ]
@@ -309,14 +309,14 @@ module IntegralDomain =
     /// theorem of `th` can be combined with it (a theorem may only be used in a theory deriving
     /// from the one it was proved in, and the search's own proof lives in the logic).
     let private tautology (th: Theory) (stmt: Prop) : Theorem =
-        theorem th stmt (PropCalculus.autoproof_anf stmt).Steps
+        lemma th stmt (PropCalculus.autoproof_anf stmt).Steps
 
     /// **(15.10b) Unique identity**: `a ≠ 0 ⇒ ((a·z = a) = (z = 1))`, by (15.7) Cancellation.
     let unique_one (d: IntegralDomain<'t>) (a: Expr<'t>) (z: Expr<'t>) : Theorem =
         let o, th = d.Ops, d :> Theory
         let nz = nonzero o a
         let cancel = axiom th (nz ==> ((eq_t (bin o.Mul a z) (bin o.Mul a o.One)) == (eq_t z o.One)))
-        theorem th (nz ==> ((eq_t (bin o.Mul a z) a) == (eq_t z o.One))) [
+        lemma th (nz ==> ((eq_t (bin o.Mul a z) a) == (eq_t z o.One))) [
             rev th (bin o.Mul a o.One) a        |> at [right_branch; left_branch; right_branch]   // a → a·1
             Deduce' cancel                      |> apply_right                                    // (a·z = a·1) → (z = 1)
             def_true (eq_t z o.One) |> Commute  |> apply_right
@@ -332,18 +332,18 @@ module IntegralDomain =
         let P, A, B = eq_t (bin o.Mul a b) o.Zero, eq_t a o.Zero, eq_t b o.Zero
         // ¬(a = 0) ⇒ ((a·b = 0) = (b = 0))
         let cancel = axiom th ((nonzero o a) ==> ((eq_t (bin o.Mul a b) (bin o.Mul a o.Zero)) == B))
-        let L = theorem th ((nonzero o a) ==> (P == B)) [
+        let L = lemma th ((nonzero o a) ==> (P == B)) [
                     flip th (zero_mul d a)      |> at [right_branch; left_branch; right_branch]       // 0 → a·0
                     Deduce' cancel              |> apply_right
                     def_true B |> Commute       |> apply_right
                 ]
         // a = 0 ⇒ a·b = 0   and   b = 0 ⇒ a·b = 0
-        let ta = theorem th (A ==> P) [
+        let ta = lemma th (A ==> P) [
                     Deduce' (reflex_implies A)  |> at [right_branch; left_branch; left_branch]        // a → 0
                     zero_mul_left d b           |> at [right_branch; left_branch]
                     refl_true th o.Zero         |> apply_right
                 ]
-        let tb = theorem th (B ==> P) [
+        let tb = lemma th (B ==> P) [
                     Deduce' (reflex_implies B)  |> at [right_branch; left_branch; right_branch]       // b → 0
                     zero_mul d a                |> at [right_branch; left_branch]
                     refl_true th o.Zero         |> apply_right
@@ -363,7 +363,7 @@ module IntegralDomain =
         let o, th = d.Ops, d :> Theory
         let na = un o.Neg a
         let hx, hy = eq_t x na, eq_t y na
-        theorem th (((eq_t (bin o.Add x a) o.Zero) * (eq_t (bin o.Add y a) o.Zero)) ==> (eq_t x y)) [
+        lemma th (((eq_t (bin o.Add x a) o.Zero) * (eq_t (bin o.Add y a) o.Zero)) ==> (eq_t x y)) [
             add_eq_zero d x a                   |> at [left_branch; left_branch]      // x + a = 0 → x = −a
             add_eq_zero d y a                   |> at [left_branch; right_branch]
             Deduce' (reflex_implies hx)         |> at [right_branch; left_branch]     // x → −a
@@ -377,14 +377,14 @@ module IntegralDomain =
         let na, nb = un o.Neg a, un o.Neg b
         let H, Q = eq_t na nb, eq_t a b
         let fwd =
-            theorem th (H ==> Q) [
+            lemma th (H ==> Q) [
                 flip th (neg_neg d a)           |> at [right_branch; left_branch]                     // a → −(−a)
                 flip th (neg_neg d b)           |> at [right_branch; right_branch]                    // b → −(−b)
                 Deduce' (reflex_implies H)      |> at [right_branch; left_branch; apply_unary]        // −a → −b
                 refl_true th (un o.Neg nb)      |> apply_right
             ]
         let bwd =
-            theorem th (Q ==> H) [
+            lemma th (Q ==> H) [
                 Deduce' (reflex_implies Q)      |> at [right_branch; left_branch; apply_unary]        // a → b
                 refl_true th nb                 |> apply_right
             ]

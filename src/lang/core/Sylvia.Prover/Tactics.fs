@@ -1,4 +1,4 @@
-﻿namespace Sylvia
+namespace Sylvia
 
 open FSharp.Quotations
 open Formula
@@ -59,6 +59,23 @@ module Tactics =
         let p = Proof(stmt, theory, [ (expr |> ident |> Apply); Apply(theoremIsTrue proof) ], true) in 
         Theorem(stmt, p) |> Ident 
 
+    /// Whether `e` contains a binder (a quantifier or a lambda). A `Call`'s operands are its object
+    /// and arguments only: an inline operator (`op_UnaryNegation`, `op_Multiply`, …) also carries
+    /// trait-call WITNESSES — closed lambdas implementing the operator — which `ExprShape` exposes as
+    /// extra children. They bind nothing in the statement, and walking them refused every statement
+    /// with integer arithmetic in it.
+    let rec private has_binder (e: Expr) =
+        match e with
+        | Quantifier _ -> true
+        | Patterns.Call(o, _, args) -> (Option.toList o @ args) |> List.exists has_binder
+        | ExprShape.ShapeLambda _ -> true
+        | ExprShape.ShapeVar _ -> false
+        | ExprShape.ShapeCombination(_, args) -> args |> List.exists has_binder
+    /// The prefix reserved for schema METAVARIABLES: variables minted by the `Schema` wrappers
+    /// below, which no theory, axiom or definition can have been written about. `Instantiate` and
+    /// `InstantiateTerms` substitute for these and nothing else.
+    let metavar_prefix = "?"
+
     /// Instantiate a theorem SCHEMA: from `⊢ S` and a substitution `σ` on propositional variables,
     /// `⊢ Sσ` — in ONE kernel step, without replaying `S`'s derivation.
     ///
@@ -87,6 +104,12 @@ module Tactics =
     ///  * the parent proof is complete;
     ///  * every variable substituted for is a plain propositional variable (a `bool` `Var`), with no
     ///    duplicates — so `T`/`F` (named constants, not variables) and compound terms are rejected;
+    ///  * and it is a schema METAVARIABLE (a name beginning `?`, as minted by `Schema.p1`/`p2`/`p3`).
+    ///    The admissibility argument above holds for variables the derivation was merely parametric
+    ///    in. A theory may instead NAME a propositional variable in an axiom — a hypothesis `p`, or
+    ///    a definition `q = p ∧ r` — and then `p` is a constant of that theory, not a schema
+    ///    position: substituting `F` for it would prove `F`. A metavariable minted after the theory
+    ///    was built cannot appear in any of its axioms. (Same guard as `InstantiateTerms`.)
     ///  * the parent statement is free of BINDERS. Quantified statements are refused, and this is
     ///    the restriction that keeps the admissibility argument honest: `PredCalculus` derivations
     ///    carry `¬occurs_free` side conditions discharged at derivation time, which substitution can
@@ -106,7 +129,9 @@ module Tactics =
         let vars =
             subst |> List.map (fun (v, value) ->
                 match expand v.Expr with
-                | ExprShape.ShapeVar var when var.Type = typeof<bool> -> var, expand value.Expr
+                | ExprShape.ShapeVar var when var.Type = typeof<bool> && var.Name.StartsWith metavar_prefix -> var, expand value.Expr
+                | ExprShape.ShapeVar var when var.Type = typeof<bool> ->
+                    failwithf "%s is not a schema metavariable (a name beginning %s minted by Schema), so substituting for it is not sound: a theory may have axioms about it." var.Name metavar_prefix
                 | e -> failwithf "%s is not a propositional variable, so it is not a schema position of %s."
                                  (print e) (print t.Stmt))
         match vars |> List.countBy (fun (v, _) -> v.Name) |> List.tryFind (fun (_, n) -> n > 1) with
@@ -114,13 +139,7 @@ module Tactics =
         | None -> ()
         // Binders would put both capture-avoidance and the discharged side conditions of a
         // quantified derivation in play; neither is covered by the argument above.
-        let rec hasBinder (e: Expr) =
-            match e with
-            | Quantifier _ -> true
-            | ExprShape.ShapeLambda _ -> true
-            | ExprShape.ShapeVar _ -> false
-            | ExprShape.ShapeCombination(_, args) -> args |> List.exists hasBinder
-        if hasBinder t.Stmt then
+        if has_binder t.Stmt then
             failwithf "%s contains a binder, so it cannot be instantiated: substitution under a quantifier needs capture-avoidance and freshness checks this rule does not perform." (print t.Stmt)
         // Simultaneous: `Substitute` visits each variable occurrence once and does not descend into
         // what it substituted, so σ = {a ↦ b, b ↦ c} cannot compose into a ↦ c.
@@ -129,6 +148,62 @@ module Tactics =
                 if v.Name = var.Name && v.Type = var.Type then Some value else None)
         let stmt = t.Stmt.Substitute lookup |> expand
         if sequal stmt t.Stmt then t                          // the identity substitution proves nothing new
+        else
+            let rule =
+                Derive(sprintf "Instantiate the theorem %s in (expression)" (print t.Stmt), proof,
+                       fun (pf: Proof) e -> if pf.Complete && sequal e stmt then T.Expr.Raw else e)
+            Theorem(stmt, Proof(stmt, theory, [ Apply rule ], true))
+
+
+    /// Instantiate a theorem SCHEMA at TERM metavariables: from `⊢ S(?a)` and `σ = {?a ↦ E}`,
+    /// `⊢ S(E)` — in one kernel step, without replaying `S`'s derivation. Gries' Substitution
+    /// inference rule (1.1), for variables of any type.
+    ///
+    /// **The soundness argument is SEMANTIC, and that is why the domain is restricted.** The
+    /// syntactic argument behind `Instantiate` — every axiom instance in the derivation stays an
+    /// instance under σ — does not survive term substitution: `reduce` folds `2 + 3` but leaves
+    /// `?a + 3` alone, and a recognizer may test whether an operand is a literal or a variable, so the
+    /// substituted derivation is not literally a derivation. What holds instead: every axiom
+    /// recognizer and every `Admit` rule is value-sound (the latter are fuzzed for it), so a theorem
+    /// is true under EVERY assignment to a variable that nothing else constrains — and then `S(E)`
+    /// is true, being `S` at the value of `E`.
+    ///
+    /// "Nothing else constrains" is the condition, and it fails for an ordinary variable: a theory
+    /// may name one in an axiom (a recursively defined `f`, or a hypothesis like `c = 3`), and
+    /// substituting for THAT variable is unsound. So the domain must be metavariables — names
+    /// beginning `?`, minted by `Schema.t1`/`t2`/`t3` AFTER the theory was built — which appear in
+    /// no axiom, definition or hypothesis, and are therefore genuinely universal.
+    ///
+    /// Further guards, as in `Instantiate`: the parent proof is complete; no variable twice; each
+    /// value has its variable's type; and the parent statement is binder-free, so nothing can be
+    /// captured (a value may itself contain binders — a Σ term — since there is nothing to capture
+    /// it). The substitution is simultaneous and performed here.
+    let InstantiateTerms (t: Theorem) (subst: (Expr * Expr) list) : Theorem =
+        let proof = t.Proof
+        let theory = proof.Theory
+        let print = theory.PrintFormula
+        if not proof.Complete then
+            failwithf "The proof of %s is not complete, so it cannot be instantiated." (print t.Stmt)
+        let vars =
+            subst |> List.map (fun (v, value) ->
+                match v with
+                | ExprShape.ShapeVar var when var.Name.StartsWith metavar_prefix ->
+                    if value.Type <> var.Type then
+                        failwithf "Cannot substitute %s, of type %s, for %s, of type %s." (print value) value.Type.Name var.Name var.Type.Name
+                    var, expand value
+                | ExprShape.ShapeVar var ->
+                    failwithf "%s is not a schema metavariable (a name beginning %s minted by Schema), so substituting for it is not sound: a theory may have axioms about it." var.Name metavar_prefix
+                | e -> failwithf "%s is not a variable, so it is not a schema position of %s." (print e) (print t.Stmt))
+        match vars |> List.countBy (fun (v, _) -> v.Name) |> List.tryFind (fun (_, n) -> n > 1) with
+        | Some(n, _) -> failwithf "The variable %s is substituted for more than once." n
+        | None -> ()
+        if has_binder t.Stmt then
+            failwithf "%s contains a binder, so it cannot be instantiated: substitution under a quantifier needs capture-avoidance this rule does not perform." (print t.Stmt)
+        let lookup (v: Var) =
+            vars |> List.tryPick (fun (var, value) ->
+                if v.Name = var.Name && v.Type = var.Type then Some value else None)
+        let stmt = t.Stmt.Substitute lookup |> expand
+        if sequal stmt t.Stmt then t
         else
             let rule =
                 Derive(sprintf "Instantiate the theorem %s in (expression)" (print t.Stmt), proof,
@@ -148,7 +223,7 @@ module Tactics =
     /// `Instantiate` verifies anyway, since a schema whose statement is not `f` applied to plain
     /// variables cannot be reconstructed by substitution.
     module Schema =
-        let private mv (name: string) (i: int) : Prop = boolvar (sprintf "?%s_%d" name i)
+        let private mv (name: string) (i: int) : Prop = boolvar (sprintf "%s%s_%d" metavar_prefix name i)
 
         /// Wrap a one-`Prop`-argument theorem schema.
         let p1 (name: string) (f: Prop -> Theorem) : Prop -> Theorem =
@@ -167,6 +242,35 @@ module Tactics =
             let a, b, c = mv name 1, mv name 2, mv name 3
             let s = lazy (f a b c)
             fun x y z -> Instantiate s.Value [ a, x; b, y; c, z ]
+
+        // TERM schemas, through `InstantiateTerms`. Each wrapper mints its own metavariables, with
+        // a process-wide counter so no two schemas share one, and derives `f` at them on first use.
+        let private next_mv = ref 0
+        let private tv<'t> (name: string) : Expr<'t> =
+            let i = System.Threading.Interlocked.Increment &next_mv.contents
+            Expr.Var(Var(sprintf "%s%s_%d" metavar_prefix name i, typeof<'t>)) |> Expr.Cast<'t>
+        let private thm_of (name: string) (r: Rule) =
+            match r with
+            | Derive(_, p, _) -> Theorem(p.Stmt, p)
+            | _ -> failwithf "Schema %s: not a derived rule." name
+
+        /// Wrap a one-term-argument identity (a `Rule`, e.g. `x·0 = 0`), derived once.
+        let t1 (name: string) (f: Expr<'a> -> Rule) : Expr<'a> -> Rule =
+            let a = tv<'a> name
+            let s = lazy (thm_of name (f a))
+            fun x -> Ident (InstantiateTerms s.Value [ a.Raw, x.Raw ])
+
+        /// Wrap a two-term-argument identity, derived once.
+        let t2 (name: string) (f: Expr<'a> -> Expr<'b> -> Rule) : Expr<'a> -> Expr<'b> -> Rule =
+            let a, b = tv<'a> name, tv<'b> name
+            let s = lazy (thm_of name (f a b))
+            fun x y -> Ident (InstantiateTerms s.Value [ a.Raw, x.Raw; b.Raw, y.Raw ])
+
+        /// Wrap a three-term-argument identity, derived once.
+        let t3 (name: string) (f: Expr<'a> -> Expr<'b> -> Expr<'c> -> Rule) : Expr<'a> -> Expr<'b> -> Expr<'c> -> Rule =
+            let a, b, c = tv<'a> name, tv<'b> name, tv<'c> name
+            let s = lazy (thm_of name (f a b c))
+            fun x y z -> Ident (InstantiateTerms s.Value [ a.Raw, x.Raw; b.Raw, y.Raw; c.Raw, z.Raw ])
 
     /// If A is theorem then so is the dual of A.
     let Dual (t:Theorem) dual =

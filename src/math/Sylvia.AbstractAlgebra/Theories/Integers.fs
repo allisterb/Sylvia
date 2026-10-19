@@ -411,9 +411,12 @@ module Integers =
         let xs, ys = monoAtoms a, monoAtoms b
         not xs.IsEmpty && xs.Length = ys.Length && List.forall2 sequal xs ys
 
-    // The (15.9), (15.14) and (15.20) instances the normalizer uses are THEOREMS of the integral domain:
-    // each call replays its derivation, so they are kept per theory instance and argument.
-    let private lemmas = System.Runtime.CompilerServices.ConditionalWeakTable<Theory, System.Collections.Generic.Dictionary<string, Rule>>()
+    // The (15.9) and (15.20) instances the normalizer uses are THEOREMS of the integral domain, and a
+    // theorem called at new arguments replays its derivation. So each is derived ONCE per theory, at a
+    // schema metavariable, and instantiated per use (`Tactics.Schema.t1`, Gries' Substitution rule).
+    // (15.14) is an axiom instance, which costs nothing to state.
+    type private RingLemmas = { Neg: Expr<int> -> Rule; Zero: Expr<int> -> Rule }
+    let private lemmas = System.Runtime.CompilerServices.ConditionalWeakTable<Theory, RingLemmas>()
 
     /// Normalize the integer term `e` found at `prefix` inside the goal; returns the steps and the
     /// normal form.
@@ -422,12 +425,10 @@ module Integers =
             match th with
             | :? IntegralDomain.IntegralDomain<int> as d -> d
             | _ -> failwithf "ring: %s is not an integral domain over int" (th.GetType().Name)
-        let cache = lemmas.GetOrCreateValue th
-        let lemma (kind: string) (mk: unit -> Rule) (a: Expr, b: Expr) =
-            let key = kind + "\u0000" + string a + "\u0000" + string b
-            match cache.TryGetValue key with
-            | true, r -> r
-            | _ -> let r = mk () in cache.[key] <- r; r
+        let lem =
+            lemmas.GetValue(th, fun _ ->
+                { Neg = Tactics.Schema.t1 "neg" (IntegralDomain.neg_as_mul dom)
+                  Zero = Tactics.Schema.t1 "zero" (IntegralDomain.zero_mul dom) })
         let mutable cur = expand e
         let steps = ResizeArray<RuleApplication>()
         let nav (path: Dir list) = (prefix @ path) |> List.map (function DL -> left_branch | DR -> right_branch | DU -> apply_unary)
@@ -448,7 +449,7 @@ module Integers =
         /// `x·0 → 0`: (15.9).
         let zeroMul (path: Dir list) =
             match getAt cur path with
-            | Multiply(x, _) -> step path (lemma "zero" (fun () -> IntegralDomain.zero_mul dom (Expr.Cast<int> x)) (x, x))
+            | Multiply(x, _) -> step path (lem.Zero (Expr.Cast<int> x))
             | e -> failwithf "ring: not a product: %s" (src e)
         /// Paths of the spine of a right-nested binary chain rooted at `root`: one per element.
         let spine (isNode: Expr -> bool) (root: Dir list) =
@@ -461,12 +462,12 @@ module Integers =
         //    the literal −(1) folded to −1 so the next pass does not find it again.
         fix (function Subtract _ -> true | _ -> false) (fun p ->
             match getAt cur p with
-            | Subtract(a, b) -> step p (lemma "sub" (fun () -> IntegralDomain.sub_def dom (Expr.Cast<int> a) (Expr.Cast<int> b)) (a, b))
+            | Subtract(a, b) -> step p (IntegralDomain.sub_def dom (Expr.Cast<int> a) (Expr.Cast<int> b))
             | _ -> ())
         fix (function Negate _ -> true | _ -> false) (fun p ->
             match getAt cur p with
             | Negate x ->
-                step p (lemma "neg" (fun () -> IntegralDomain.neg_as_mul dom (Expr.Cast<int> x)) (x, x))
+                step p (lem.Neg (Expr.Cast<int> x))
                 step (p @ [ DL ]) reduce
             | _ -> ())
         // 2. Distribute · over +, on either side.
@@ -604,7 +605,7 @@ module Integers =
         if not (sequal ln rn) then
             failwithf "ring: not an identity of commutative-ring arithmetic.\n  left normalizes to  %s\n  right normalizes to %s"
                 (th.PrintFormula ln) (th.PrintFormula rn)
-        theorem th (L == R) (ls @ rs)
+        lemma th (L == R) (ls @ rs)
 
     /// `ring_ident`, as a rewrite rule `L → R` for use inside a larger proof.
     let ring (th: Theory) (L: Term<int>) (R: Term<int>) : Rule = Ident (ring_ident th L R)

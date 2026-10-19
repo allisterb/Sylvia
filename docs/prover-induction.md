@@ -621,28 +621,77 @@ followed by `reduce` (which now folds `−(1)` to `−1`), and `x·0 → 0` from
 the associativity / commutativity / distributivity / identity / constant-folding rules (14 now, all
 value-checked).
 
-**Cost, measured.** Those three are THEOREMS, so each new argument replays a derivation — (15.20) goes
-through (15.8)'s mutual implication. The normalizer keeps them per theory instance and argument
-(`ConditionalWeakTable<Theory, …>`). Per goal, one fresh `Induction` instance, JIT warmed elsewhere:
+**Cost — and term schemas.** Those are THEOREMS, so a call at a new argument replays a derivation:
+(15.20) goes through (15.8)'s mutual implication, and the first version (a per-argument cache) cost
+80–290 ms for any goal containing minus. The fix is the one the SAT reconstruction got — derive each
+lemma ONCE at a metavariable and instantiate it — which needed `Tactics.Instantiate` widened from
+propositional variables to TERM variables:
 
-| goal | cold | cached |
+```fsharp
+Tactics.InstantiateTerms (t: Theorem) (σ: (Expr * Expr) list) : Theorem   // ⊢ S(?a) to ⊢ S(E)
+Tactics.Schema.t1 / t2 / t3 name (f: Expr<'a> -> … -> Rule)             // derive once, instantiate per call
+```
+
+**Its soundness argument is semantic, so its domain is restricted.** The bool rule argues
+syntactically (each axiom instance stays an instance under σ). That fails for terms: `reduce` folds
+`2 + 3` but not `?a + 3`, and a recognizer may test literal-ness, so a substituted derivation is not
+literally a derivation. What holds is Gries' Substitution rule read semantically: every recognizer and
+`Admit` rule is value-sound (the rules are fuzzed for it), so a theorem holds for EVERY value of a
+variable nothing else constrains. An ordinary variable may be constrained: a theory can name it in an
+axiom (the recursively defined `f` of (D), a hypothesis like `c = 3`), and substituting for it would be
+unsound. So `InstantiateTerms` accepts only `?`-metavariables, minted by the `Schema` wrappers AFTER the
+theory exists, plus the bool rule's guards (complete parent, no variable twice, types match,
+binder-free statement). The bool `Instantiate` had the same hazard in principle — it accepted any
+propositional variable — and now carries the same metavariable-only guard; every production caller
+already used `Schema.pN` metavariables, so no proof changed.
+
+**A false positive this found in the bool rule too.** The binder guard walked `ExprShape` children, and
+F# attaches trait-call WITNESSES — closed lambdas implementing `+`, `·`, unary `−` — to inline operator
+calls. Every statement with integer arithmetic looked like it contained a binder. The guard now reads a
+`Call`'s real operands only (`has_binder` in `Tactics.fs`, shared by both rules).
+
+Per goal, after the normalizer's two schemas are derived once per theory:
+
+| goal | per-argument cache, first use | schema |
 |---|---|---|
 | `(x+y)(x−y) = x² − y²` | 177 ms | 6 ms |
-| `−(x − y) = y − x` | 290 ms | 9 ms |
-| `(x−x) + y·0 = 0` | 83 ms | 1 ms |
-| `(x−y)² = x² − 2xy + y²` | 106 ms | 9 ms |
-| `(x+1)³` (no minus, no zero) | 20 ms | 17 ms |
+| `−(x − y) = y − x` | 290 ms | 2 ms |
+| `(x−y)² = x² − 2xy + y²` | 106 ms | 4 ms |
 
-About 100–150 ms per distinct negated subterm, cold. The fix is the same one the SAT reconstruction got:
-derive each lemma ONCE at a variable and instantiate it. `Tactics.Instantiate` is bool-variable only;
-extending it to term variables is Gries' Substitution inference rule, but its admissibility argument has
-to be re-made for the integer axioms and for `reduce` (constant folding does not commute with
-substitution literally, only in value) — a soundness decision, deliberately not taken here.
-
+**Logging.** Library sub-proofs in `IntegralDomain.fs`, `Induction.fs`, `ring_ident` and the
+`PropCalculus.mp`/`conj` combinators are now `lemma`s rather than `theorem`s. The lemma flag only affects
+logging (and a more detailed failure message): a non-lemma proof prints at EVERY log level, so these
+printed in full even at level 0. `Induction.fsx` output went from 1.9 MB to 0.8 MB and 11.3 s to 7.9 s.
+Note the levels run 0 (quietest) to 3; level 2 ADDS every lemma proof. What still prints at level 0 is
+Gries' named `[<Theorem>]`s (`reflex_implies` and the like), which are top-level by design.
 **Checks.** `Induction.fsx` (K): all of (15.8)–(15.29), mostly at a compound argument to catch
 mis-targeting; (15.9) used inside an `Integers` proof; two refusals; and two theorems at a SECOND carrier
 (`IntegralDomain<int64>`) to show the theory is generic. The (J) completeness fuzz now exercises the
 theorem-based normalizer (its scrambler keeps a local `a − b → a + b·(−1)`).
 
-**Gate.** Suite 138/138, `Induction.fsx` 112/112, SetTheory ALL PASS, AdversarialSweep ALL CLEAR (3556
+**Gate.** Suite 145/145 (6 new `InstantiateTermsTests`, 1 new metavariable-only `Instantiate` test), `Induction.fsx` 112/112, SetTheory ALL PASS, AdversarialSweep ALL CLEAR (3556
 instantiations), IntegerAlgebra.
+
+## 18. Integer literals in induction proofs
+
+Bounds, predicate arguments and integer equations take plain `int`s: `by_induction th 0 n i P bse stp`,
+`leq 0 n`, `P.[0]`, `f n == 0`, `split_off_term ind 1 n i E`. `let zero = IntTerm 0` is gone from
+`Induction.fsx`. Each `int` form builds EXACTLY the tree its `IntTerm` form builds (checked in (A)), so
+nothing the kernel matches changes.
+
+**Not implicit conversions** — measured in a mock of the `Term` hierarchy, they fire only at a
+parameter typed exactly `IntTerm` and never in operators, indexers or `Term<int>` parameters. Instead:
+
+- `IntTerm.(==)` overloads with `int` on either side.
+- `IntPred`, a `Pred<int>` subclass with an `Item(int)` indexer, returned by `intpred` and `pred_of`.
+  **Not** an `Item('t)` overload on `Pred<'t>`: that was tried and broke the solution build — with
+  two indexers, `P.[x]` whose `'t` is still being inferred is ambiguous (`'t` could be `x`'s own
+  type), and code relies on the indexer to fix `'t`. `IntPred` also re-declares unary minus: F#'s `~-`
+  is `^a -> ^a`, so the inherited one (returning `Pred<int>`) made `-P` fail to compile. The other
+  `Pred` operators still return a plain `Pred<int>`, so `(P * Q).[0]` needs `IntTerm 0`.
+- `int_term` (`Term.fs`, module `IntArgs`): an `int` or any `Term<int>` to a `Term<int>`, by static
+  overload resolution. Let-bound functions cannot be overloaded, so every `Induction` function taking
+  a bound (`leq`, `base_case` … `induction_axiom`, `hypothesis_at`, `subst_body`, the range/Σ lemmas,
+  `shift_bound`, `split_off_term`, `by_induction`) is `inline` and converts its bounds first.
+  `ring_ident` and other non-inline functions still take `Term<int>`; `IntTerm 2 * IntTerm 3` (a
+  product of literal TERMS) is unaffected.
