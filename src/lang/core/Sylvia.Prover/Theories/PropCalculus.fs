@@ -1283,7 +1283,7 @@ module PropCalculus =
     
     /// p ⇒ p ∨ q   (Gries 3.76a)
     [<Theorem "p ⇒ p ∨ q">]
-    let weaken_or p q = theorem prop_calculus ( p ==> (p + q) ) [
+    let weaken_or p q = lemma prop_calculus ( p ==> (p + q) ) [
         ident_eq ( (p ==> (p + q)) )
         def_implies
         left_assoc |> at_left
@@ -1315,7 +1315,7 @@ module PropCalculus =
 
     /// p ∧ (p ⇒ q) ⇒ q  (Gries 3.77)
     [<Theorem "p ∧ (p ⇒ q) ⇒ q">]
-    let modus_ponens p q = theorem prop_calculus ( p * (p ==> q) ==> q ) [
+    let modus_ponens p q = lemma prop_calculus ( p * (p ==> q) ==> q ) [
         ident_and_implies p q |> at_left
         commute_and p q
         strengthen_and q p |> Taut |> apply

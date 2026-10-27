@@ -5,8 +5,9 @@ Design and implementation notes for Gries & Schneider, *A Logical Approach to Di
 Companion to [`prover-predicate-calculus.md`](prover-predicate-calculus.md) and
 [`prover-set-theory.md`](prover-set-theory.md).
 
-Runnable checks: `dotnet fsi examples/proofs/Induction.fsx` (**131/131**) and
-`dotnet fsi examples/proofs/InductiveDefinitions.fsx` (**45/45**, §20).
+Runnable checks: `dotnet fsi examples/proofs/Induction.fsx` (**134/134**),
+`dotnet fsi examples/proofs/InductiveDefinitions.fsx` (**49/49**, §20) and
+`dotnet fsi examples/proofs/OrderedDomain.fsx` (**47/47**, §21: Gries ch.15's ordered domains).
 
 **Status.** Induction over the integers is mechanized as **one axiom** — Gries (12.8), induction over
 `{n₀, n₀+1, …}` — plus a combinator that discharges it, and a lemma (`hypothesis_at`) that packages
@@ -813,4 +814,76 @@ pass (`(1 + 0) − 1` takes two).
 
 **Gate.** Solution builds; suite 149/149; `InductiveDefinitions.fsx` 45/45 (new); `Induction.fsx`
 131/131; SetTheory 175/175, PredCalculus 24/24, E 5/5, Sledgehammer 7/7, Reconstruct 29/29,
+AdversarialSweep ALL CLEAR; PropCalculus, IntegerAlgebra, VerifyRuleFixes clean.
+
+## 21. Ordered domains (Gries ch.15 §15.1, pp. 307–309), and `Integers`' order axioms demoted
+
+`Theories/OrderedDomain.fs`; check: `dotnet fsi examples/proofs/OrderedDomain.fsx` (47/47).
+
+**The theory.** `OrderedDomain<'t>` inherits `IntegralDomain<'t>` and adds an uninterpreted
+predicate `pos` (`OrderedDomain.pos`, never evaluated) with Gries' axioms. Like the integral domain
+it is GENERIC: the order operators are an `OrderOps<'t>` record (`Pos`, `Lt`, `Gt`, `Le`, `Ge`), and
+the example runs the theorems at `int64` as well as `int`.
+
+| Ref | Axiom |
+|---|---|
+| (15.30) | Addition: `pos.a ∧ pos.b ⇒ pos(a + b)` |
+| (15.31) | Multiplication: `pos.a ∧ pos.b ⇒ pos(a·b)` |
+| (15.32) | `¬pos.0` (also accepted as `pos.0 = false`) |
+| (15.33) | `b ≠ 0 ⇒ (pos.b = ¬pos(−b))` |
+| (15.36)–(15.39) | Less `a < b = pos(b − a)`, Greater, At most `a ≤ b = a < b ∨ a = b`, At least |
+
+**The theorems.** (15.34) `b ≠ 0 ⇒ pos(b·b)` follows Gries' proof by cases on `pos.b`. Its
+corollaries are `1 ≠ 0 ⇒ pos.1` and `1 ≠ 0 ⇒ (pos(−1) = false)`. Then come (15.40) `pos.b = 0 < b`
+and (15.41a) `a < b ∧ b < c ⇒ a < c`, which is Gries' own proof: Less, Addition, and Exercise
+15.22's `(b−a) + (c−b) = c − a` (`sub_chain`). (15.41d) `a ≤ b ∧ b ≤ c ⇒ a ≤ c` takes four cases
+via (3.78): one is (15.41a) and three are Substitutions. The rest are (15.42) Monotonicity for `<`
+and `≤`, (15.46) Reflexivity, `1 ≠ 0 ⇒ ((a + 1 ≤ a) = false)`, `0 ≤ a ∧ 0 ≤ b ⇒ 0 ≤ a + b`, and
+`eq_sym`, which moved here from `Induction` (that version now delegates to this one). Each has a
+refusal or a compound-argument check beside it.
+
+**The `1 ≠ 0` premise is real.** The one-element ring satisfies every ordered-domain axiom, and in
+it `a + 1 ≤ a` is true. So the generic successor theorem carries `1 ≠ 0` as a premise. `Integers`
+discharges it with a new evaluation axiom, `(a = b) = false` for distinct int literals (the same
+trust as literal `≤`).
+
+**`Integers` is an `OrderedDomain<int>`, and four axioms became theorems:**
+
+| Was an axiom of `Integers` | Now |
+|---|---|
+| Reflexivity `(x ≤ x) = true` | `Integers.le_refl` ← (15.46) |
+| Transitivity `(x ≤ y ∧ y ≤ z) ⇒ x ≤ z` | `Integers.le_trans` ← (15.41d) |
+| Translation `(x ≤ y) = (x+1 ≤ y+1)` | `Integers.le_translate` ← (15.42) + Cancellation |
+| Successor `(x+1 ≤ x) = false` | `Integers.succ_not_le` ← the above + `one_ne_zero` |
+| Discreteness `(x ≤ y+1) = (x ≤ y ∨ x = y+1)` | **still an axiom**: ℚ is an ordered domain; needs (15.49)/(15.50) |
+| Literal `≤` evaluation | still an axiom (computation), now joined by literal `=` |
+
+Every proof that used the four now uses the theorems, and they all still close: (12.7), n!, the
+§12.2 inductions, and the strong Fibonacci step. That means seven sites in `Induction.fs`, three of
+which previously *ended* on "and that is Transitivity". The `Induction.fsx` checks that asserted
+these were axioms now assert the opposite and prove the theorem. `Integers.le_*` are derived once
+per theory at schema metavariables and instantiated by `InstantiateTerms`, in a `ConditionalWeakTable`
+keyed on the theory as the ring normalizer's lemmas are. New `Tactics.Schema.th1/th2/th3` wrap
+THEOREM-valued schemas, since `t1`–`t3` wrap identities only.
+
+**The payoff, `0 ≤ m ⇒ b^(m+n) = bᵐ·bⁿ`** (`InductiveDefinitions.fsx` (G)), was blocked in §20. Its
+step unfolds `b^((m+n)+1)` and needs `0 ≤ m + n`, which `Integers.nonneg_add` now supplies. The step
+detaches the hypothesis `0 ≤ m ⇒ …` with `modus_ponens` under `Establish`, and the check that it
+fails without `0 ≤ m + n` passes.
+
+**Performance.** (15.34)'s case analyses are three-atom tautologies. Proving them by the ANF search
+cost ~1.5 s each, and every new `Induction(...)` theory paid ~7 s for `succ_not_le` because
+`split_off` needs it. They are now `Schema.p3` boolean schemas, proved once per process in the
+logic, and re-homed with one `Taut` step. First use per theory: 7.2 s → 0.25 s. `Induction.fsx`
+runs in 9.7 s (21.5 s before the fix), `InductiveDefinitions.fsx` in 6.1 s, `OrderedDomain.fsx` in
+5.6 s. `weaken_or` and `modus_ponens` are now `lemma`s, for the same log-noise reason as §20.
+
+**Display.** `pos` prints as `OrderedDomain.pos x`. That's cosmetic, and it is left as is.
+
+**Next.** Well-ordering (15.49) and (15.50) "no element between 0 and 1", to demote Discreteness,
+the last order axiom. Gries proves (15.50) by contradiction from well-ordering of ℕ. Then §15.2
+(min/max) and §15.3 (abs), which are now direct.
+
+**Gate.** Solution builds; suite 149/149; OrderedDomain 47/47 (new); InductiveDefinitions 49/49;
+Induction 134/134; SetTheory 175/175; PredCalculus 24/24; E 5/5; Sledgehammer 7/7; Reconstruct 29/29;
 AdversarialSweep ALL CLEAR; PropCalculus, IntegerAlgebra, VerifyRuleFixes clean.

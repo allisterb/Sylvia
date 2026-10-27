@@ -177,8 +177,8 @@ module Induction =
             commute_and a f                     |> at_left                          // (A ∧ F) → (F ∧ A)
             shunt' f a pn                                                           // (F ∧ A) ⇒ P → F ⇒ (A ⇒ P)
             ident_and a |> Commute              |> at [right_branch; left_branch]   // A → A ∧ T
-            ax_ident th ((leq (tm n) (tm n)) == T) |> Commute
-                                                |> at [right_branch; left_branch; right_branch]  // T → n ≤ n
+            Integers.le_refl th (tm n) |> Commute
+                                                |> at [right_branch; left_branch; right_branch]  // T → n ≤ n  (15.46)
             // and the state IS Instantiation (9.13) at i := n, which closes it.
         ]
 
@@ -229,7 +229,7 @@ module Induction =
         lemma th (((loi * ile) * ieq) == F) [
             commute_and (loi * ile) ieq                                  |> at_left
             ax_ident th ((ieq * (loi * ile)) == (ieq * ((leq lo n1) * (leq n1 n)))) |> at_left  // (3.84a)
-            ax_ident th ((leq n1 n) == F)                                |> at [left_branch; right_branch; right_branch]
+            Integers.succ_not_le th n                                    |> at [left_branch; right_branch; right_branch]
             zero_and (leq lo n1)                                         |> at [left_branch; right_branch]
             zero_and ieq                                                 |> at_left
         ]
@@ -248,7 +248,7 @@ module Induction =
             ident_eq_false A                                                    // (A = F) → ¬A
             ident_implies_false_not A |> Commute |> apply                       // ¬A → (A ⇒ F)
             ax_ident th ((leq lo hi) == F) |> Commute |> at_right               // F → (lo ≤ hi)
-            // and (lo ≤ i ∧ i ≤ hi) ⇒ lo ≤ hi is Transitivity of ≤.
+            Taut (Integers.le_trans th lo (tm i) hi) |> apply                   // Transitivity (15.41d)
         ]
 
     /// A range quantification over the integers that Split off term and Empty range are stated for:
@@ -289,7 +289,7 @@ module Induction =
         let lo1 = IntTerm(Integers._reduce_constants (call_add lo.Expr (Expr.Value 1)) |> expand_as<int>)
         let n1 = IntTerm(n.Expr) + 1
         lemma th ((leq lo n) ==> (leq lo1 n1)) [
-            ax_ident th ((leq lo n) == (leq (IntTerm(lo.Expr) + 1) n1)) |> at_left   // Translation of ≤
+            Integers.le_translate th lo n |> at_left                                  // Monotonicity (15.42)
             Integers.reduce |> at [left_branch; left_branch]                          // lo + 1 folded
             Taut (reflex_implies (leq lo1 n1)) |> apply
         ]
@@ -388,8 +388,9 @@ module Induction =
        The principle is unchanged — (12.8)'s hypothesis is already all of `P.n₀ … P.n` — so what is
        needed is order reasoning to discharge the range obligation `n₀ ≤ k ∧ k ≤ n` at the chosen `k`,
        and a case split for the steps where `k` would fall below `n₀`. Everything below is a THEOREM
-       of `Integers`' order axioms (Reflexivity, Discreteness, Transitivity, Translation) and the ring
-       normalizer; nothing is axiomatized for the purpose.
+       of the ordered domain `Integers` is (Reflexivity, Transitivity, Monotonicity — `OrderedDomain`),
+       its one remaining order axiom (Discreteness), and the ring normalizer; nothing is axiomatized
+       for the purpose.
        ------------------------------------------------------------------------------------------ *)
 
     /// `lo + 1` with integer literals folded: `0 + 1` is `1`, a symbolic `lo + 1` is left as it is.
@@ -400,15 +401,7 @@ module Induction =
     /// is symmetry of ≡, so nothing flips `a = b` at a non-bool type directly; this derives it from
     /// Substitution (3.84a) and reflexivity: `a = b ∧ a = a` is `a = b ∧ b = a`. With `Deduce'` it
     /// rewrites `b` to `a` under a hypothesis `a = b`, and with `mp` it flips a proved identity.
-    let eq_sym (th: Theory) (a: Term<'t>) (b: Term<'t>) : Theorem =
-        let ab, aa, ba = a == b, a == a, b == a
-        lemma th (ab ==> ba) [
-            ident_and ab |> Commute                  |> at_left                    // a = b → a = b ∧ T
-            Taut (axiom th aa) |> Commute            |> at [left_branch; right_branch]  // T → a = a
-            ax_ident th ((ab * aa) == (ab * ba))     |> at_left                    // (3.84a)
-            commute_and ab ba                        |> at_left
-            Taut (strengthen_and ba ab)              |> apply
-        ]
+    let eq_sym (th: Theory) (a: Term<'t>) (b: Term<'t>) : Theorem = OrderedDomain.eq_sym th a.Expr b.Expr
 
     /// `x ≤ x + 1`. Discreteness splits it into `x ≤ x ∨ x = x + 1`, whose left disjunct is reflexivity.
     let inline le_succ (th: Theory) x : Theorem =
@@ -417,7 +410,7 @@ module Induction =
         let eq = x == (x1 :> Term<int>)
         lemma th (leq x x1) [
             ax_ident th ((leq x x1) == ((leq x x) + eq)) |> apply     // Discreteness
-            ax_ident th ((leq x x) == T)                 |> at_left   // Reflexivity
+            Integers.le_refl th x                        |> at_left   // Reflexivity (15.46)
             commute_or T eq                              |> apply
             zero_or eq                                   |> apply
         ]
@@ -429,7 +422,7 @@ module Induction =
         lemma th (a ==> (leq lo (IntTerm(n.Expr) + 1))) [
             ident_and a |> Commute              |> at_left                       // A → A ∧ T
             Taut (le_succ th n) |> Commute      |> at [left_branch; right_branch]  // T → n ≤ n + 1
-            // and (lo ≤ n ∧ n ≤ n+1) ⇒ lo ≤ n+1 is Transitivity.
+            Taut (Integers.le_trans th lo n (IntTerm(n.Expr) + 1)) |> apply        // Transitivity (15.41d)
         ]
 
     /// `lo′ ≤ n ⇒ lo ≤ n`, where `lo′` is `lo + 1` folded — Transitivity through `lo ≤ lo + 1`.
@@ -441,7 +434,7 @@ module Induction =
             commute_and a T                     |> at_left                       // → T ∧ A
             Taut (le_succ th lo) |> Commute     |> at [left_branch; left_branch] // T → lo ≤ lo + 1
             Integers.reduce                     |> at [left_branch; left_branch; right_branch]  // lo + 1 folded
-            // and (lo ≤ lo′ ∧ lo′ ≤ n) ⇒ lo ≤ n is Transitivity.
+            Taut (Integers.le_trans th lo (fold_succ lo) n) |> apply              // Transitivity (15.41d)
         ]
 
     /// `(lo ≤ n − 1) = (lo′ ≤ n)`, `lo′` being `lo + 1` folded — Translation of ≤, and `(n−1)+1 = n`.
@@ -449,7 +442,7 @@ module Induction =
         let lo, n = int_term lo, int_term n
         let nm1 = IntTerm(n.Expr) - 1
         lemma th ((leq lo nm1) == (leq (fold_succ lo) n)) [
-            ax_ident th ((leq lo nm1) == (leq (IntTerm(lo.Expr) + 1) (nm1 + 1))) |> at_left   // Translation
+            Integers.le_translate th lo nm1                                       |> at_left   // Monotonicity (15.42)
             Integers.reduce                                     |> at [left_branch; left_branch]   // lo + 1 folded
             Ident (Integers.ring_ident th (nm1 + 1) n)         |> at [left_branch; right_branch]  // (n−1)+1 → n
         ]

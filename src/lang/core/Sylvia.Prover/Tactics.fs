@@ -272,6 +272,24 @@ module Tactics =
             let s = lazy (thm_of name (f a b c))
             fun x y z -> Ident (InstantiateTerms s.Value [ a.Raw, x.Raw; b.Raw, y.Raw; c.Raw, z.Raw ])
 
+        /// Wrap a one-term-argument THEOREM (an implication, say, rather than an identity), derived once.
+        let th1 (name: string) (f: Expr<'a> -> Theorem) : Expr<'a> -> Theorem =
+            let a = tv<'a> name
+            let s = lazy (f a)
+            fun x -> InstantiateTerms s.Value [ a.Raw, x.Raw ]
+
+        /// Wrap a two-term-argument theorem, derived once.
+        let th2 (name: string) (f: Expr<'a> -> Expr<'b> -> Theorem) : Expr<'a> -> Expr<'b> -> Theorem =
+            let a, b = tv<'a> name, tv<'b> name
+            let s = lazy (f a b)
+            fun x y -> InstantiateTerms s.Value [ a.Raw, x.Raw; b.Raw, y.Raw ]
+
+        /// Wrap a three-term-argument theorem, derived once.
+        let th3 (name: string) (f: Expr<'a> -> Expr<'b> -> Expr<'c> -> Theorem) : Expr<'a> -> Expr<'b> -> Expr<'c> -> Theorem =
+            let a, b, c = tv<'a> name, tv<'b> name, tv<'c> name
+            let s = lazy (f a b c)
+            fun x y z -> InstantiateTerms s.Value [ a.Raw, x.Raw; b.Raw, y.Raw; c.Raw, z.Raw ]
+
     /// If A is theorem then so is the dual of A.
     let Dual (t:Theorem) dual =
         let proof = t.Proof

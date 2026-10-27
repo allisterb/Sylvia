@@ -34,41 +34,23 @@ module Integers =
         | Equals(LessThan(l,r), SetTheory.ElementOf(Subtract(r', l'), Zpos)) when sequal2 l r l' r' -> pattern_name "Definition of <" |> Some
         | _ -> None
 
-    /// `x ≤ x = true` — reflexivity of ≤.
-    ///
-    /// The one order fact mathematical induction needs (`Induction.hypothesis_at`, to instantiate an
-    /// inductive hypothesis at its own upper bound). Gries develops the order on ℤ properly in a
-    /// later chapter; this is not that, and the ordering axioms are deliberately not opened up here
-    /// beyond what a proof by induction cannot do without.
-    let (|ReflexLessEq|_|) =
-        function
-        | Equals(LessEq(a, b), True) when sequal a b -> pattern_name "Reflexivity of ≤" |> Some
-        | _ -> None
+    // Reflexivity, Transitivity, Translation of ≤ and "a successor is not ≤" were AXIOMS here until
+    // 2026-10-27. They are now THEOREMS of the ordered domain (`OrderedDomain`, Gries 15.30–15.46) that
+    // `Integers` is — see `le_refl`, `le_trans`, `le_translate`, `succ_not_le` below. What remains is
+    // what an ordered domain does not give: discreteness, and evaluation on literals.
 
     /// `(x ≤ y + 1) = (x ≤ y ∨ x = y + 1)` — DISCRETENESS of the integers: nothing lies strictly
     /// between `y` and `y + 1`.
     ///
     /// The real content of splitting the last term off an integer range (Gries 8.23), and the fact
     /// that makes it an INTEGER theorem: over the reals it is false. Restricted to `int` for that
-    /// reason. Gries proves range facts like this from the arithmetic axioms of ch.15; until those
-    /// exist here it is stated directly.
+    /// reason. An ordered domain does not give it (ℚ is one); Gries gets it from Well ordering
+    /// (15.49), as (15.50) "no element between 0 and 1". Until that is in, it is stated directly.
     let (|DiscreteLessEq|_|) =
         function
         | Equals(LessEq(x, Add(y, Int32 1)), Or(LessEq(x', y'), Equals(x'', Add(y'', Int32 1))))
             when x.Type = typeof<int> && sequal x x' && sequal x' x'' && sequal y y' && sequal y' y'' ->
             pattern_name "Discreteness of ≤" |> Some
-        | _ -> None
-
-    /// `(x ≤ y ∧ y ≤ z) ⇒ x ≤ z` — transitivity of ≤.
-    ///
-    /// With literal comparison below, this is what makes a NUMERIC empty range provably empty:
-    /// `1 ≤ i ∧ i ≤ 0 ⇒ 1 ≤ 0`, and `1 ≤ 0` is false. Stated for `int`, the theory's carrier, like
-    /// the other order axioms here.
-    let (|TransLessEq|_|) =
-        function
-        | Implies(And(LessEq(x, y), LessEq(y', z)), LessEq(x', z'))
-            when x.Type = typeof<int> && sequal y y' && sequal x x' && sequal z z' ->
-            pattern_name "Transitivity of ≤" |> Some
         | _ -> None
 
     /// `(a ≤ b) = true` or `= false` for integer LITERALS `a`, `b`, by evaluation.
@@ -82,25 +64,12 @@ module Integers =
         | Equals(LessEq(Int32 a, Int32 b), False) when a > b -> pattern_name "Comparison of integer literals" |> Some
         | _ -> None
 
-    /// `(x ≤ y) = (x + 1 ≤ y + 1)` — ≤ is invariant under translation by one.
-    ///
-    /// What turns an induction hypothesis's range `0 ≤ n` into the proviso `1 ≤ n + 1` that Split off
-    /// term needs (after `reduce` folds `0 + 1`). Transitivity cannot: nothing relates `0 ≤ n` to a `1`
-    /// on the left.
-    let (|TranslateLessEq|_|) =
+    /// `(a = b) = false` for DISTINCT integer literals `a`, `b`, by evaluation — the same trust as
+    /// literal comparison. It is what makes `1 ≠ 0` a theorem, which an ordered domain needs (the
+    /// one-element ring satisfies every other axiom, and in it nothing is positive).
+    let (|LiteralEq|_|) =
         function
-        | Equals(LessEq(x, y), LessEq(Add(x', Int32 1), Add(y', Int32 1)))
-            when x.Type = typeof<int> && sequal x x' && sequal y y' ->
-            pattern_name "Translation of ≤" |> Some
-        | _ -> None
-
-    /// `(x + 1 ≤ x) = false` — a successor is never at or below its predecessor. Together with
-    /// Substitution (3.84a) it is what makes the two halves of a split integer range DISJOINT
-    /// (`i ≤ n ∧ i = n + 1` is false).
-    let (|SuccNotLessEq|_|) =
-        function
-        | Equals(LessEq(Add(x, Int32 1), x'), False) when x.Type = typeof<int> && sequal x x' ->
-            pattern_name "Successor is not ≤" |> Some
+        | Equals(Equals(Int32 a, Int32 b), False) when a <> b -> pattern_name "Comparison of integer literals" |> Some
         | _ -> None
 
     // Hoisted operator templates: quotation literals written inline in match arms are
@@ -113,9 +82,10 @@ module Integers =
     let private zero_int : Expr<int> = <@ 0 @>
     let private one_int : Expr<int> = <@ 1 @>
 
-    /// The integers' own axioms, ON TOP OF those of an integral domain (`IntegralDomain`, Gries
-    /// 15.1–15.7, 15.13, 15.14), which `Integers` inherits: the ring laws live there now, once.
-    /// What stays here is what is particular to ℤ — its order — plus two older forms kept because
+    /// The integers' own axioms, ON TOP OF those of an ordered domain (`OrderedDomain`, Gries
+    /// 15.1–15.7, 15.13, 15.14, 15.30–15.33, 15.36–15.39), which `Integers` inherits: the ring and
+    /// order laws live there now, once. What stays here is what is particular to ℤ — discreteness,
+    /// and evaluation of comparisons between literals — plus two older forms kept because
     /// existing proofs may cite them: additive cancellation at a non-zero term (a weaker form of
     /// 15.8) and an additive-inverse ∃ in the shape `(∃x |: v + x = 0)`.
     let integer_axioms =
@@ -123,12 +93,9 @@ module Integers =
         | LeftCancelNonZero add_op zero_int x -> Some (desc x)
         | Exists(_, a::[], Bool true, (Equals(Add(Var _, Var a'), Int32 0))) when vequal a a' -> Some (axiom_desc "Integers" (pattern_name "Additive Inverse")) 
         | DefLessThan x
-        | ReflexLessEq x
         | DiscreteLessEq x
-        | SuccNotLessEq x
-        | TransLessEq x
-        | TranslateLessEq x
-        | LiteralLessEq x -> Some (desc x)
+        | LiteralLessEq x
+        | LiteralEq x -> Some (desc x)
         | _ -> None
 
     (* Expression functions for derived rules *)
@@ -309,9 +276,14 @@ module Integers =
     let int_ops : IntegralDomain.DomainOps<int> =
         { Name = "Integers"; Add = <@ (+) @>; Mul = <@ (*) @>; Zero = <@ 0 @>; One = <@ 1 @>; Neg = <@ (~-) @>; Sub = <@ (-) @> }
 
-    /// The theory of integers: an integral domain at `int` (Gries §15.1), plus the order and the
-    /// rewrite rules below. A caller's extra axioms and rules go on top — `Induction` is one.
-    type Integers(?axioms: Axioms, ?rules: Rules) = inherit IntegralDomain.IntegralDomain<int>(int_ops,
+    /// The integers as an ordered domain: `pos` and the relations it defines, at `int`.
+    let int_order : OrderedDomain.OrderOps<int> =
+        { Pos = <@ OrderedDomain.pos<int> @>; Lt = <@ (<) @>; Gt = <@ (>) @>; Le = <@ (<=) @>; Ge = <@ (>=) @> }
+
+    /// The theory of integers: an ordered domain at `int` (Gries §15.1), plus discreteness, literal
+    /// evaluation and the rewrite rules below. A caller's extra axioms and rules go on top —
+    /// `Induction` is one.
+    type Integers(?axioms: Axioms, ?rules: Rules) = inherit OrderedDomain.OrderedDomain<int>(int_ops, int_order,
         BooleanAlgebra.combine_axioms (defaultArg axioms (fun _ -> None)) integer_axioms, [
         reduce
         right_assoc_add
@@ -330,6 +302,55 @@ module Integers =
     ] @ defaultArg rules [])
     
     let integers = Integers()
+
+    (* ------------------------------------------------------------------------------------------
+       The order laws, as THEOREMS. Each is derived once per theory at schema metavariables
+       (`Tactics.Schema`) from the ordered-domain theorems, and instantiated by `InstantiateTerms`.
+       They replace what were four axioms of this theory.
+       ------------------------------------------------------------------------------------------ *)
+
+    type private OrderLemmas =
+        { Refl: Expr<int> -> Rule
+          Trans: Expr<int> -> Expr<int> -> Expr<int> -> Theorem
+          Translate: Expr<int> -> Expr<int> -> Rule
+          SuccNotLe: Expr<int> -> Rule
+          NonnegAdd: Expr<int> -> Expr<int> -> Theorem }
+
+    let private order_lemmas = System.Runtime.CompilerServices.ConditionalWeakTable<Theory, OrderLemmas>()
+
+    /// `th` as an ordered domain at `int` — which every `Integers` (and `Induction`) theory is.
+    let order_domain (th: Theory) : OrderedDomain.OrderedDomain<int> =
+        match th with
+        | :? OrderedDomain.OrderedDomain<int> as d -> d
+        | _ -> failwithf "The integer order laws need an ordered domain at int (e.g. Integers); %s is not one." (th.GetType().Name)
+
+    /// `¬(1 = 0)` — by literal evaluation.
+    let one_ne_zero (th: Theory) : Theorem =
+        let one0 = Prop(<@ 1 = 0 @>)
+        lemma th (!!one0) [
+            PropCalculus.ident_eq_false one0 |> PropCalculus.Commute |> apply    // ¬(1 = 0) → ((1 = 0) = false)
+        ]
+
+    let private order_of (th: Theory) : OrderLemmas =
+        order_lemmas.GetValue(th, fun _ ->
+            let d = order_domain th
+            let one : Expr<int> = <@ 1 @>
+            { Refl = Tactics.Schema.t1 "le_refl" (OrderedDomain.le_refl d)
+              Trans = Tactics.Schema.th3 "le_trans" (OrderedDomain.le_trans d)
+              Translate = Tactics.Schema.t2 "le_translate" (fun a b -> OrderedDomain.le_translate d a b one)
+              SuccNotLe = Tactics.Schema.t1 "succ_not_le" (fun a -> Ident (PropCalculus.mp (OrderedDomain.succ_not_le d a) (one_ne_zero th)))
+              NonnegAdd = Tactics.Schema.th2 "nonneg_add" (OrderedDomain.nonneg_add d) })
+
+    /// `(x ≤ x) = true` — Reflexivity (15.46).
+    let le_refl (th: Theory) (x: Term<int>) : Rule = (order_of th).Refl x.Expr
+    /// `(x ≤ y ∧ y ≤ z) ⇒ x ≤ z` — Transitivity (15.41d).
+    let le_trans (th: Theory) (x: Term<int>) (y: Term<int>) (z: Term<int>) : Theorem = (order_of th).Trans x.Expr y.Expr z.Expr
+    /// `(x ≤ y) = (x + 1 ≤ y + 1)` — Monotonicity (15.42) for ≤, by one.
+    let le_translate (th: Theory) (x: Term<int>) (y: Term<int>) : Rule = (order_of th).Translate x.Expr y.Expr
+    /// `(x + 1 ≤ x) = false`.
+    let succ_not_le (th: Theory) (x: Term<int>) : Rule = (order_of th).SuccNotLe x.Expr
+    /// `(0 ≤ x ∧ 0 ≤ y) ⇒ 0 ≤ x + y`.
+    let nonneg_add (th: Theory) (x: Term<int>) (y: Term<int>) : Theorem = (order_of th).NonnegAdd x.Expr y.Expr
 
     (* ------------------------------------------------------------------------------------------
        Ring normalization — Gries' "(Arithmetic)" step, as a tactic that PRODUCES A PROOF.

@@ -12,7 +12,8 @@
 //   (C) the geometric sum  (b−1)·(Σi | 1 ≤ i ≤ n : bⁱ) = bⁿ⁺¹ − b;
 //   (D) Fibonacci:  (Σi | 1 ≤ i ≤ n : Fᵢ) = Fₙ₊₂ − 1;
 //   (E) the order facts and the case split a STRONG induction step needs, all theorems;
-//   (F) strong induction:  F(m+n+1) = F(m+1)·F(n+1) + F(m)·F(n), whose step uses P.n AND P(n−1).
+//   (F) strong induction:  F(m+n+1) = F(m+1)·F(n+1) + F(m)·F(n), whose step uses P.n AND P(n−1);
+//   (G) 0 ≤ m ⇒ b^(m+n) = bᵐ·bⁿ, whose step needs 0 ≤ m + n — a theorem of the ordered domain.
 //
 // Run:  dotnet fsi examples/proofs/InductiveDefinitions.fsx
 
@@ -324,6 +325,53 @@ fails "the n ≥ 1 case does not close without P(n−1)" (fun () ->
     ])
 fails "hypothesis_below is refused without 1 ≤ n (from 0 ≤ n alone)" (fun () ->
     theorem th (((leq 0 n) * ihF) ==> Pfib.[nm1]) [ Deduce (hypothesis_below th 0 n i Pfib) |> apply_right ])
+
+printfn "\n===== (G) b^(m+n) = bᵐ·bⁿ — needs the ORDERED DOMAIN ====="
+// The step unfolds b^((m+n)+1), so the conditional definition needs 0 ≤ m + n. Translation by 1
+// cannot give that from 0 ≤ m and 0 ≤ n; `Integers.nonneg_add` — Monotonicity (15.42) and
+// Transitivity (15.41d) of the ordered domain `Integers` is — can. P.n carries 0 ≤ m as a premise.
+let am = leq 0 m
+let Pexp = pred_of n (am ==> ((pow b (m + n)) == (pow b m * pow b n)))
+let ihG, pn1G = hypothesis 0 n i Pexp, Pexp.[n + 1]
+let qG = (pow b (m + n)) == (pow b m * pow b n)        // P.n's consequent
+let eqG = (pow b (m + (n + 1))) == (pow b m * pow b (n + 1))   // P(n+1)'s consequent
+let baseG =
+    theorem th (base_case 0 Pexp) [
+        Integers.ident_add             |> at [right_branch; left_branch]      // b^(m+0) → bᵐ
+        ax_ident th ((pow b 0) == 1)   |> at [right_branch; right_branch]
+        Integers.ident_mul             |> at [right_branch; right_branch]     // bᵐ·1 → bᵐ
+        Taut (axiom th ((pow b m) == (pow b m))) |> apply_right
+    ]
+let bodyG =
+    theorem th (a0 ==> (ihG ==> pn1G)) [
+        (shunt' a0 ihG pn1G |> Commute) |> apply                                  // (0 ≤ n ∧ IH) ⇒ (0 ≤ m ⇒ …)
+        (shunt' (a0 * ihG) am eqG |> Commute) |> apply                            // ((0 ≤ n ∧ IH) ∧ 0 ≤ m) ⇒ …
+        Establish (Integers.nonneg_add th m n)          |> apply                  // 0 ≤ m + n — the ordered domain
+        Establish (hypothesis_at th 0 n i Pexp)         |> apply                  // P.n = (0 ≤ m ⇒ b^(m+n) = bᵐ·bⁿ)
+        Establish (modus_ponens am qG)                  |> apply                  // b^(m+n) = bᵐ·bⁿ — THE IH, detached
+        Ident (ring_ident th (m + (n + 1)) ((m + n) + 1)) |> apply_right
+        Deduce' (pow_succ b (m + n))                    |> apply_right            // b^((m+n)+1) → b·b^(m+n), under 0 ≤ m+n
+        Deduce' (reflex_implies qG)                     |> apply_right            // b^(m+n) → bᵐ·bⁿ
+        Deduce' (pow_succ b n)                          |> apply_right            // bⁿ⁺¹ → b·bⁿ
+        Taut (ring_ident th (b * (pow b m * pow b n)) (pow b m * (b * pow b n))) |> apply_right
+    ]
+named "base case       0 ≤ m ⇒ b^(m+0) = bᵐ·b⁰"                     (fun () -> baseG)
+named "step body       uses 0 ≤ m + n from nonneg_add"              (fun () -> bodyG)
+let thmG = by_induction th 0 n i Pexp baseG (generalize_step th 0 n i Pexp bodyG)
+printfn "  %s" (th.PrintFormula (expand thmG.Stmt))
+named "BY INDUCTION    (∀n | 0 ≤ n : 0 ≤ m ⇒ b^(m+n) = bᵐ·bⁿ)"     (fun () -> thmG)
+fails "the step does not close without 0 ≤ m + n" (fun () ->
+    theorem th (a0 ==> (ihG ==> pn1G)) [
+        (shunt' a0 ihG pn1G |> Commute) |> apply
+        (shunt' (a0 * ihG) am eqG |> Commute) |> apply
+        Establish (hypothesis_at th 0 n i Pexp)         |> apply
+        Establish (modus_ponens am qG)                  |> apply
+        Ident (ring_ident th (m + (n + 1)) ((m + n) + 1)) |> apply_right
+        Deduce' (pow_succ b (m + n))                    |> apply_right
+        Deduce' (reflex_implies qG)                     |> apply_right
+        Deduce' (pow_succ b n)                          |> apply_right
+        Taut (ring_ident th (b * (pow b m * pow b n)) (pow b m * (b * pow b n))) |> apply_right
+    ])
 
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1

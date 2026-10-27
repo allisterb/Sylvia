@@ -116,7 +116,9 @@ printfn "\n===== (C) The inductive hypothesis, at its own upper bound ====="
 // discharges the instance's range obligation, and it can come from nowhere else.
 named "hypothesis_at:  (n₀ ≤ n ∧ IH) ⇒ P.n"  (fun () -> hypothesis_at ind 0 n i P)
 named "hypothesis_at at a symbolic base point" (fun () -> hypothesis_at ind k n i P)
-ok "reflexivity of ≤ is an axiom (Integers)"   (ind.AxEquiv ((leq n n) == T).Expr)
+// Reflexivity of ≤ was an axiom of `Integers`; it is now a theorem of the ordered domain (15.46).
+ok "reflexivity of ≤ is NOT an axiom any more"  (not (ind.AxEquiv ((leq n n) == T).Expr))
+named "... it is a theorem, Reflexivity (15.46)"  (fun () -> theorem ind ((leq n n) == T) [ Integers.le_refl ind n |> apply ])
 ok "≤ is NOT symmetric-by-accident: n ≤ m is not an axiom"
    (not (ind.AxEquiv ((leq n m) == T).Expr))
 
@@ -241,8 +243,9 @@ ok "(3.84a) rejects capture of e's variables by a binder in E"
 ok "(3.84a) rejects substituting under a binder of z"
    (not (Theory.S.AxEquiv ((ieq * (qall i T (leq i n))) == (ieq * (qall i T (leq (n + 1) n)))).Expr))
 
-// The integer order: discreteness, and a successor is never ≤ its predecessor. Both are stated
-// for `int` only — discreteness is FALSE over the reals.
+// The integer order: discreteness, and a successor is never ≤ its predecessor. Discreteness is an
+// axiom, for `int` only — it is FALSE over the reals, and an ordered domain does not give it. The
+// successor fact is a theorem of the ordered domain `Integers` is.
 let x, y = IntVar "x", IntVar "y"
 ok "Discreteness:  (x ≤ y+1) = (x ≤ y ∨ x = y+1)"
    (ind.AxEquiv ((leq x (y + 1)) == ((leq x y) + ((x :> Term<int>) == ((y + 1) :> Term<int>)))).Expr)
@@ -250,8 +253,11 @@ ok "Discreteness does not hold for y+2"
    (not (ind.AxEquiv ((leq x (y + 2)) == ((leq x y) + ((x :> Term<int>) == ((y + 2) :> Term<int>)))).Expr))
 ok "Discreteness is not an axiom over the reals"
    (not (ind.AxEquiv (Prop <@ ((%x.Expr |> float) <= (%y.Expr |> float) + 1.0) = (((%x.Expr |> float) <= (%y.Expr |> float)) || ((%x.Expr |> float) = (%y.Expr |> float) + 1.0)) @>).Expr))
-ok "Successor:  (x+1 ≤ x) = false"                         (ind.AxEquiv ((leq (x + 1) x) == F).Expr)
-ok "... but not (x+1 ≤ y) = false"                          (not (ind.AxEquiv ((leq (x + 1) y) == F).Expr))
+ok "Successor:  (x+1 ≤ x) = false is NOT an axiom any more" (not (ind.AxEquiv ((leq (x + 1) x) == F).Expr))
+named "... it is a theorem: x+1 < x is pos(−1), x+1 = x is 1 = 0"
+      (fun () -> theorem ind ((leq (x + 1) x) == F) [ Integers.succ_not_le ind x |> at_left ])
+ok "... and does not prove (x+1 ≤ y) = false"
+   (not (proves "x+1 ≤ y" (fun () -> theorem ind ((leq (x + 1) y) == F) [ Integers.succ_not_le ind x |> at_left ])))
 
 // The two range lemmas and the theorem, at a symbolic lower bound and at 1.
 named "range_extend    lo ≤ n+1 ⇒ (lo≤i≤n+1) = (lo≤i≤n ∨ i=n+1)"  (fun () -> range_extend ind k n i)
@@ -270,12 +276,11 @@ printfn "\n===== (H) The base case of Gries (12.7):  (Σi | 1 ≤ i ≤ n : 2i�
 // matches the syntactic `false`. Two general order facts make every such range provably empty:
 // Transitivity of ≤, and evaluation of a comparison between integer literals.
 let z' = IntVar "z"
-ok "Transitivity:  (x ≤ y ∧ y ≤ z) ⇒ x ≤ z"
-   (ind.AxEquiv (((leq x y) * (leq y z')) ==> (leq x z')).Expr)
-ok "Transitivity needs a shared middle term"
-   (not (ind.AxEquiv (((leq x y) * (leq z' y)) ==> (leq x y)).Expr))
-ok "Transitivity is an implication, not an equivalence"
-   (not (ind.AxEquiv ((((leq x y) * (leq y z')) == (leq x z'))).Expr))
+named "Transitivity  (x ≤ y ∧ y ≤ z) ⇒ x ≤ z — a theorem (15.41d)"   (fun () -> Integers.le_trans ind x y z')
+ok "... and no longer an axiom"
+   (not (ind.AxEquiv (((leq x y) * (leq y z')) ==> (leq x z')).Expr))
+ok "... it is the statement claimed"
+   (sequal (expand (Integers.le_trans ind x y z').Stmt) (expand (((leq x y) * (leq y z')) ==> (leq x z')).Expr))
 ok "(1 ≤ 0) = false, by evaluation"           (ind.AxEquiv ((leq 1 0) == F).Expr)
 ok "(0 ≤ 1) = true, by evaluation"            (ind.AxEquiv ((leq 0 1) == T).Expr)
 ok "... but only the CORRECT value: (1 ≤ 0) = true is no axiom"
@@ -307,9 +312,11 @@ printfn "\n===== (I) The inductive step of (12.7), and (12.7) itself ====="
 //                              =  (n+1)·(n+1)                           arithmetic
 // Split off term's proviso `1 ≤ n+1` comes from the step's `0 ≤ n` by Translation of ≤.
 
-ok "Translation:  (x ≤ y) = (x+1 ≤ y+1)"        (ind.AxEquiv ((leq x y) == (leq (x + 1) (y + 1))).Expr)
-ok "Translation does not hold by different amounts"
-   (not (ind.AxEquiv ((leq x y) == (leq (x + 1) (y + 2))).Expr))
+named "Translation  (x ≤ y) = (x+1 ≤ y+1) — a theorem, Monotonicity (15.42)"
+      (fun () -> theorem ind ((leq x y) == (leq (x + 1) (y + 1))) [ Integers.le_translate ind x y |> at_left ])
+ok "... and no longer an axiom"                 (not (ind.AxEquiv ((leq x y) == (leq (x + 1) (y + 1))).Expr))
+ok "Translation does not prove different amounts"
+   (not (proves "x+1, y+2" (fun () -> theorem ind ((leq x y) == (leq (x + 1) (y + 2))) [ Integers.le_translate ind x y |> at_left ])))
 
 // REGRESSION: both right-associativity rules used to rewrite (a·b)·c to a·(b + c), so the kernel
 // accepted (2·3)·4 = 2·(3+4), i.e. 24 = 14.

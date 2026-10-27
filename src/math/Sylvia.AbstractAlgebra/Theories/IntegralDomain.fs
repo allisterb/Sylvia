@@ -64,7 +64,7 @@ module IntegralDomain =
 
     /// A non-zero premise, in either spelling: `c ≠ 0` (Gries) or `¬(c = 0)`. The logic knows `≠` is
     /// `¬=` only at bool, so at another type the two are different terms; both are accepted here.
-    let private (|NonZero|_|) (zero: Expr<'t>) =
+    let internal (|NonZero|_|) (zero: Expr<'t>) =
         function
         | NotEquals(c, z) | Not(Equals(c, z)) when sequal z zero -> Some c
         | _ -> None
@@ -107,8 +107,8 @@ module IntegralDomain =
 
     (* Building terms *)
 
-    let private bin (op: Expr<'t -> 't -> 't>) (a: Expr<'t>) (b: Expr<'t>) : Expr<'t> = expand_as<'t> <@ (%op) %a %b @>
-    let private un (op: Expr<'t -> 't>) (a: Expr<'t>) : Expr<'t> = expand_as<'t> <@ (%op) %a @>
+    let internal bin (op: Expr<'t -> 't -> 't>) (a: Expr<'t>) (b: Expr<'t>) : Expr<'t> = expand_as<'t> <@ (%op) %a %b @>
+    let internal un (op: Expr<'t -> 't>) (a: Expr<'t>) : Expr<'t> = expand_as<'t> <@ (%op) %a @>
 
     /// `a = b`, as a proposition.
     let eq_t (a: Expr<'t>) (b: Expr<'t>) : Prop = <@ %a = %b @> |> expand_as<bool> |> Prop
@@ -118,11 +118,11 @@ module IntegralDomain =
     // An axiom instance `lhs = rhs` as a rewrite lhs → rhs, and right-to-left as rhs → lhs. Nothing in
     // the logic flips an equation of a non-boolean type, so the reverse is a lemma proved by rewriting
     // the other side of its own goal.
-    let private ax (th: Theory) (lhs: Expr<'t>) (rhs: Expr<'t>) : Rule = ax_ident th (eq_t lhs rhs)
-    let private rev (th: Theory) (lhs: Expr<'t>) (rhs: Expr<'t>) : Rule = ident th (eq_t rhs lhs) [ ax_ident th (eq_t lhs rhs) |> at_right ]
+    let internal ax (th: Theory) (lhs: Expr<'t>) (rhs: Expr<'t>) : Rule = ax_ident th (eq_t lhs rhs)
+    let internal rev (th: Theory) (lhs: Expr<'t>) (rhs: Expr<'t>) : Rule = ident th (eq_t rhs lhs) [ ax_ident th (eq_t lhs rhs) |> at_right ]
     /// A derived identity `l = r` used right-to-left, as `r → l`: the same `=` call with its operands
     /// swapped, proved by rewriting its right side with the identity itself.
-    let private flip (th: Theory) (rule: Rule) : Rule =
+    let internal flip (th: Theory) (rule: Rule) : Rule =
         match rule with
         | Derive(_, p, _) ->
             match p.Stmt with
@@ -131,7 +131,7 @@ module IntegralDomain =
             | _ -> failwith "flip: not an identity"
         | _ -> failwith "flip: not a derived rule"
     /// `(x = x) → T`, at any type.
-    let private refl_true (th: Theory) (x: Expr<'t>) = ax_ident th (T == (eq_t x x)) |> Commute
+    let internal refl_true (th: Theory) (x: Expr<'t>) = ax_ident th (T == (eq_t x x)) |> Commute
 
     (* Theorems for integral domains (Gries 15.8 – 15.24) *)
 
@@ -180,7 +180,7 @@ module IntegralDomain =
     /// Prove `x = y` by cancellation: rewrite the goal to `c + x = c + y` (15.8, right-to-left), run
     /// `steps` on that, and expect a reflexivity. Gries' own device for (15.9): "add something to both
     /// sides of the equation so that Distributivity can be used".
-    let private by_cancel (d: IntegralDomain<'t>) (c: Expr<'t>) (x: Expr<'t>) (y: Expr<'t>) (steps: RuleApplication list) : Rule =
+    let internal by_cancel (d: IntegralDomain<'t>) (c: Expr<'t>) (x: Expr<'t>) (y: Expr<'t>) (steps: RuleApplication list) : Rule =
         let th = d :> Theory
         ident th (eq_t x y) ((cancel_add d c x y |> Commute |> apply) :: steps)
 
@@ -302,13 +302,13 @@ module IntegralDomain =
     (* Cancellation by a non-zero factor, and no zero divisors *)
 
     /// `¬(a = 0)`.
-    let private nonzero (o: DomainOps<'t>) (a: Expr<'t>) : Prop = !!(eq_t a o.Zero)
+    let internal nonzero (o: DomainOps<'t>) (a: Expr<'t>) : Prop = !!(eq_t a o.Zero)
 
     /// A propositional step, proved by the COMPLETE ANF prover (`autoproof`'s search is incomplete and
     /// missed (15.11)'s glue) and replayed in `th` — so that a
     /// theorem of `th` can be combined with it (a theorem may only be used in a theory deriving
     /// from the one it was proved in, and the search's own proof lives in the logic).
-    let private tautology (th: Theory) (stmt: Prop) : Theorem =
+    let internal tautology (th: Theory) (stmt: Prop) : Theorem =
         lemma th stmt (PropCalculus.autoproof_anf stmt).Steps
 
     /// **(15.10b) Unique identity**: `a ≠ 0 ⇒ ((a·z = a) = (z = 1))`, by (15.7) Cancellation.
