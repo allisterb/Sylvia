@@ -1246,7 +1246,9 @@ module PropCalculus =
         ident_eq ((p + q) == (p + q))
     ]
 
-    let private reflex_implies_impl p = theorem prop_calculus ( p ==> p ) [
+    // `lemma`, not `theorem`: these are instantiated inside other proofs (every `Taut (reflex_implies …)`
+    // closing step), and a `theorem` prints its proof at every log level.
+    let private reflex_implies_impl p = lemma prop_calculus ( p ==> p ) [
         def_implies
     ]
     let private reflex_implies_cache = Memo.p1 reflex_implies_impl
@@ -1268,7 +1270,7 @@ module PropCalculus =
         ident_or p |> CommuteL |> Taut' |> apply
     ]
 
-    let private strengthen_and_impl p q = theorem prop_calculus ((p * q) ==> p) [
+    let private strengthen_and_impl p q = lemma prop_calculus ((p * q) ==> p) [
         ident_eq ( ((p * q ) ==> p) )
         def_implies
         commute |> at_left

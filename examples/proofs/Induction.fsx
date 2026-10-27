@@ -516,28 +516,32 @@ named "split_off_factor  1 ≤ n+1 ⇒ Π(1..n+1 : i) = Π(1..n : i)·(n+1)"   (
 named "empty_prod        (Πi | 1 ≤ i ≤ 0 : i) = 1"                      (fun () -> empty_prod ind 1 0 i i)
 ok "empty_prod refuses a non-empty range 0..1"            (not (proves "empty_prod 0..1" (fun () -> empty_prod ind 0 1 i i)))
 
-// n! by its inductive definition (§12.2):  0! = 1,  (n+1)! = (n+1)·n!   — and then
+// n! by its inductive definition (§12.2):  0! = 1,  0 ≤ n ⇒ (n+1)! = (n+1)·n!   — and then
 // (∀n | 0 ≤ n : (Πi | 1 ≤ i ≤ n : i) = n!), by induction, with Split off term for Π in the step.
+// The inductive equation is CONDITIONAL: unconditionally, at n := −1 it says 0! = 0·(−1)! = 0, and with
+// 0! = 1 the theory is inconsistent (InductiveDefinitions.fsx (A) proves both).
 let factv = Var("fact", typeof<int -> int>)
 let inline fact x : IntTerm = let x = int_term x in IntTerm(Expr.Application(Expr.Var factv, x.Expr) |> expand_as<int>)
 let (|FactApp|_|) = function Application(Var v, a) when v.Name = "fact" -> Some a | _ -> None
 let fact_axioms =
     function
     | Equals(FactApp(Int32 0), Int32 1) -> axiom_name "fact" "Definition of ! (base)" |> Some
-    | Equals(FactApp(Add(a, Int32 1)), Multiply(Add(a', Int32 1), FactApp a'')) when sequal a a' && sequal a' a'' ->
-        axiom_name "fact" "Definition of ! (inductive)" |> Some
+    | Implies(LessEq(Int32 0, e), Equals(FactApp(Add(a, Int32 1)), Multiply(Add(a', Int32 1), FactApp a'')))
+        when sequal e a && sequal a a' && sequal a' a'' -> axiom_name "fact" "Definition of ! (inductive)" |> Some
     | _ -> None
 let thf = Induction(fact_axioms) :> Theory
 let Pfact = pred_of n ((qprod i k1n i) == fact n)
 let af, ihf, pn1f = leq 0 n, hypothesis 0 n j Pfact, Pfact.[n + 1]
 let algebraf = ring_ident thf (fact n * (n + 1)) ((n + 1) * fact n)
+let fact_succ = axiom thf (af ==> ((fact (n + 1)) == ((n + 1) * fact n)))   // the definition, under 0 ≤ n
+ok "(n+1)! = (n+1)·n! alone is NOT an axiom"              (not (thf.AxEquiv ((fact (n + 1)) == ((n + 1) * fact n)).Expr))
 let bodyf =
     theorem thf (af ==> (ihf ==> pn1f)) [
         (shunt' af ihf pn1f |> Commute) |> apply                            // (0 ≤ n ∧ IH) ⇒ P(n+1)
         Establish (shift_bound thf 0 n) |> apply                            // 1 ≤ n+1, the proviso
         Deduce' (split_off_factor thf 1 n i i) |> apply_right               // Π(1..n+1) → Π(1..n)·(n+1)
         Deduce' (hypothesis_at thf 0 n j Pfact) |> apply_right              // Π(1..n) → n! — THE INDUCTIVE HYPOTHESIS
-        ax_ident thf ((fact (n + 1)) == ((n + 1) * fact n)) |> at [right_branch; right_branch]   // (n+1)! → (n+1)·n!
+        Deduce' fact_succ |> apply_right                                    // (n+1)! → (n+1)·n!, under the step's 0 ≤ n
         Taut algebraf |> apply_right                                        // n!·(n+1) = (n+1)·n!
     ]
 let stepf =
@@ -559,7 +563,7 @@ ok "the step does not close without the inductive hypothesis"
             (shunt' af ihf pn1f |> Commute) |> apply
             Establish (shift_bound thf 0 n) |> apply
             Deduce' (split_off_factor thf 1 n i i) |> apply_right
-            ax_ident thf ((fact (n + 1)) == ((n + 1) * fact n)) |> at [right_branch; right_branch]
+            Deduce' fact_succ |> apply_right
             Taut algebraf |> apply_right
         ])))
 let thmf = by_induction thf 0 n j Pfact basef stepf

@@ -26,8 +26,9 @@ open Sums
 ///
 /// Gries' (12.5), induction over ℕ, is its `n₀ := 0` instance, so it costs nothing extra here.
 /// (12.3) — the same principle with hypothesis `(∀i | 0 ≤ i < n : P.i)` and no separate base case —
-/// is NOT stated: Gries derives (12.5) from it using Split off term (8.23) over an integer range,
-/// which this prover does not have, and (12.5) is the form proofs actually use.
+/// is NOT stated: Gries derives (12.5) from it using Split off term (8.23) over an integer range for
+/// a ∀ quantification — this prover has Split off term for Σ and Π, not yet for ∀ — and (12.5) is the
+/// form proofs actually use. Strong induction needs no other principle (see `step_by_cases`).
 ///
 /// The PRINCIPLE needs no arithmetic — `n₀ ≤ n` is matched structurally and never reasoned about.
 /// The base and inductive cases are where arithmetic lives, and those are the caller's proofs, which
@@ -137,7 +138,13 @@ module Induction =
     /// `IntegralDomain<int>` is usable here. A caller with its own axioms — the two equations
     /// of an inductively defined function, say (§12.2) — passes them in, so that everything a proof
     /// by induction touches lives in ONE theory: the base case, the inductive case, and the axiom
-    /// instance the two are detached from must all be proved in the same one. Σ is here because the
+    /// instance the two are detached from must all be proved in the same one.
+    ///
+    /// The caller's axioms must be CONSISTENT, and an unconditional recurrence scheme is consistent
+    /// only if it can be run backwards to every integer: `f(e+1) = f.e + 2` and Fibonacci can, but
+    /// `(e+1)! = (e+1)·e!` at `e := −1` gives `0! = 0`. State such an equation under `0 ≤ e`, as Gries
+    /// does (n ≥ 0), and use it with `Deduce'` under the step's `0 ≤ n` — see
+    /// `examples/proofs/InductiveDefinitions.fsx`. Σ is here because the
     /// classic inductions are about sums, and Split off term (below) needs Σ's axioms and the
     /// integer order in the same theory.
     type Induction(?axioms: Axioms, ?rules: Rules) =
@@ -361,6 +368,179 @@ module Induction =
     let by_induction_nat (th: Theory) (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>)
                          (bse: Theorem) (stp: Theorem) : Theorem =
         by_induction th 0 n i P bse stp
+
+    /// The inductive case from its BODY: from `⊢ n₀ ≤ n ⇒ (IH ⇒ P(n+1))`, for an arbitrary `n`,
+    /// conclude `⊢ (∀n | n₀ ≤ n : IH ⇒ P(n+1))`. Trading (9.2) puts the range in the body, the body is
+    /// replaced by its own theorem, and `(∀n |: true) = true` closes it — the three steps every
+    /// inductive case ends with.
+    let inline generalize_step (th: Theory) n0 (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>) (body: Theorem) : Theorem =
+        let a = leq n0 (tm n)
+        lemma th (inductive_case n0 n i P) [
+            trade_forall_implies n (pred_of n a) (pred_of n ((hypothesis n0 n i P) ==> P.[succ n])) |> apply
+            Taut body |> at [select_body]
+            ident_forall_true' n
+        ]
+
+    (* ------------------------------------------------------------------------------------------
+       Strong induction (Gries §12.1–12.2): an inductive step that uses the hypothesis at some point
+       OTHER than its upper bound — `P(n−1)` as well as `P.n`, as a Fibonacci step does.
+
+       The principle is unchanged — (12.8)'s hypothesis is already all of `P.n₀ … P.n` — so what is
+       needed is order reasoning to discharge the range obligation `n₀ ≤ k ∧ k ≤ n` at the chosen `k`,
+       and a case split for the steps where `k` would fall below `n₀`. Everything below is a THEOREM
+       of `Integers`' order axioms (Reflexivity, Discreteness, Transitivity, Translation) and the ring
+       normalizer; nothing is axiomatized for the purpose.
+       ------------------------------------------------------------------------------------------ *)
+
+    /// `lo + 1` with integer literals folded: `0 + 1` is `1`, a symbolic `lo + 1` is left as it is.
+    let fold_succ (lo: Term<int>) : IntTerm =
+        IntTerm(Integers._reduce_constants (call_add lo.Expr (Expr.Value 1)) |> expand_as<int>)
+
+    /// `(a = b) ⇒ (b = a)` — symmetry of `=`, at any carrier, as an IMPLICATION. The logic's symmetry
+    /// is symmetry of ≡, so nothing flips `a = b` at a non-bool type directly; this derives it from
+    /// Substitution (3.84a) and reflexivity: `a = b ∧ a = a` is `a = b ∧ b = a`. With `Deduce'` it
+    /// rewrites `b` to `a` under a hypothesis `a = b`, and with `mp` it flips a proved identity.
+    let eq_sym (th: Theory) (a: Term<'t>) (b: Term<'t>) : Theorem =
+        let ab, aa, ba = a == b, a == a, b == a
+        lemma th (ab ==> ba) [
+            ident_and ab |> Commute                  |> at_left                    // a = b → a = b ∧ T
+            Taut (axiom th aa) |> Commute            |> at [left_branch; right_branch]  // T → a = a
+            ax_ident th ((ab * aa) == (ab * ba))     |> at_left                    // (3.84a)
+            commute_and ab ba                        |> at_left
+            Taut (strengthen_and ba ab)              |> apply
+        ]
+
+    /// `x ≤ x + 1`. Discreteness splits it into `x ≤ x ∨ x = x + 1`, whose left disjunct is reflexivity.
+    let inline le_succ (th: Theory) x : Theorem =
+        let x = int_term x
+        let x1 = IntTerm(x.Expr) + 1
+        let eq = x == (x1 :> Term<int>)
+        lemma th (leq x x1) [
+            ax_ident th ((leq x x1) == ((leq x x) + eq)) |> apply     // Discreteness
+            ax_ident th ((leq x x) == T)                 |> at_left   // Reflexivity
+            commute_or T eq                              |> apply
+            zero_or eq                                   |> apply
+        ]
+
+    /// `lo ≤ n ⇒ lo ≤ n + 1` — Transitivity through `n ≤ n + 1`.
+    let inline le_step (th: Theory) lo n : Theorem =
+        let lo, n = int_term lo, int_term n
+        let a = leq lo n
+        lemma th (a ==> (leq lo (IntTerm(n.Expr) + 1))) [
+            ident_and a |> Commute              |> at_left                       // A → A ∧ T
+            Taut (le_succ th n) |> Commute      |> at [left_branch; right_branch]  // T → n ≤ n + 1
+            // and (lo ≤ n ∧ n ≤ n+1) ⇒ lo ≤ n+1 is Transitivity.
+        ]
+
+    /// `lo′ ≤ n ⇒ lo ≤ n`, where `lo′` is `lo + 1` folded — Transitivity through `lo ≤ lo + 1`.
+    let inline le_of_succ_le (th: Theory) lo n : Theorem =
+        let lo, n = int_term lo, int_term n
+        let a = leq (fold_succ lo) n
+        lemma th (a ==> (leq lo n)) [
+            ident_and a |> Commute              |> at_left                       // A → A ∧ T
+            commute_and a T                     |> at_left                       // → T ∧ A
+            Taut (le_succ th lo) |> Commute     |> at [left_branch; left_branch] // T → lo ≤ lo + 1
+            Integers.reduce                     |> at [left_branch; left_branch; right_branch]  // lo + 1 folded
+            // and (lo ≤ lo′ ∧ lo′ ≤ n) ⇒ lo ≤ n is Transitivity.
+        ]
+
+    /// `(lo ≤ n − 1) = (lo′ ≤ n)`, `lo′` being `lo + 1` folded — Translation of ≤, and `(n−1)+1 = n`.
+    let inline pred_translate (th: Theory) lo n : Theorem =
+        let lo, n = int_term lo, int_term n
+        let nm1 = IntTerm(n.Expr) - 1
+        lemma th ((leq lo nm1) == (leq (fold_succ lo) n)) [
+            ax_ident th ((leq lo nm1) == (leq (IntTerm(lo.Expr) + 1) (nm1 + 1))) |> at_left   // Translation
+            Integers.reduce                                     |> at [left_branch; left_branch]   // lo + 1 folded
+            Ident (Integers.ring_ident th (nm1 + 1) n)         |> at [left_branch; right_branch]  // (n−1)+1 → n
+        ]
+
+    /// `lo′ ≤ n ⇒ lo ≤ n − 1`.
+    let inline le_pred (th: Theory) lo n : Theorem =
+        let lo, n = int_term lo, int_term n
+        let a = leq (fold_succ lo) n
+        lemma th (a ==> (leq lo (IntTerm(n.Expr) - 1))) [
+            Ident (pred_translate th lo n)      |> at_right
+            Taut (reflex_implies a)             |> apply
+        ]
+
+    /// `n − 1 ≤ n` — `le_succ` at `n − 1`, after writing `n` as `(n − 1) + 1`.
+    let inline pred_le (th: Theory) n : Theorem =
+        let n = int_term n
+        let nm1 = IntTerm(n.Expr) - 1
+        lemma th (leq nm1 n) [
+            Ident (Integers.ring_ident th n (nm1 + 1)) |> at_right
+            Taut (le_succ th nm1)                      |> apply
+        ]
+
+    /// `(lo ≤ n) = (lo′ ≤ n ∨ lo = n)`, `lo′` being `lo + 1` folded — a range's lower end is either
+    /// exceeded or hit. Discreteness at `n = (n − 1) + 1`, then `pred_translate`. This is the case
+    /// split a strong-induction step makes when its smaller hypothesis would fall below `n₀`.
+    let inline lower_split (th: Theory) lo n : Theorem =
+        let lo, n = int_term lo, int_term n
+        let nm1 = IntTerm(n.Expr) - 1
+        lemma th ((leq lo n) == ((leq (fold_succ lo) n) + (lo == n))) [
+            Ident (Integers.ring_ident th n (nm1 + 1))                       |> at [left_branch; right_branch]   // n → (n−1)+1
+            ax_ident th ((leq lo (nm1 + 1)) == ((leq lo nm1) + (lo == ((nm1 + 1) :> Term<int>)))) |> at_left      // Discreteness
+            Ident (pred_translate th lo n)                                   |> at [left_branch; left_branch]    // lo ≤ n−1 → lo′ ≤ n
+            Ident (Integers.ring_ident th (nm1 + 1) n)                       |> at [left_branch; right_branch; right_branch]  // (n−1)+1 → n
+        ]
+
+    /// `((n₀ ≤ k ∧ k ≤ n) ∧ (∀i | n₀ ≤ i ∧ i ≤ n : P.i)) ⇒ P.k` — the inductive hypothesis at ANY
+    /// point `k` of its range. `hypothesis_at` is the case `k := n`. The range obligation is the
+    /// antecedent's first conjunct, for the caller to establish (`le_pred`, `pred_le`, …).
+    let inline hypothesis_at_point (th: Theory) n0 (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>) k : Theorem =
+        let k = int_term k
+        let range = pred_of i ((leq n0 (tm i)) * (leq (tm i) (tm n)))
+        let a = range.[k]
+        let f = forall'(tm i, pred_of i ((range.[tm i]) ==> P.[tm i]))
+        let pk = P.[k]
+        lemma th ((a * (hypothesis n0 n i P)) ==> pk) [
+            trade_forall_implies i range P      |> at [left_branch; right_branch]   // IH → (∀i |: R ⇒ P)
+            commute_and a f                     |> at_left
+            shunt' f a pk                                                           // F ⇒ (R.k ⇒ P.k)
+            // and that is Instantiation (9.13) at i := k.
+        ]
+
+    /// `(n₀′ ≤ n ∧ (∀i | n₀ ≤ i ∧ i ≤ n : P.i)) ⇒ P(n − 1)`, `n₀′` being `n₀ + 1` folded — the
+    /// hypothesis one below its upper bound, which is in range exactly when `n` is above the base.
+    let inline hypothesis_below (th: Theory) n0 (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>) : Theorem =
+        let n0 = int_term n0
+        let nm1 = tm n - 1
+        let a = leq (fold_succ n0) (tm n)
+        lemma th ((a * (hypothesis n0 n i P)) ==> P.[nm1]) [
+            Establish (le_pred th n0 (tm n))                                              // n₀ ≤ n − 1
+            Establish (lemma th (a ==> (leq nm1 (tm n))) [ Taut (pred_le th (tm n)) |> apply_right ])  // n − 1 ≤ n
+            Deduce (hypothesis_at_point th n0 n i P nm1)  |> apply_right
+        ]
+
+    /// The body of an inductive step BY CASES on whether `n` is the base point. From
+    ///
+    /// ```
+    /// above:    ⊢ (IH ∧ n₀′ ≤ n) ⇒ P(n+1)          (n₀′ = n₀ + 1 folded)
+    /// at_base:  ⊢ (IH ∧ n₀ = n) ⇒ P(n+1)
+    /// ```
+    ///
+    /// conclude `⊢ n₀ ≤ n ⇒ (IH ⇒ P(n+1))`, the body `generalize_step` takes. `lower_split` turns
+    /// `n₀ ≤ n` into the two cases and Case analysis (3.78) separates them. A strong induction whose
+    /// step reaches back two places (Fibonacci) proves `P(n₀+1)` outright in `at_base`, and uses
+    /// `hypothesis_below` in `above`.
+    let inline step_by_cases (th: Theory) n0 (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>)
+                             (above: Theorem) (at_base: Theorem) : Theorem =
+        let n0 = int_term n0
+        let a = leq n0 (tm n)
+        let ih = hypothesis n0 n i P
+        let pn1 = P.[succ n]
+        let up, eq = leq (fold_succ n0) (tm n), (n0 == (tm n :> Term<int>))
+        lemma th (a ==> (ih ==> pn1)) [
+            (shunt' a ih pn1 |> Commute)                       |> apply          // (n₀ ≤ n ∧ IH) ⇒ P(n+1)
+            Ident (lower_split th n0 (tm n))                   |> at [left_branch; left_branch]
+            commute_and (up + eq) ih                           |> at_left
+            distrib_and_or ih up eq                            |> at_left        // (IH ∧ up) ∨ (IH ∧ eq)
+            case_analysis_1 (ih * up) (ih * eq) pn1 |> Commute |> apply          // (3.78)
+            Taut above                                         |> at_left
+            Taut at_base                                       |> at_right
+            ident_and T                                        |> apply
+        ]
 
     (* Module information members *)
 

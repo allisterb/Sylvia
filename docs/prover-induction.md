@@ -1,11 +1,12 @@
 # Mathematical Induction in Sylvia
 
 Design and implementation notes for Gries & Schneider, *A Logical Approach to Discrete Math*,
-**Chapter 12** (§12.1 and the part of §12.2 that follows from it). Companion to
-[`prover-predicate-calculus.md`](prover-predicate-calculus.md) and
+**Chapter 12** (§12.1, and §12.2's inductively defined functions and strong induction — §20).
+Companion to [`prover-predicate-calculus.md`](prover-predicate-calculus.md) and
 [`prover-set-theory.md`](prover-set-theory.md).
 
-Runnable check: `dotnet fsi examples/proofs/Induction.fsx` (**86/86**).
+Runnable checks: `dotnet fsi examples/proofs/Induction.fsx` (**131/131**) and
+`dotnet fsi examples/proofs/InductiveDefinitions.fsx` (**45/45**, §20).
 
 **Status.** Induction over the integers is mechanized as **one axiom** — Gries (12.8), induction over
 `{n₀, n₀+1, …}` — plus a combinator that discharges it, and a lemma (`hypothesis_at`) that packages
@@ -749,3 +750,67 @@ and `ring_ident` for `n!·(n+1) = (n+1)·n!`. The same step with the hypothesis 
 
 **Gate.** Solution builds; suite 149/149; `Induction.fsx` 130/130 ((L) is 17 new); SetTheory 175/175,
 PredCalculus 24/24, E 5/5, Sledgehammer 7/7, Reconstruct 29/29, AdversarialSweep ALL CLEAR.
+## 20. §12.2 — inductive definitions, and strong induction
+
+`examples/proofs/InductiveDefinitions.fsx` (45/45). Four inductions over three inductively defined
+functions, one of them a **strong** induction:
+
+| | Statement | What the step uses |
+|---|---|---|
+| (B) | `(b·c)ⁿ = bⁿ·cⁿ` | the conditional definition of `bⁿ`, three times, under the step's `0 ≤ n` |
+| (C) | `(b−1)·(Σi \| 1 ≤ i ≤ n : bⁱ) = bⁿ⁺¹ − b` | Split off term, distribution, the IH, `le_step` for `0 ≤ n+1` |
+| (D) | `(Σi \| 1 ≤ i ≤ n : Fᵢ) = Fₙ₊₂ − 1` | Split off term, the IH, the Fibonacci recurrence |
+| (F) | `F(m+n+1) = F(m+1)·F(n+1) + F(m)·F(n)` | the IH at **n and n−1**, by cases on `n = 0` |
+
+**An unconditional recurrence must run backwards, or it is inconsistent.** An inductive definition
+is a set of axiom SCHEMES, matched at every integer. (L)'s `n!` was stated as `(e+1)! = (e+1)·e!` with
+no condition. At `e := −1` that says `0! = 0·(−1)! = 0`, next to `0! = 1`. Section (A) proves both
+theorems in that theory. Nothing else in the gate had used the bad instance. A scheme `F(e+k) = …`
+is consistent on all of ℤ when it can be solved for its lowest term: `f.e = f(e+1) − 2` and
+`F.e = F(e+2) − F(e+1)` can be. `n!` and `bⁿ` would have to divide by `e+1` and by `b`. Those two
+are now stated as Gries states them, under `0 ≤ e`. Their inductive equation is an implication, used
+with `Deduce'` under the step's `0 ≤ n`. (L) in Induction.fsx is fixed the same way, and (A) checks
+that the bad instance now needs `0 ≤ −1`, which is false. The `Induction` theory's doc comment states
+the rule.
+
+**Strong induction needs no new principle.** (12.8)'s hypothesis is already all of `P.n₀ … P.n`
+(§4). What a step using `P(n−1)` needs is (a) the range obligation `n₀ ≤ n−1 ∧ n−1 ≤ n`, and (b) a
+case split for `n = n₀`, where `n−1` is out of range. These lemmas are all THEOREMS of `Integers`'
+order axioms plus the ring normalizer, added to `Induction.fs`:
+
+| Export | Statement |
+|---|---|
+| `le_succ x` | `x ≤ x + 1` (Discreteness + Reflexivity) |
+| `le_step lo n` | `lo ≤ n ⇒ lo ≤ n + 1` (Transitivity) |
+| `le_of_succ_le lo n` | `lo′ ≤ n ⇒ lo ≤ n` (`lo′` = `lo + 1`, literals folded by `fold_succ`) |
+| `pred_translate lo n` | `(lo ≤ n − 1) = (lo′ ≤ n)` (Translation) |
+| `le_pred lo n`, `pred_le n` | `lo′ ≤ n ⇒ lo ≤ n − 1`, `n − 1 ≤ n` |
+| `lower_split lo n` | `(lo ≤ n) = (lo′ ≤ n ∨ lo = n)`: the case split |
+| `eq_sym a b` | `(a = b) ⇒ (b = a)` at any carrier, from (3.84a) + reflexivity |
+| `hypothesis_at_point … k` | `((n₀ ≤ k ∧ k ≤ n) ∧ IH) ⇒ P.k`, the IH anywhere in its range |
+| `hypothesis_below …` | `(n₀′ ≤ n ∧ IH) ⇒ P(n − 1)` |
+| `step_by_cases … above at_base` | from `(IH ∧ n₀′ ≤ n) ⇒ P(n+1)` and `(IH ∧ n₀ = n) ⇒ P(n+1)`, the step body |
+| `generalize_step … body` | the step body to the inductive case: the three lines every example repeated |
+
+`eq_sym` matters beyond induction. With `mp` it **flips a proved integer identity**, which the memory
+notes had recorded as impossible ("nothing flips an integer identity", since S's symmetry is
+symmetry of ≡). (E) flips `⊢ (n+1)·2 = 2n+2` this way. The mirror lemmas in `split_off` predate it
+and still work, so they are left as they are. In (F)'s `n = 0` case, `Deduce' (eq_sym 0 n)` rewrites
+each `n` to `0` under the hypothesis `0 = n`. That stands in for the implication form of
+Substitution (3.84b), which S still lacks.
+
+The negatives: the `n ≥ 1` case does not close without `P(n−1)`, `hypothesis_below` is refused from
+`0 ≤ n` alone, and `step_by_cases` refuses its two cases swapped.
+
+**Not done, and why.** Exponent addition `b^(m+n) = bᵐ·bⁿ` needs `0 ≤ m ∧ 0 ≤ n ⇒ 0 ≤ m + n` to
+unfold `b^((m+n)+1)` under the conditional definition. Translation by 1 cannot give that. It is
+exactly what `OrderedDomain` (closure of the positives under `+`, §15.2) provides, so it is the
+first thing to try once that exists.
+
+**Also.** `reflex_implies` and `strengthen_and` are `lemma`s now, not `theorem`s. Every closing
+`Taut (reflex_implies …)` printed a proof at log level 0. `Integers.reduce` folds one level per
+pass (`(1 + 0) − 1` takes two).
+
+**Gate.** Solution builds; suite 149/149; `InductiveDefinitions.fsx` 45/45 (new); `Induction.fsx`
+131/131; SetTheory 175/175, PredCalculus 24/24, E 5/5, Sledgehammer 7/7, Reconstruct 29/29,
+AdversarialSweep ALL CLEAR; PropCalculus, IntegerAlgebra, VerifyRuleFixes clean.
