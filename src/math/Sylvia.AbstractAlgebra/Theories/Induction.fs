@@ -142,7 +142,7 @@ module Induction =
     /// integer order in the same theory.
     type Induction(?axioms: Axioms, ?rules: Rules) =
         inherit Integers.Integers(BooleanAlgebra.combine_axioms (defaultArg axioms (fun _ -> None))
-                                    (BooleanAlgebra.combine_axioms induction_axioms Sums.sum_axioms),
+                                    (BooleanAlgebra.combine_axioms induction_axioms (BooleanAlgebra.combine_axioms Sums.sum_axioms Sums.prod_axioms)),
                                   defaultArg rules [])
 
     /// The theory: integer arithmetic, Σ, and (12.8), with nothing extra.
@@ -244,15 +244,33 @@ module Induction =
             // and (lo ≤ i ∧ i ≤ hi) ⇒ lo ≤ hi is Transitivity of ≤.
         ]
 
-    /// `(Σi | lo ≤ i ∧ i ≤ hi : E) = 0`, for integer literals `lo > hi` — the numeric range is empty
-    /// (`empty_range`), and Σ over the empty range is the unit of `+` (8.13).
-    let inline empty_sum (th: Theory) lo hi (i: #ISymbolicVar<int>) E : Theorem =
-        let lo, hi, E = int_term lo, int_term hi, int_term E
-        lemma th ((qsum i ((leq lo (tm i)) * (leq (tm i) hi)) E) == IntTerm 0) [
+    /// A range quantification over the integers that Split off term and Empty range are stated for:
+    /// Σ or Π, as its builder, its operator on terms, and the operator's unit. Gries states (8.23)
+    /// for any ★ with a unit, and the derivation below uses nothing else about ★.
+    type RangeQuantifier =
+        { Name: string
+          Build: ISymbolicVar<int> -> Prop -> Term<int> -> IntTerm
+          Op: IntTerm -> IntTerm -> IntTerm
+          Unit: int }
+
+    let sigma_q = { Name = "Σ"; Build = (fun i R E -> qsum i R E);  Op = (fun a b -> a + b); Unit = 0 }
+    let pi_q    = { Name = "Π"; Build = (fun i R E -> qprod i R E); Op = (fun a b -> a * b); Unit = 1 }
+
+    /// `(★i | lo ≤ i ∧ i ≤ hi : E) = u`, for integer literals `lo > hi` and ★'s unit `u` — the numeric
+    /// range is empty (`empty_range`), and ★ over the empty range is its unit (8.13).
+    let empty_quant (q: RangeQuantifier) (th: Theory) (lo: Term<int>) (hi: Term<int>) (i: ISymbolicVar<int>) (E: Term<int>) : Theorem =
+        lemma th ((q.Build i ((leq lo (tm i)) * (leq (tm i) hi)) E) == IntTerm q.Unit) [
             Ident (empty_range th lo hi i) |> at [left_branch; select_range]
-            // and (Σi | false : E) = 0 is Empty range (8.13).
+            // and (★i | false : E) = u is Empty range (8.13).
         ]
 
+    /// `(Σi | lo ≤ i ∧ i ≤ hi : E) = 0`, for integer literals `lo > hi`.
+    let inline empty_sum (th: Theory) lo hi (i: #ISymbolicVar<int>) E : Theorem =
+        empty_quant sigma_q th (int_term lo) (int_term hi) i (int_term E)
+
+    /// `(Πi | lo ≤ i ∧ i ≤ hi : E) = 1`, for integer literals `lo > hi`.
+    let inline empty_prod (th: Theory) lo hi (i: #ISymbolicVar<int>) E : Theorem =
+        empty_quant pi_q th (int_term lo) (int_term hi) i (int_term E)
     /// `lo ≤ n ⇒ lo′ ≤ n + 1`, where `lo′` is `lo + 1` with literals folded (`0 ≤ n ⇒ 1 ≤ n + 1`).
     ///
     /// The bridge from an inductive case's antecedent to Split off term's proviso: the step has
@@ -269,48 +287,54 @@ module Induction =
             Taut (reflex_implies (leq lo1 n1)) |> apply
         ]
 
-    /// **Split off term (Gries 8.23)**, for Σ:
+    /// **Split off term (Gries 8.23)**, for any range quantifier ★ with unit `u` (Σ, Π):
     ///
     /// ```
-    /// lo ≤ n+1  ⇒  (Σi | lo ≤ i ∧ i ≤ n+1 : E) = (Σi | lo ≤ i ∧ i ≤ n : E) + E[i := n+1]
+    /// lo ≤ n+1  ⇒  (★i | lo ≤ i ∧ i ≤ n+1 : E) = (★i | lo ≤ i ∧ i ≤ n : E) ★ E[i := n+1]
     /// ```
     ///
-    /// The derivation is Gries' own, carried through Σ's UNCONDITIONAL range split (8.18) rather than
+    /// The derivation is Gries' own, carried through ★'s UNCONDITIONAL range split (8.18) rather than
     /// the disjoint one (8.16): the disjointness `range_disjoint` proves is used to turn the second
-    /// split term into `(Σi | false : E) = 0`, which is the unit of `+`.
+    /// split term into `(★i | false : E) = u`, which is the unit of ★.
     ///
     /// ```
-    /// Σ(lo≤i≤n+1)  =  Σ(R ∨ Q)                    range_extend, under the proviso
-    ///              =  Σ(R ∨ Q) + Σ(R ∧ Q)         + 0, and 0 = Σ(false) = Σ(R ∧ Q) by range_disjoint
-    ///              =  Σ(R) + Σ(i = n+1)           Range split (8.18)
-    ///              =  Σ(R) + E[i := n+1]          One-point (8.14)
+    /// ★(lo≤i≤n+1)  =  ★(R ∨ Q)                    range_extend, under the proviso
+    ///              =  ★(R ∨ Q) ★ ★(R ∧ Q)         ★ u, and u = ★(false) = ★(R ∧ Q) by range_disjoint
+    ///              =  ★(R) ★ ★(i = n+1)           Range split (8.18)
+    ///              =  ★(R) ★ E[i := n+1]          One-point (8.14)
     /// ```
     ///
     /// Three of those steps rewrite an INTEGER identity right-to-left, which nothing in the logic can
     /// do directly (its symmetry is symmetry of ≡); each is a local lemma proved by rewriting the
     /// other side of its own goal — see the note on orientation in `docs/prover-set-theory.md` §10.
-    let inline split_off_term (th: Theory) lo n (i: #ISymbolicVar<int>) E : Theorem =
-        let lo, n, E = int_term lo, int_term n, int_term E
+    let split_off (q: RangeQuantifier) (th: Theory) (lo: Term<int>) (n: Term<int>) (i: ISymbolicVar<int>) (E: Term<int>) : Theorem =
         let n1 = IntTerm(n.Expr) + 1
         let a = leq lo n1
         let R = (leq lo (tm i)) * (leq (tm i) n)
         let Q = (tm i :> Term<int>) == (n1 :> Term<int>)
-        let lhs = qsum i ((leq lo (tm i)) * (leq (tm i) n1)) E
-        let rhs = qsum i R E + subst_body i n1 E
-        let sRQ, sF = qsum i (R + Q) E, qsum i F E
-        let zero = IntTerm 0
-        let unit_intro = ident th (sRQ == sRQ + zero) [ ax_ident th (sRQ + zero == sRQ) |> at_right ]   // x → x + 0
-        let zero_intro = ident th (zero == sF) [ ax_ident th (sF == zero) |> at_right ]                 // 0 → Σ(false)
+        let lhs = q.Build i ((leq lo (tm i)) * (leq (tm i) n1)) E
+        let rhs = q.Op (q.Build i R E) (subst_body i n1 E)
+        let sRQ, sF = q.Build i (R + Q) E, q.Build i F E
+        let u = IntTerm q.Unit
+        let unit_intro = ident th (sRQ == q.Op sRQ u) [ ax_ident th (q.Op sRQ u == sRQ) |> at_right ]   // x → x ★ u
+        let unit_quant = ident th (u == sF) [ ax_ident th (sF == u) |> at_right ]                       // u → ★(false)
         lemma th (a ==> (lhs == rhs)) [
             Deduce' (range_extend th lo n i)                 |> apply_right
             unit_intro                                       |> at [right_branch; left_branch]
-            zero_intro                                       |> at [right_branch; left_branch; right_branch]
+            unit_quant                                       |> at [right_branch; left_branch; right_branch]
             Ident (range_disjoint th lo n i) |> Commute      |> at [right_branch; left_branch; right_branch; select_range]
-            ax_ident th ((sRQ + qsum i (R * Q) E) == (qsum i R E + qsum i Q E)) |> at [right_branch; left_branch]  // (8.18)
-            ax_ident th ((qsum i Q E) == (subst_body i n1 E)) |> at [right_branch; left_branch; right_branch]      // (8.14)
+            ax_ident th ((q.Op sRQ (q.Build i (R * Q) E)) == (q.Op (q.Build i R E) (q.Build i Q E))) |> at [right_branch; left_branch]  // (8.18)
+            ax_ident th ((q.Build i Q E) == (subst_body i n1 E)) |> at [right_branch; left_branch; right_branch]                        // (8.14)
             ax_ident th (T == (rhs == rhs)) |> Commute       |> apply_right
         ]
 
+    /// **Split off term (8.23) for Σ**: `lo ≤ n+1 ⇒ (Σi | lo ≤ i ≤ n+1 : E) = (Σi | lo ≤ i ≤ n : E) + E[i := n+1]`.
+    let inline split_off_term (th: Theory) lo n (i: #ISymbolicVar<int>) E : Theorem =
+        split_off sigma_q th (int_term lo) (int_term n) i (int_term E)
+
+    /// **Split off term (8.23) for Π**: `lo ≤ n+1 ⇒ (Πi | lo ≤ i ≤ n+1 : E) = (Πi | lo ≤ i ≤ n : E) · E[i := n+1]`.
+    let inline split_off_factor (th: Theory) lo n (i: #ISymbolicVar<int>) E : Theorem =
+        split_off pi_q th (int_term lo) (int_term n) i (int_term E)
     (* The principle, as a combinator *)
 
     /// **Proof by induction over `{n₀, n₀+1, …}`** — Gries (12.8).

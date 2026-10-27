@@ -310,7 +310,7 @@ module PropCalculus =
     /// oracle rather than a fixed list; see `docs/prover-automation.md` §3.2b.
     let private anf_steps (name: string) (goal: Expr) =
         do guard_atoms name goal
-        let isComplete x = prop_calculus.AxEquiv x || Proof.Logic.AxEquiv x
+        let isComplete (x: Expr) = prop_calculus.IsAxiom x
         // THE ORDER IS LOAD-BEARING — it decides completeness, not just speed. `normalize_trace` is
         // greedy first-firing, so a rule placed higher runs to exhaustion before a lower one is ever
         // tried. `distrib_and_xor` is the ONLY size-increasing rule here (`a ∧ (b⊕c)` duplicates `a`);

@@ -1,4 +1,4 @@
-﻿namespace Sylvia
+namespace Sylvia
 
 open System
 open System.Reflection
@@ -37,6 +37,14 @@ type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =
     member val Axioms = axioms
     member val Rules = rules
     member val PrintFormula = defaultArg formula_printer Display.print_formula
+    /// Whether the single statement `a` is an instance of one of THIS theory's own axiom schemes.
+    ///
+    /// Not an equivalence test between two terms (an axiom is usually an equation `l = r`, which is
+    /// where the name comes from), and narrower than it looks: it does not consult the LOGIC's axioms
+    /// (`Proof.Logic`, normally `S` — One-Point (8.14), Symbolic Equality, …), and it does no search,
+    /// so something equal by two axiom steps, or by a rule, is `false`. The kernel keeps the two checks
+    /// separate on purpose, to label a step "Axiom of …" or "Logical Axiom of …". For "is this an
+    /// axiom at all", use `IsAxiom`.
     member x.AxEquiv a =
         match axCache.TryGetValue a with
         | true, cached -> unbox<bool> cached
@@ -44,6 +52,12 @@ type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =
             let r = Theory.ExpandOnce a |> x.Axioms |> Option.isSome
             axCache.GetValue(a, System.Runtime.CompilerServices.ConditionalWeakTable<Expr, obj>.CreateValueCallback(fun _ -> box r)) |> ignore
             r
+    /// Whether the statement `a` is an axiom instance of this theory OR of the logic (`Proof.Logic`):
+    /// exactly the test the kernel applies when it decides a proof is complete (see `Proof.Complete`).
+    /// A zero-step proof of `a` in this theory closes iff this is true. Still one step at most — no
+    /// search and no rules.
+    member x.IsAxiom (a: Expr) = x.AxEquiv a || (Proof.Logic: Theory).AxEquiv a
+    member x.IsAxiom (a: Term<'t>) = x.IsAxiom a.Expr
     static member (|-) ((c:Theory), a) = c.AxEquiv a
     static member (|-) ((c:Theory), a:Term<_>) = c.AxEquiv a.Expr
     /// The default logical theory used in Sylvia proofs.
@@ -932,7 +946,7 @@ module Proof =
     (* Automation *)
     let autoproof (e: Prop) (theory:Theory) (simplify: Rule) (moves: RuleApplication list) (budget: int) : Proof =
         let goal = expand e.Expr
-        let isComplete x = theory.AxEquiv x || Proof.Logic.AxEquiv x       
+        let isComplete (x: Expr) = theory.IsAxiom x       
         match search isComplete (apply simplify) moves budget goal with
         | Some steps -> proof theory e steps
         | None -> failwithf "auto could not find a proof of %s within the search budget." (theory.PrintFormula goal)

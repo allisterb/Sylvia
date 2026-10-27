@@ -491,5 +491,81 @@ let dom64 = IntegralDomain.IntegralDomain<int64>(ops64)
 let p64, q64 = Expr.Var(Var("p", typeof<int64>)) |> Expr.Cast<int64>, Expr.Var(Var("q", typeof<int64>)) |> Expr.Cast<int64>
 proved "(15.23) at int64   (−p)·(−q) = p·q"                 (fun () -> IntegralDomain.neg_mul_neg dom64 p64 q64)
 proved "(15.11) at int64   (p·q = 0) = (p = 0 ∨ q = 0)"     (fun () -> IntegralDomain.zero_divisors dom64 p64 q64)
+printfn "\n===== (L) Π — the product quantifier, Split off term for Π, and n! by induction ====="
+// Π is Σ with · for + and 1 for 0 (`Sums.pi`, a `Formula.product` as ⋂ is), so the generic
+// quantifier axioms apply to it unchanged and Split off term (8.23) is the same derivation.
+let k1n = (leq 1 i) * (leq i n)
+printfn "  %s" (ind.PrintFormula (qprod i k1n i).Expr)
+let piF (E: Term<int>) = qprod i F E
+let sigF (E: Term<int>) = qsum i F E
+ok "(Πi | false : E) = 1 is Empty range (8.13)"           (ind.AxEquiv ((piF (2 * i)) == 1).Expr)
+ok "(Πi | false : E) = 0 is NOT an axiom"                 (not (ind.AxEquiv ((piF (2 * i)) == 0).Expr))
+ok "(Σi | false : E) = 1 is NOT an axiom"                 (not (ind.AxEquiv ((sigF (2 * i)) == 1).Expr))
+let Rk, Qk = leq 1 i, leq i n
+let pR, pQ, pRoQ, pRaQ = qprod i Rk i, qprod i Qk i, qprod i (Rk + Qk) i, qprod i (Rk * Qk) i
+ok "Range split (8.18) at ★ := ·"                          (ind.AxEquiv ((pRoQ * pRaQ) == (pR * pQ)).Expr)
+ok "the same split with + is NOT an axiom (false for Π)"  (not (ind.AxEquiv ((pRoQ + pRaQ) == (pR + pQ)).Expr))
+ok "Distributivity (8.15) at ★ := ·"                       (ind.AxEquiv (((qprod i Rk i) * (qprod i Rk (2 * i))) == (qprod i Rk (i * (2 * i)))).Expr)
+// One-Point is an axiom of the LOGIC, not of `Induction` itself: `IsAxiom` checks both (as a proof
+// does), while `AxEquiv` consults only the theory's own axiom schemes.
+let pi3 = qprod i ((i :> Term<int>) == (IntTerm 3)) (2 * i)
+ok "One-Point (8.14) applies to Π unchanged"              (ind.IsAxiom (pi3 == (2 * IntTerm 3)))
+ok "One-Point refuses the wrong substitution"             (not (ind.IsAxiom (pi3 == (2 * IntTerm 4))))
+ok "…and it is the logic's axiom, not Induction's own"    (not (ind.AxEquiv (pi3 == (2 * IntTerm 3)).Expr))
+named "split_off_factor  1 ≤ n+1 ⇒ Π(1..n+1 : i) = Π(1..n : i)·(n+1)"   (fun () -> split_off_factor ind 1 n i i)
+named "empty_prod        (Πi | 1 ≤ i ≤ 0 : i) = 1"                      (fun () -> empty_prod ind 1 0 i i)
+ok "empty_prod refuses a non-empty range 0..1"            (not (proves "empty_prod 0..1" (fun () -> empty_prod ind 0 1 i i)))
+
+// n! by its inductive definition (§12.2):  0! = 1,  (n+1)! = (n+1)·n!   — and then
+// (∀n | 0 ≤ n : (Πi | 1 ≤ i ≤ n : i) = n!), by induction, with Split off term for Π in the step.
+let factv = Var("fact", typeof<int -> int>)
+let inline fact x : IntTerm = let x = int_term x in IntTerm(Expr.Application(Expr.Var factv, x.Expr) |> expand_as<int>)
+let (|FactApp|_|) = function Application(Var v, a) when v.Name = "fact" -> Some a | _ -> None
+let fact_axioms =
+    function
+    | Equals(FactApp(Int32 0), Int32 1) -> axiom_name "fact" "Definition of ! (base)" |> Some
+    | Equals(FactApp(Add(a, Int32 1)), Multiply(Add(a', Int32 1), FactApp a'')) when sequal a a' && sequal a' a'' ->
+        axiom_name "fact" "Definition of ! (inductive)" |> Some
+    | _ -> None
+let thf = Induction(fact_axioms) :> Theory
+let Pfact = pred_of n ((qprod i k1n i) == fact n)
+let af, ihf, pn1f = leq 0 n, hypothesis 0 n j Pfact, Pfact.[n + 1]
+let algebraf = ring_ident thf (fact n * (n + 1)) ((n + 1) * fact n)
+let bodyf =
+    theorem thf (af ==> (ihf ==> pn1f)) [
+        (shunt' af ihf pn1f |> Commute) |> apply                            // (0 ≤ n ∧ IH) ⇒ P(n+1)
+        Establish (shift_bound thf 0 n) |> apply                            // 1 ≤ n+1, the proviso
+        Deduce' (split_off_factor thf 1 n i i) |> apply_right               // Π(1..n+1) → Π(1..n)·(n+1)
+        Deduce' (hypothesis_at thf 0 n j Pfact) |> apply_right              // Π(1..n) → n! — THE INDUCTIVE HYPOTHESIS
+        ax_ident thf ((fact (n + 1)) == ((n + 1) * fact n)) |> at [right_branch; right_branch]   // (n+1)! → (n+1)·n!
+        Taut algebraf |> apply_right                                        // n!·(n+1) = (n+1)·n!
+    ]
+let stepf =
+    theorem thf (inductive_case 0 n j Pfact) [
+        trade_forall_implies n (pred_of n af) (pred_of n (ihf ==> pn1f)) |> apply
+        Taut bodyf |> at [select_body]
+        ident_forall_true' n
+    ]
+let basef =
+    theorem thf (base_case 0 Pfact) [
+        Ident (empty_prod thf 1 0 i i) |> at_left                           // Π(1..0 : i) → 1
+        ax_ident thf ((fact 0) == 1) |> at_right                            // 0! → 1
+    ]
+named "base case       (Πi | 1 ≤ i ≤ 0 : i) = 0!"                (fun () -> basef)
+named "inductive case"                                           (fun () -> stepf)
+ok "the step does not close without the inductive hypothesis"
+   (not (proves "step without IH" (fun () ->
+        theorem thf (af ==> (ihf ==> pn1f)) [
+            (shunt' af ihf pn1f |> Commute) |> apply
+            Establish (shift_bound thf 0 n) |> apply
+            Deduce' (split_off_factor thf 1 n i i) |> apply_right
+            ax_ident thf ((fact (n + 1)) == ((n + 1) * fact n)) |> at [right_branch; right_branch]
+            Taut algebraf |> apply_right
+        ])))
+let thmf = by_induction thf 0 n j Pfact basef stepf
+printfn "  %s" (thf.PrintFormula (expand thmf.Stmt))
+named "BY INDUCTION    (∀n | 0 ≤ n : (Πi | 1 ≤ i ≤ n : i) = n!)"  (fun () -> thmf)
+ok "it is the statement claimed"
+   (sequal (expand thmf.Stmt) (expand (qall n (leq 0 n) ((qprod i k1n i) == fact n)).Expr))
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1

@@ -30,14 +30,15 @@ is not a second axiom — the example checks the axiom is recognized at base poi
 a symbolic `k`.
 
 (12.3) is **not** stated. Gries derives (12.5) from it with Split off term (8.23) over an integer
-range, Empty range (8.13) and Change of dummy (8.22); 8.23 over integer ranges does not exist in this
-prover, so mechanizing that derivation is its own piece of work. Since (12.5)/(12.8) is the form
-every proof uses, taking it as the axiom is the honest trade — and it is a form Gries himself
-numbers, not an invention here.
+range, Empty range (8.13) and Change of dummy (8.22), applied to a **∀** quantification. Split off
+term now exists for Σ (`split_off_term`, §12) but not for ∀, so mechanizing that derivation is still
+its own piece of work. Since (12.5)/(12.8) is the form every proof uses, taking it as the axiom is
+the honest trade — and it is a form Gries himself numbers, not an invention here.
 
-Also not here, and each for a stated reason: §12.2's Fibonacci and factorial examples (they need
-`Π`, and `Σ`/`Π` need Split off term), §12.3 Peano arithmetic, §12.4 well-founded induction, §12.5
-structural induction, §12.6 loop correctness. See §6.
+`Π` now exists too (§19), with its own Split off term, and `(Πi | 1 ≤ i ≤ n : i) = n!` is proved by
+induction. Not here: §12.3 Peano arithmetic, §12.4 well-founded induction, §12.5 structural
+induction, §12.6 loop correctness. See §6. (Updated 2026-10-18: this paragraph predated §12 and
+listed Split off term itself as missing.)
 
 ## 2. The principle needs no arithmetic
 
@@ -158,14 +159,14 @@ hypothesis from a `P` that was provable outright.
 
 An example whose statement genuinely CANNOT be proved without induction needs either a recursive
 definition (as here) or `Σ`/`Π` with Split off term. Gries' own (12.7) `(Σi | 1 ≤ i ≤ n : 2i−1) = n²`
-is the second kind, and it needs three things this theory does not have yet:
+is the second kind, and it needed three things this theory did not have when this section was written
+— all now done, and **(12.7) is proved by induction (§15)**:
 
 1. ~~**Split off term (8.23)** over an integer range, for `Σ`~~ — **done, §12.**
-2. An **empty-range fact for a numeric range** — `1 ≤ i ≤ 0` is empty, which is arithmetic, not the
-   syntactic `false` that `Sums`' (8.13) matches.
-3. More of the **order on ℤ** than reflexivity.
-
-Of the three, the second and third are what remains: §12 lists exactly what (12.7) still needs.
+2. ~~An **empty-range fact for a numeric range** — `1 ≤ i ≤ 0` is empty, which is arithmetic, not the
+   syntactic `false` that `Sums`' (8.13) matches~~ — **done, §14** (`empty_range` / `empty_sum`).
+3. ~~More of the **order on ℤ** than reflexivity~~ — **done, §12/§14/§15** (Discreteness,
+   successor-not-≤, Transitivity, Translation; `shift_bound`).
 
 ## 7. A bug this found: `Integers.reduce` never reduced anything
 
@@ -695,3 +696,56 @@ parameter typed exactly `IntTerm` and never in operators, indexers or `Term<int>
   `shift_bound`, `split_off_term`, `by_induction`) is `inline` and converts its bounds first.
   `ring_ident` and other non-inline functions still take `Term<int>`; `IntTerm 2 * IntTerm 3` (a
   product of literal TERMS) is unaffected.
+
+## 19. Π — the product quantifier, and n! by induction
+
+```fsharp
+Sums.pi / Sums.qprod x R E : IntTerm            // (Πx | R : E), a Formula.product at ★ := int_mul
+Sums.prod_axioms                                 // §8.2's ★ requirements for · + Π's three axioms
+split_off_factor th lo n i E : Theorem           // lo ≤ n+1 ⇒ Π(lo..n+1 : E) = Π(lo..n : E) · E[i := n+1]
+empty_prod th lo hi i E : Theorem                // (Πi | lo ≤ i ≤ hi : E) = 1, for literals lo > hi
+split_off / empty_quant (q: RangeQuantifier) …   // both, for any range quantifier: sigma_q, pi_q
+```
+
+**Π is Σ with `·` for `+` and 1 for 0.** It is a `Formula.product` term — the generic multiplicative
+quantification ⋂ already uses — so `Quantifier`, `ProductTerm`, `rebuild_quantifier` (hence
+`select_range`/`select_body`) and Display all knew it, and the GENERIC quantifier axioms — One-Point
+(8.14), Nesting (8.20), Dummy renaming (8.21) — apply to it unchanged. The named operator `int_mul`
+keys Π's own axioms, as `int_add` does Σ's, so neither matches the other's terms.
+
+**Π's three axioms** (`Sums.prod_axioms`, combined into `Induction` with `sum_axioms`): Empty range
+(8.13) `(Πx | false : E) = 1`; Range split (8.18) in its unconditional form; Distributivity (8.15).
+Plus §8.2's requirements of `·` (symmetry, associativity, unit 1). Each is checked in (L) with a
+refusal beside it — notably that the Σ-SHAPED split with `+` over Π terms is not accepted (it is false).
+
+**Split off term is one derivation for both.** `split_off_term` was rewritten as `split_off` over a
+`RangeQuantifier` — the builder, the operator on terms, and its unit — because the derivation never
+used anything else about Σ: `x ★ u` intro, `u = ★(false)`, range disjointness, Range split, One-Point.
+That is Gries' own point in stating (8.23) for any ★. `split_off_term` (Σ) and `split_off_factor` (Π)
+are its two instances; `empty_sum`/`empty_prod` likewise share `empty_quant`. The Σ results in (G)–(I)
+are unchanged.
+
+**The worked example**: `n!` by its inductive definition (§12.2), `0! = 1` and `(n+1)! = (n+1)·n!`, as
+two theory axioms in the shape of (D)'s `f`, and then
+
+```
+(∀n | 0 ≤ n : (Πi | 1 ≤ i ≤ n : i) = n!)
+```
+
+by `by_induction` — the (12.7) proof's shape with Π: the base case is `empty_prod` and `0! = 1`; the
+step is `shift_bound` (the proviso), `split_off_factor`, the inductive hypothesis, `(n+1)! = (n+1)·n!`,
+and `ring_ident` for `n!·(n+1) = (n+1)·n!`. The same step with the hypothesis removed does not close.
+
+**Two things found on the way.**
+- Display had structural cases for `+` and `−` but not `·`, so any product containing a Π was
+  decompiled whole and printed as `FormulaModule.product Sums.int_mul "Π" …`. `·` is now structural
+  too (`print_arith_operand`, like `+`).
+- `Theory.AxEquiv` consults only the theory's OWN axioms; One-Point is an axiom of the logic, so it is
+  recognized in a proof (`ax_ident`) but not by `AxEquiv`. Added `Theory.IsAxiom` — this theory's
+  axioms OR the logic's, exactly the kernel's completeness test (a zero-step proof closes iff it is
+  true); `autoproof` and `PropCalculus`' search now use it, (L) checks with it, and four tests in
+  `IsAxiomTests` pin the difference. `AxEquiv` is unchanged (the kernel labels `Axiom of …` vs
+  `Logical Axiom of …` from the two separate checks) and its doc comment now states its scope.
+
+**Gate.** Solution builds; suite 149/149; `Induction.fsx` 130/130 ((L) is 17 new); SetTheory 175/175,
+PredCalculus 24/24, E 5/5, Sledgehammer 7/7, Reconstruct 29/29, AdversarialSweep ALL CLEAR.

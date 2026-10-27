@@ -1063,3 +1063,39 @@ type InstantiateTermsTests() =
             Assert.True(sequal p1.Stmt (PropCalculus.reflex_implies (eq (plus1 x) x)).Stmt)
             Assert.True(p1.Complete && p2.Complete)
         | _ -> Assert.Fail "Schema.t1 did not return derived rules"
+
+/// Tests for `Theory.IsAxiom` against `Theory.AxEquiv`: the first is "an axiom of this theory OR of
+/// the logic" — the kernel's completeness test — the second only this theory's own schemes.
+type IsAxiomTests() =
+    inherit Sylvia.Tests.Prover.TestsRuntime()
+
+    do Proof.LogLevel <- 0
+
+    let p, q = boolvar "p", boolvar "q"
+    /// A theory with exactly one axiom of its own: `p ⇒ q`.
+    let own = (p ==> q).Expr |> expand
+    let th = Theory((fun e -> if sequal e own then Descriptions.axiom_name "test" "p ⇒ q" |> Some else None), [])
+
+    [<Fact>]
+    member _.``a logic axiom is an axiom of every theory, but not one of its OWN`` () =
+        // Symbolic Equality `p = p` is an axiom of S, not of `th`.
+        Assert.True(th.IsAxiom (p == p))
+        Assert.False(th.AxEquiv (p == p).Expr)
+
+    [<Fact>]
+    member _.``a theory's own axiom is an axiom by both tests`` () =
+        Assert.True(th.IsAxiom (p ==> q))
+        Assert.True(th.AxEquiv (p ==> q).Expr)
+        Assert.False(Proof.Logic.AxEquiv (p ==> q).Expr)
+
+    [<Fact>]
+    member _.``IsAxiom does no search: a non-axiom is false by both tests`` () =
+        Assert.False(th.IsAxiom (q ==> p))
+        Assert.False(th.AxEquiv (q ==> p).Expr)
+
+    [<Fact>]
+    member _.``IsAxiom agrees with whether a zero-step proof closes`` () =
+        // The kernel's own completeness test: `IsAxiom` is exactly when `Proof(stmt, th, [])` is complete.
+        for stmt in [ p == p; p ==> q; q ==> p; (p * q) == (q * p) ] do
+            let closes = (Proof(expand stmt.Expr, th, [], true)).Complete
+            Assert.True((th.IsAxiom stmt) = closes, sprintf "IsAxiom disagrees with the kernel on %s" (src stmt.Expr))

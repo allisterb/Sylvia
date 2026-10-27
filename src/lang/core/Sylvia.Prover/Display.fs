@@ -1,4 +1,4 @@
-﻿namespace Sylvia
+namespace Sylvia
 
 open System
 open System.Reflection
@@ -239,6 +239,7 @@ module Display =
            induction range as `0 <= n` rather than Gries' `0 ≤ n`. *)
         | Add(l, r) -> sprintf "%s + %s" (print_arith_operand l) (print_arith_operand r)
         | Subtract(l, r) -> sprintf "%s - %s" (print_arith_operand l) (print_arith_operand r)
+        | Multiply(l, r) -> sprintf "%s * %s" (print_arith_operand l) (print_arith_operand r)   // so a Π operand is reached
         | LessThan(l, r) -> sprintf "%s < %s" (print_arith_operand l) (print_arith_operand r)
         | LessEq(l, r) -> sprintf "%s ≤ %s" (print_arith_operand l) (print_arith_operand r)
 
