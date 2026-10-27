@@ -7,3 +7,6 @@
 [submodule "ext/FunScript"]
 	path = ext/FunScript
 	url = https://github.com/allisterb/FunScript.git
+[submodule "ext/interactive"]
+	path = ext/interactive
+	url = https://github.com/allisterb/interactive.git
