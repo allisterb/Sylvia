@@ -243,16 +243,21 @@ ok "(3.84a) rejects capture of e's variables by a binder in E"
 ok "(3.84a) rejects substituting under a binder of z"
    (not (Theory.S.AxEquiv ((ieq * (qall i T (leq i n))) == (ieq * (qall i T (leq (n + 1) n)))).Expr))
 
-// The integer order: discreteness, and a successor is never ≤ its predecessor. Discreteness is an
-// axiom, for `int` only — it is FALSE over the reals, and an ordered domain does not give it. The
-// successor fact is a theorem of the ordered domain `Integers` is.
+// The integer order: discreteness, and a successor is never ≤ its predecessor. Both are THEOREMS
+// now. The successor fact is one of the ordered domain `Integers` is. Discreteness is FALSE over the
+// reals and no ordered-domain axiom gives it: it is derived from the induction axiom (12.8) itself,
+// through "no integer lies between 0 and 1" (Gries 15.50) — `zero_or_one_le`, `discrete`.
 let x, y = IntVar "x", IntVar "y"
-ok "Discreteness:  (x ≤ y+1) = (x ≤ y ∨ x = y+1)"
-   (ind.AxEquiv ((leq x (y + 1)) == ((leq x y) + ((x :> Term<int>) == ((y + 1) :> Term<int>)))).Expr)
-ok "Discreteness does not hold for y+2"
-   (not (ind.AxEquiv ((leq x (y + 2)) == ((leq x y) + ((x :> Term<int>) == ((y + 2) :> Term<int>)))).Expr))
-ok "Discreteness is not an axiom over the reals"
-   (not (ind.AxEquiv (Prop <@ ((%x.Expr |> float) <= (%y.Expr |> float) + 1.0) = (((%x.Expr |> float) <= (%y.Expr |> float)) || ((%x.Expr |> float) = (%y.Expr |> float) + 1.0)) @>).Expr))
+let discreteness = (leq x (y + 1)) == ((leq x y) + ((x :> Term<int>) == ((y + 1) :> Term<int>)))
+ok "Discreteness is NOT an axiom (of the theory or the logic)"   (not (ind.IsAxiom discreteness))
+named "no integer between 0 and 1:  (∀n | 0 ≤ n : 1 ≤ n ∨ 0 = n), BY INDUCTION"   (fun () -> zero_or_one_le ind)
+named "Discreteness:  (x ≤ y+1) = (x ≤ y ∨ x = y+1) — a theorem"
+      (fun () -> theorem ind discreteness [ discrete ind x y |> at_left ])
+ok "... and it does not prove the same for y+2"
+   (not (proves "y+2" (fun () ->
+        theorem ind ((leq x (y + 2)) == ((leq x y) + ((x :> Term<int>) == ((y + 2) :> Term<int>)))) [ discrete ind x y |> at_left ])))
+ok "... and a plain Integers theory, with no induction axiom, cannot derive it"
+   (try discrete (Integers.Integers() :> Theory) x y |> ignore; false with _ -> true)
 ok "Successor:  (x+1 ≤ x) = false is NOT an axiom any more" (not (ind.AxEquiv ((leq (x + 1) x) == F).Expr))
 named "... it is a theorem: x+1 < x is pos(−1), x+1 = x is 1 = 0"
       (fun () -> theorem ind ((leq (x + 1) x) == F) [ Integers.succ_not_le ind x |> at_left ])

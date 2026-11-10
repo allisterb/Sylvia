@@ -36,22 +36,13 @@ module Integers =
 
     // Reflexivity, Transitivity, Translation of ≤ and "a successor is not ≤" were AXIOMS here until
     // 2026-10-27. They are now THEOREMS of the ordered domain (`OrderedDomain`, Gries 15.30–15.46) that
-    // `Integers` is — see `le_refl`, `le_trans`, `le_translate`, `succ_not_le` below. What remains is
-    // what an ordered domain does not give: discreteness, and evaluation on literals.
-
-    /// `(x ≤ y + 1) = (x ≤ y ∨ x = y + 1)` — DISCRETENESS of the integers: nothing lies strictly
-    /// between `y` and `y + 1`.
-    ///
-    /// The real content of splitting the last term off an integer range (Gries 8.23), and the fact
-    /// that makes it an INTEGER theorem: over the reals it is false. Restricted to `int` for that
-    /// reason. An ordered domain does not give it (ℚ is one); Gries gets it from Well ordering
-    /// (15.49), as (15.50) "no element between 0 and 1". Until that is in, it is stated directly.
-    let (|DiscreteLessEq|_|) =
-        function
-        | Equals(LessEq(x, Add(y, Int32 1)), Or(LessEq(x', y'), Equals(x'', Add(y'', Int32 1))))
-            when x.Type = typeof<int> && sequal x x' && sequal x' x'' && sequal y y' && sequal y' y'' ->
-            pattern_name "Discreteness of ≤" |> Some
-        | _ -> None
+    // `Integers` is — see `le_refl`, `le_trans`, `le_translate`, `succ_not_le` below.
+    //
+    // DISCRETENESS, `(x ≤ y+1) = (x ≤ y ∨ x = y+1)`, was an axiom here too. An ordered domain does not
+    // give it (ℚ is one); it is now a theorem of `Induction` (`Induction.discrete`), derived from the
+    // induction axiom (12.8) — which is false over ℚ — through "no integer lies between 0 and 1"
+    // (Gries 15.50). So a plain `Integers` theory does not prove it: discreteness is what induction
+    // adds. What remains here is evaluation on literals.
 
     /// `(a ≤ b) = true` or `= false` for integer LITERALS `a`, `b`, by evaluation.
     ///
@@ -84,8 +75,8 @@ module Integers =
 
     /// The integers' own axioms, ON TOP OF those of an ordered domain (`OrderedDomain`, Gries
     /// 15.1–15.7, 15.13, 15.14, 15.30–15.33, 15.36–15.39), which `Integers` inherits: the ring and
-    /// order laws live there now, once. What stays here is what is particular to ℤ — discreteness,
-    /// and evaluation of comparisons between literals — plus two older forms kept because
+    /// order laws live there now, once. What stays here is evaluation of comparisons between integer
+    /// literals (discreteness is a theorem of `Induction`) — plus two older forms kept because
     /// existing proofs may cite them: additive cancellation at a non-zero term (a weaker form of
     /// 15.8) and an additive-inverse ∃ in the shape `(∃x |: v + x = 0)`.
     let integer_axioms =
@@ -93,7 +84,6 @@ module Integers =
         | LeftCancelNonZero add_op zero_int x -> Some (desc x)
         | Exists(_, a::[], Bool true, (Equals(Add(Var _, Var a'), Int32 0))) when vequal a a' -> Some (axiom_desc "Integers" (pattern_name "Additive Inverse")) 
         | DefLessThan x
-        | DiscreteLessEq x
         | LiteralLessEq x
         | LiteralEq x -> Some (desc x)
         | _ -> None
@@ -314,7 +304,8 @@ module Integers =
           Trans: Expr<int> -> Expr<int> -> Expr<int> -> Theorem
           Translate: Expr<int> -> Expr<int> -> Rule
           SuccNotLe: Expr<int> -> Rule
-          NonnegAdd: Expr<int> -> Expr<int> -> Theorem }
+          NonnegAdd: Expr<int> -> Expr<int> -> Theorem
+          Succ: Expr<int> -> Theorem }
 
     let private order_lemmas = System.Runtime.CompilerServices.ConditionalWeakTable<Theory, OrderLemmas>()
 
@@ -339,7 +330,8 @@ module Integers =
               Trans = Tactics.Schema.th3 "le_trans" (OrderedDomain.le_trans d)
               Translate = Tactics.Schema.t2 "le_translate" (fun a b -> OrderedDomain.le_translate d a b one)
               SuccNotLe = Tactics.Schema.t1 "succ_not_le" (fun a -> Ident (PropCalculus.mp (OrderedDomain.succ_not_le d a) (one_ne_zero th)))
-              NonnegAdd = Tactics.Schema.th2 "nonneg_add" (OrderedDomain.nonneg_add d) })
+              NonnegAdd = Tactics.Schema.th2 "nonneg_add" (OrderedDomain.nonneg_add d)
+              Succ = Tactics.Schema.th1 "le_succ" (fun a -> PropCalculus.mp (OrderedDomain.le_succ d a) (one_ne_zero th)) })
 
     /// `(x ≤ x) = true` — Reflexivity (15.46).
     let le_refl (th: Theory) (x: Term<int>) : Rule = (order_of th).Refl x.Expr
@@ -351,6 +343,8 @@ module Integers =
     let succ_not_le (th: Theory) (x: Term<int>) : Rule = (order_of th).SuccNotLe x.Expr
     /// `(0 ≤ x ∧ 0 ≤ y) ⇒ 0 ≤ x + y`.
     let nonneg_add (th: Theory) (x: Term<int>) (y: Term<int>) : Theorem = (order_of th).NonnegAdd x.Expr y.Expr
+    /// `x ≤ x + 1` — from `pos.1`, not from Discreteness.
+    let le_succ (th: Theory) (x: Term<int>) : Theorem = (order_of th).Succ x.Expr
 
     (* ------------------------------------------------------------------------------------------
        Ring normalization — Gries' "(Arithmetic)" step, as a tactic that PRODUCES A PROOF.

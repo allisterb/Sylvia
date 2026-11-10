@@ -342,6 +342,33 @@ module OrderedDomain =
             Taut (reflex_implies nz1)                      |> apply
         ]
 
+    /// `(a + 1) − a = 1`.
+    let add_one_sub (d: IntegralDomain<'t>) (a: Expr<'t>) : Rule =
+        let o, th = d.Ops, d :> Theory
+        let s, sub, n, one = bin o.Add, bin o.Sub, un o.Neg, o.One
+        ident th (eq_t (sub (s a one) a) one) [
+            ax th (sub (s a one) a) (s (s a one) (n a))            |> at_left                        // (15.14)
+            ax th (s (s a one) (n a)) (s a (s one (n a)))          |> at_left
+            ax th (s one (n a)) (s (n a) one)                      |> at [left_branch; right_branch]
+            rev th (s (s a (n a)) one) (s a (s (n a) one))         |> at_left
+            ax th (s a (n a)) o.Zero                               |> at [left_branch; left_branch]  // (15.13)
+            ax th (s o.Zero one) one                               |> at_left
+        ]
+
+    /// `1 ≠ 0 ⇒ a ≤ a + 1` — `a < a + 1` is `pos.1`. NOT from Discreteness: this is what lets
+    /// `Induction` derive Discreteness without going in a circle.
+    let le_succ (d: OrderedDomain<'t>) (a: Expr<'t>) : Theorem =
+        let o, r, th = d.Ops, d.Order, d :> Theory
+        let a1 = bin o.Add a o.One
+        let nz1 = nonzero o o.One
+        lemma th (nz1 ==> (rel r.Le a a1)) [
+            ax_ident th ((rel r.Le a a1) == ((rel r.Lt a a1) + (eq_t a a1))) |> at_right                                  // (15.38)
+            ax_ident th ((rel r.Lt a a1) == (pos_of r (bin o.Sub a1 a)))     |> at [right_branch; left_branch]             // (15.36)
+            add_one_sub d a                                                  |> at [right_branch; left_branch; apply_unary]
+            Establish (one_pos d)                                            |> apply                                      // pos.1
+            Deduce (weaken_or (pos_of r o.One) (eq_t a a1))                  |> apply_right
+        ]
+
     /// `0 ≤ a ∧ 0 ≤ b ⇒ 0 ≤ a + b` — non-negatives are closed under `+`: Monotonicity puts `b` on
     /// both sides of `0 ≤ a`, and Transitivity chains `0 ≤ b ≤ a + b`.
     let nonneg_add (d: OrderedDomain<'t>) (a: Expr<'t>) (b: Expr<'t>) : Theorem =

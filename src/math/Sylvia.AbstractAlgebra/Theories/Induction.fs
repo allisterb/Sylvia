@@ -182,6 +182,159 @@ module Induction =
             // and the state IS Instantiation (9.13) at i := n, which closes it.
         ]
 
+    (* The principle, as a combinator *)
+
+    /// **Proof by induction over `{n₀, n₀+1, …}`** — Gries (12.8).
+    ///
+    /// From a proof of the base case `P.n₀` and a proof of the inductive case
+    /// `(∀n | n₀ ≤ n : (∀i | n₀ ≤ i ≤ n : P.i) ⇒ P(n+1))`, conclude `(∀n | n₀ ≤ n : P.n)`.
+    ///
+    /// NOT a new trusted step: it instantiates the axiom above at `P`, conjoins the two supplied
+    /// theorems and detaches by modus ponens (`PropCalculus.conj` / `PropCalculus.mp`). The axiom is
+    /// what carries the induction; this does the plumbing, and refuses unless each theorem proves
+    /// exactly the obligation it is supposed to. `th` must recognize (12.8) — i.e. be an `Induction`.
+    let inline by_induction (th: Theory) n0 (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>)
+                     (bse: Theorem) (stp: Theorem) : Theorem =
+        let check (what: string) (t: Theorem) (obligation: Prop) =
+            if not t.Proof.Complete then failwithf "by_induction: the %s proof is not complete." what
+            if not (sequal (expand t.Stmt) (expand obligation.Expr)) then
+                failwithf "by_induction: the %s proof is of\n  %s\nbut the obligation is\n  %s"
+                    what (th.PrintFormula (expand t.Stmt)) (th.PrintFormula (expand obligation.Expr))
+        check "base case" bse (base_case n0 P)
+        check "inductive case" stp (inductive_case n0 n i P)
+        mp (axiom th (induction_axiom n0 n i P)) (conj bse stp)
+
+    /// **Proof by induction over ℕ** — Gries (12.5), the `n₀ := 0` instance of (12.8).
+    let by_induction_nat (th: Theory) (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>)
+                         (bse: Theorem) (stp: Theorem) : Theorem =
+        by_induction th 0 n i P bse stp
+
+    /// The inductive case from its BODY: from `⊢ n₀ ≤ n ⇒ (IH ⇒ P(n+1))`, for an arbitrary `n`,
+    /// conclude `⊢ (∀n | n₀ ≤ n : IH ⇒ P(n+1))`. Trading (9.2) puts the range in the body, the body is
+    /// replaced by its own theorem, and `(∀n |: true) = true` closes it — the three steps every
+    /// inductive case ends with.
+    let inline generalize_step (th: Theory) n0 (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>) (body: Theorem) : Theorem =
+        let a = leq n0 (tm n)
+        lemma th (inductive_case n0 n i P) [
+            trade_forall_implies n (pred_of n a) (pred_of n ((hypothesis n0 n i P) ==> P.[succ n])) |> apply
+            Taut body |> at [select_body]
+            ident_forall_true' n
+        ]
+
+    (* ------------------------------------------------------------------------------------------
+       Discreteness of ℤ — a THEOREM, from induction.
+
+       An ordered domain does not give `(x ≤ y+1) = (x ≤ y ∨ x = y+1)`: ℚ is one. (12.8) does — it is
+       false over ℚ — and it alone proves that no integer lies strictly between 0 and 1, Gries' (15.50),
+       which he gets from Well ordering (15.49). Here the induction axiom does that job, so
+       Discreteness costs no axiom of its own. It is a theorem of `Induction` theories, not of plain
+       `Integers`: discreteness is exactly what induction adds to an ordered domain.
+       ------------------------------------------------------------------------------------------ *)
+
+    /// `(∀n | 0 ≤ n : 1 ≤ n ∨ 0 = n)` — no integer between 0 and 1, BY INDUCTION. The step does not
+    /// use the hypothesis — `1 ≤ n+1` is `0 ≤ n` translated — what the induction contributes is that
+    /// every `n ≥ 0` is reached from 0 by successors, which no ordered-domain axiom says.
+    let zero_or_one_le (th: Theory) : Theorem =
+        let n, i = IntVar "n", IntVar "i"
+        let zero = IntTerm 0 :> Term<int>
+        let P = pred_of n ((leq 1 (tm n)) + (zero == (tm n :> Term<int>)))
+        let a = leq 0 (tm n)
+        let ih, pn1 = hypothesis 0 n i P, P.[succ n]
+        let bse =
+            lemma th (base_case 0 P) [
+                ax_ident th ((leq 1 0) == F)    |> at_left       // literal comparison
+                commute_or F (zero == zero)     |> apply
+                ident_or (zero == zero)         |> apply         // and 0 = 0 holds
+            ]
+        let one_le_succ =
+            lemma th (a ==> (leq 1 (succ n))) [
+                Integers.le_translate th zero (tm n)       |> at_left                     // 0 ≤ n → 0 + 1 ≤ n + 1
+                Integers.reduce                            |> at [left_branch; left_branch]
+                Taut (reflex_implies (leq 1 (succ n)))     |> apply
+            ]
+        let body =
+            lemma th (a ==> (ih ==> pn1)) [
+                (shunt' a ih pn1 |> Commute)               |> apply
+                Establish one_le_succ                      |> apply                       // 1 ≤ n + 1
+                Deduce (weaken_or (leq 1 (succ n)) (zero == (succ n :> Term<int>))) |> apply_right
+            ]
+        by_induction th 0 n i P bse (generalize_step th 0 n i P body)
+
+    /// `(0 ≤ d) = (1 ≤ d ∨ 0 = d)`. `⇒` is `zero_or_one_le` traded and instantiated at `d` (9.13);
+    /// `⇐` is Transitivity through the literal `0 ≤ 1`, and Substitution.
+    let private zero_split_at (th: Theory) (d: Expr<int>) : Rule =
+        let n = IntVar "n"
+        let D = IntTerm d
+        let zero = IntTerm 0 :> Term<int>
+        let N = pred_of n (leq 0 (tm n))
+        let P = pred_of n ((leq 1 (tm n)) + (zero == (tm n :> Term<int>)))
+        let all = forall'(tm n, N ==> P)
+        let traded =
+            lemma th all [
+                trade_forall_implies n N P |> Commute     |> apply                       // (∀n |: N ⇒ P) → (∀n | N : P)
+                Taut (zero_or_one_le th)                  |> apply
+            ]
+        let z, up, eq0 = leq 0 D, leq 1 D, zero == (D :> Term<int>)
+        let fwd = mp (axiom th (all ==> ((N ==> P).[D]))) traded                          // Instantiation (9.13)
+        let c1 =
+            lemma th (up ==> z) [
+                ident_and up |> Commute                   |> at_left
+                commute_and up T                          |> at_left
+                ax_ident th ((leq 0 1) == T) |> Commute   |> at [left_branch; left_branch]  // T → 0 ≤ 1
+                Taut (Integers.le_trans th zero (IntTerm 1) D) |> apply
+            ]
+        let c2 =
+            lemma th (eq0 ==> z) [
+                Deduce' (OrderedDomain.eq_sym th zero.Expr d) |> apply_right              // d → 0
+                ax_ident th ((leq 0 0) == T)              |> apply_right
+            ]
+        let bwd =
+            lemma th ((up + eq0) ==> z) [
+                case_analysis_1 up eq0 z |> Commute       |> apply                        // (3.78)
+                Taut c1                                   |> at_left
+                Taut c2                                   |> at_right
+                ident_and T                               |> apply
+            ]
+        ident th (z == (up + eq0)) [
+            mutual_implication' z (up + eq0) |> Commute   |> apply
+            Taut (conj fwd bwd)                           |> apply
+        ]
+
+    /// **Discreteness** `(x ≤ y+1) = (x ≤ y ∨ x = y+1)`, from `zero_split` at `d := (y+1) + (−x)`:
+    /// `0 ≤ d` is `x ≤ y+1`, `1 ≤ d` is `x ≤ y`, and `0 = d` is `x = y+1` — Monotonicity (15.42),
+    /// Cancellation and arithmetic.
+    let private discrete_at (th: Theory) (zs: Expr<int> -> Rule) (x: Expr<int>) (y: Expr<int>) : Rule =
+        let dom = Integers.order_domain th
+        let X, Y = IntTerm x, IntTerm y
+        let y1 = Y + 1
+        let nx = -X
+        let D = y1 + nx
+        let zero = IntTerm 0 :> Term<int>
+        ident th ((leq X y1) == ((leq X Y) + ((X :> Term<int>) == (y1 :> Term<int>)))) [
+            OrderedDomain.le_translate dom x y1.Expr nx.Expr                  |> at_left                       // → x + −x ≤ d
+            ax_ident th (((X + nx) :> Term<int>) == zero)                     |> at [left_branch; left_branch] // (15.13)
+            zs D.Expr                                                         |> at_left                       // → 1 ≤ d ∨ 0 = d
+            OrderedDomain.le_translate dom <@ 1 @> D.Expr x                   |> at [left_branch; left_branch] // 1 ≤ d → 1 + x ≤ d + x
+            Ident (Integers.ring_ident th (IntTerm 1 + X) (X + 1))            |> at [left_branch; left_branch; left_branch]
+            Ident (Integers.ring_ident th (D + X) (Y + 1))                    |> at [left_branch; left_branch; right_branch]
+            Integers.le_translate th X Y |> Commute                           |> at [left_branch; left_branch] // x+1 ≤ y+1 → x ≤ y
+            IntegralDomain.rev th (X + nx).Expr <@ 0 @>                       |> at [left_branch; right_branch; left_branch]  // 0 → x + −x
+            OrderedDomain.cancel_add_right dom x y1.Expr nx.Expr              |> at [left_branch; right_branch]               // → x = y+1
+        ]
+
+    type private DiscreteLemmas = { ZeroSplit: Expr<int> -> Rule; Discrete: Expr<int> -> Expr<int> -> Rule }
+    let private discrete_lemmas = System.Runtime.CompilerServices.ConditionalWeakTable<Theory, DiscreteLemmas>()
+    let private discrete_of (th: Theory) : DiscreteLemmas =
+        discrete_lemmas.GetValue(th, fun _ ->
+            let zs = Tactics.Schema.t1 "zero_split" (zero_split_at th)
+            { ZeroSplit = zs; Discrete = Tactics.Schema.t2 "discrete" (discrete_at th zs) })
+
+    /// `(0 ≤ d) = (1 ≤ d ∨ 0 = d)` — derived once per theory, by induction.
+    let zero_split (th: Theory) (d: Term<int>) : Rule = (discrete_of th).ZeroSplit d.Expr
+
+    /// **Discreteness** `(x ≤ y+1) = (x ≤ y ∨ x = y+1)` — derived once per theory, by induction.
+    let discrete (th: Theory) (x: Term<int>) (y: Term<int>) : Rule = (discrete_of th).Discrete x.Expr y.Expr
+
     (* ------------------------------------------------------------------------------------------
        Split off term (Gries 8.23), for Σ over an integer range.
 
@@ -211,7 +364,7 @@ module Induction =
         let a = leq lo n1
         let loi, ile, ieq = leq lo (tm i), leq (tm i) n, (tm i :> Term<int>) == (n1 :> Term<int>)
         lemma th (a ==> ((loi * (leq (tm i) n1)) == ((loi * ile) + ieq))) [
-            ax_ident th ((leq (tm i) n1) == (ile + ieq)) |> at [right_branch; left_branch; right_branch]  // Discreteness
+            discrete th (tm i) n                         |> at [right_branch; left_branch; right_branch]  // Discreteness (by induction)
             distrib_and_or loi ile ieq                   |> at [right_branch; left_branch]
             commute_and loi ieq                          |> at [right_branch; left_branch; right_branch]
             ax_ident th ((ieq * loi) == (ieq * a))       |> at [right_branch; left_branch; right_branch]  // (3.84a)
@@ -342,44 +495,6 @@ module Induction =
     /// **Split off term (8.23) for Π**: `lo ≤ n+1 ⇒ (Πi | lo ≤ i ≤ n+1 : E) = (Πi | lo ≤ i ≤ n : E) · E[i := n+1]`.
     let inline split_off_factor (th: Theory) lo n (i: #ISymbolicVar<int>) E : Theorem =
         split_off pi_q th (int_term lo) (int_term n) i (int_term E)
-    (* The principle, as a combinator *)
-
-    /// **Proof by induction over `{n₀, n₀+1, …}`** — Gries (12.8).
-    ///
-    /// From a proof of the base case `P.n₀` and a proof of the inductive case
-    /// `(∀n | n₀ ≤ n : (∀i | n₀ ≤ i ≤ n : P.i) ⇒ P(n+1))`, conclude `(∀n | n₀ ≤ n : P.n)`.
-    ///
-    /// NOT a new trusted step: it instantiates the axiom above at `P`, conjoins the two supplied
-    /// theorems and detaches by modus ponens (`PropCalculus.conj` / `PropCalculus.mp`). The axiom is
-    /// what carries the induction; this does the plumbing, and refuses unless each theorem proves
-    /// exactly the obligation it is supposed to. `th` must recognize (12.8) — i.e. be an `Induction`.
-    let inline by_induction (th: Theory) n0 (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>)
-                     (bse: Theorem) (stp: Theorem) : Theorem =
-        let check (what: string) (t: Theorem) (obligation: Prop) =
-            if not t.Proof.Complete then failwithf "by_induction: the %s proof is not complete." what
-            if not (sequal (expand t.Stmt) (expand obligation.Expr)) then
-                failwithf "by_induction: the %s proof is of\n  %s\nbut the obligation is\n  %s"
-                    what (th.PrintFormula (expand t.Stmt)) (th.PrintFormula (expand obligation.Expr))
-        check "base case" bse (base_case n0 P)
-        check "inductive case" stp (inductive_case n0 n i P)
-        mp (axiom th (induction_axiom n0 n i P)) (conj bse stp)
-
-    /// **Proof by induction over ℕ** — Gries (12.5), the `n₀ := 0` instance of (12.8).
-    let by_induction_nat (th: Theory) (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>)
-                         (bse: Theorem) (stp: Theorem) : Theorem =
-        by_induction th 0 n i P bse stp
-
-    /// The inductive case from its BODY: from `⊢ n₀ ≤ n ⇒ (IH ⇒ P(n+1))`, for an arbitrary `n`,
-    /// conclude `⊢ (∀n | n₀ ≤ n : IH ⇒ P(n+1))`. Trading (9.2) puts the range in the body, the body is
-    /// replaced by its own theorem, and `(∀n |: true) = true` closes it — the three steps every
-    /// inductive case ends with.
-    let inline generalize_step (th: Theory) n0 (n: #ISymbolicVar<int>) (i: #ISymbolicVar<int>) (P: Pred<int>) (body: Theorem) : Theorem =
-        let a = leq n0 (tm n)
-        lemma th (inductive_case n0 n i P) [
-            trade_forall_implies n (pred_of n a) (pred_of n ((hypothesis n0 n i P) ==> P.[succ n])) |> apply
-            Taut body |> at [select_body]
-            ident_forall_true' n
-        ]
 
     (* ------------------------------------------------------------------------------------------
        Strong induction (Gries §12.1–12.2): an inductive step that uses the hypothesis at some point
@@ -403,17 +518,9 @@ module Induction =
     /// rewrites `b` to `a` under a hypothesis `a = b`, and with `mp` it flips a proved identity.
     let eq_sym (th: Theory) (a: Term<'t>) (b: Term<'t>) : Theorem = OrderedDomain.eq_sym th a.Expr b.Expr
 
-    /// `x ≤ x + 1`. Discreteness splits it into `x ≤ x ∨ x = x + 1`, whose left disjunct is reflexivity.
-    let inline le_succ (th: Theory) x : Theorem =
-        let x = int_term x
-        let x1 = IntTerm(x.Expr) + 1
-        let eq = x == (x1 :> Term<int>)
-        lemma th (leq x x1) [
-            ax_ident th ((leq x x1) == ((leq x x) + eq)) |> apply     // Discreteness
-            Integers.le_refl th x                        |> at_left   // Reflexivity (15.46)
-            commute_or T eq                              |> apply
-            zero_or eq                                   |> apply
-        ]
+    /// `x ≤ x + 1` — `pos.1` in the ordered domain (`Integers.le_succ`), NOT Discreteness, which is
+    /// derived from it.
+    let inline le_succ (th: Theory) x : Theorem = Integers.le_succ th (int_term x)
 
     /// `lo ≤ n ⇒ lo ≤ n + 1` — Transitivity through `n ≤ n + 1`.
     let inline le_step (th: Theory) lo n : Theorem =
@@ -473,7 +580,7 @@ module Induction =
         let nm1 = IntTerm(n.Expr) - 1
         lemma th ((leq lo n) == ((leq (fold_succ lo) n) + (lo == n))) [
             Ident (Integers.ring_ident th n (nm1 + 1))                       |> at [left_branch; right_branch]   // n → (n−1)+1
-            ax_ident th ((leq lo (nm1 + 1)) == ((leq lo nm1) + (lo == ((nm1 + 1) :> Term<int>)))) |> at_left      // Discreteness
+            discrete th lo nm1                                               |> at_left                          // Discreteness (by induction)
             Ident (pred_translate th lo n)                                   |> at [left_branch; left_branch]    // lo ≤ n−1 → lo′ ≤ n
             Ident (Integers.ring_ident th (nm1 + 1) n)                       |> at [left_branch; right_branch; right_branch]  // (n−1)+1 → n
         ]

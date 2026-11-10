@@ -5,9 +5,9 @@ Design and implementation notes for Gries & Schneider, *A Logical Approach to Di
 Companion to [`prover-predicate-calculus.md`](prover-predicate-calculus.md) and
 [`prover-set-theory.md`](prover-set-theory.md).
 
-Runnable checks: `dotnet fsi examples/proofs/Induction.fsx` (**134/134**),
+Runnable checks: `dotnet fsi examples/proofs/Induction.fsx` (**136/136**),
 `dotnet fsi examples/proofs/InductiveDefinitions.fsx` (**49/49**, §20) and
-`dotnet fsi examples/proofs/OrderedDomain.fsx` (**47/47**, §21: Gries ch.15's ordered domains).
+`dotnet fsi examples/proofs/OrderedDomain.fsx` (**48/48**, §21: Gries ch.15's ordered domains).
 
 **Status.** Induction over the integers is mechanized as **one axiom** — Gries (12.8), induction over
 `{n₀, n₀+1, …}` — plus a combinator that discharges it, and a lemma (`hypothesis_at`) that packages
@@ -855,7 +855,7 @@ trust as literal `≤`).
 | Transitivity `(x ≤ y ∧ y ≤ z) ⇒ x ≤ z` | `Integers.le_trans` ← (15.41d) |
 | Translation `(x ≤ y) = (x+1 ≤ y+1)` | `Integers.le_translate` ← (15.42) + Cancellation |
 | Successor `(x+1 ≤ x) = false` | `Integers.succ_not_le` ← the above + `one_ne_zero` |
-| Discreteness `(x ≤ y+1) = (x ≤ y ∨ x = y+1)` | **still an axiom**: ℚ is an ordered domain; needs (15.49)/(15.50) |
+| Discreteness `(x ≤ y+1) = (x ≤ y ∨ x = y+1)` | still an axiom here: ℚ is an ordered domain. **Derived from (12.8) in §22.** |
 | Literal `≤` evaluation | still an axiom (computation), now joined by literal `=` |
 
 Every proof that used the four now uses the theorems, and they all still close: (12.7), n!, the
@@ -886,4 +886,48 @@ the last order axiom. Gries proves (15.50) by contradiction from well-ordering o
 
 **Gate.** Solution builds; suite 149/149; OrderedDomain 47/47 (new); InductiveDefinitions 49/49;
 Induction 134/134; SetTheory 175/175; PredCalculus 24/24; E 5/5; Sledgehammer 7/7; Reconstruct 29/29;
+AdversarialSweep ALL CLEAR; PropCalculus, IntegerAlgebra, VerifyRuleFixes clean.
+
+## 22. Discreteness — derived from the induction axiom
+
+The last structural order axiom of `Integers`, Discreteness `(x ≤ y+1) = (x ≤ y ∨ x = y+1)`, is
+gone. No ordered-domain axiom can replace it, because ℚ is an ordered domain. Gries supplies it with
+Well ordering (15.49), via (15.50) "no element between 0 and 1". Here **(12.8) does that job**: it is
+false over ℚ, and it is already an axiom. So Discreteness costs nothing new.
+
+| Step | Statement | How |
+|---|---|---|
+| `zero_or_one_le` | `(∀n \| 0 ≤ n : 1 ≤ n ∨ 0 = n)` (15.50) | `by_induction`. The base is literal; the step is only `1 ≤ n+1` from `0 ≤ n` (Translation) and does not use the hypothesis |
+| `zero_split d` | `(0 ≤ d) = (1 ≤ d ∨ 0 = d)` | ⇒: the above, traded (9.2) and instantiated (9.13) at `d`. ⇐: Transitivity through the literal `0 ≤ 1`, and Substitution |
+| `discrete x y` | Discreteness | `zero_split` at `d := (y+1) + (−x)`. `0 ≤ d` is `x ≤ y+1` and `1 ≤ d` is `x ≤ y` (Monotonicity + ring arithmetic). `0 = d` is `x = y+1` (Cancellation) |
+
+**Avoiding a circle.** `le_succ` (`x ≤ x+1`) used to be derived FROM Discreteness. It now comes from
+the ordered domain: `x < x+1` is `pos.1` (`OrderedDomain.le_succ`, under `1 ≠ 0`; `Integers.le_succ`).
+Nothing on the derivation path above uses Discreteness. `range_extend` (so Split off term),
+`lower_split` and `le_succ` now use `discrete`, and the axiom is deleted from `integer_axioms`. Every
+induction in the gate still closes.
+
+**Where it lives.** `discrete` is a theorem of `Induction` theories only (`by_induction` needs (12.8)).
+A plain `Integers` theory no longer proves Discreteness. That is the honest placement:
+discreteness is what induction adds to an ordered domain. Nothing outside `Induction.fs` used it, and
+the example checks that `discrete` refuses a plain `Integers`. Both lemmas are per-theory cached
+schemas (`zero_split` and `discrete` derive in ~0.3 s each on first use, then cost 0 ms).
+
+**Restructure.** The combinator section (`by_induction`, `generalize_step`) moved ahead of Split off
+term, since Split off term now depends on it through `discrete`. Nothing in that section depends on
+what it moved past.
+
+**What `Integers` still takes as axioms about order:** only evaluation. That is literal `≤`, plus
+literal `=` from §21. There are also two legacy forms kept for old proofs. One is `DefLessThan` (`a < b`
+as `(b − a) ∈ Z⁺`, a second definition of `<` beside (15.36), which nothing in the gate cites). The
+other is the older `LeftCancelNonZero` / additive-inverse shapes. Removing those is a separate
+cleanup.
+
+**Not done.** Well ordering (15.49) itself, as a theorem. It is the classical equivalent of
+induction and could be derived from (12.8) by strong induction. It isn't needed for anything here
+yet.
+
+**Gate.** Solution builds; suite 149/149; Induction 136/136 (Discreteness checks rewritten: not an
+axiom, a theorem, refuses `y+2`, refuses a plain `Integers`); OrderedDomain 48/48; InductiveDefinitions
+49/49; SetTheory 175/175; PredCalculus 24/24; E 5/5; Sledgehammer 7/7; Reconstruct 29/29;
 AdversarialSweep ALL CLEAR; PropCalculus, IntegerAlgebra, VerifyRuleFixes clean.

@@ -8,8 +8,9 @@
 //   (B) the order laws are THEOREMS of them: (15.34), (15.40), (15.41a), (15.41d), (15.42), (15.46),
 //       and the successor and non-negative-sum facts — at `int` and, the theory being generic, at `int64`;
 //   (C) `Integers` IS an ordered domain, and four of its former order axioms — Reflexivity,
-//       Transitivity, Translation, "a successor is not ≤" — are now theorems, not axioms. What stays
-//       an axiom is what an ordered domain does not give: discreteness, and literal evaluation.
+//       Transitivity, Translation, "a successor is not ≤" — are now theorems, not axioms. The fifth,
+//       discreteness, which no ordered domain gives, is a theorem of `Induction` (from 12.8). What
+//       stays an axiom is literal evaluation.
 //
 // Run:  dotnet fsi examples/proofs/OrderedDomain.fsx
 
@@ -115,8 +116,12 @@ thm  "1 ≠ 0, by literal evaluation" (fun () -> Integers.one_ne_zero ind)
 ok "(1 = 0) = false is an axiom (literal evaluation), (1 = 1) = false is not"
    (ind.AxEquiv ((IntTerm 1 :> Term<int>) == (IntTerm 0 :> Term<int>) == F).Expr
     && not (ind.AxEquiv ((IntTerm 1 :> Term<int>) == (IntTerm 1 :> Term<int>) == F).Expr))
-ok "Discreteness is still an axiom — an ordered domain does not give it (ℚ is one)"
-   (ind.AxEquiv ((leq n (m + 1)) == ((leq n m) + ((n :> Term<int>) == ((m + 1) :> Term<int>)))).Expr)
+// Discreteness: no ordered-domain axiom gives it (ℚ is one), and it is no axiom at all any more —
+// `Induction` derives it from (12.8). See Induction.fsx (G).
+ok "Discreteness is not an axiom either — Induction derives it from (12.8)"
+   (not (ind.IsAxiom ((leq n (m + 1)) == ((leq n m) + ((n :> Term<int>) == ((m + 1) :> Term<int>))))))
+thm  "Discreteness — a theorem of Induction"
+     (fun () -> theorem ind ((leq n (m + 1)) == ((leq n m) + ((n :> Term<int>) == ((m + 1) :> Term<int>)))) [ discrete ind n m |> at_left ])
 
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1
