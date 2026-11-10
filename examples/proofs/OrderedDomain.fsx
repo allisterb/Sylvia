@@ -10,7 +10,12 @@
 //   (C) `Integers` IS an ordered domain, and four of its former order axioms — Reflexivity,
 //       Transitivity, Translation, "a successor is not ≤" — are now theorems, not axioms. The fifth,
 //       discreteness, which no ordered domain gives, is a theorem of `Induction` (from 12.8). What
-//       stays an axiom is literal evaluation.
+//       stays an axiom is literal evaluation;
+//   (D) the rest of §15.1 used below: (15.45) antisymmetry, totality, `a < a` false, and (15.47)
+//       indirect equality as a derived rule;
+//   (E) §15.2 minimum ↓ and maximum ↑ from Definition (15.53) alone: (15.54)–(15.60);
+//   (F) §15.3 absolute value from (15.71) abs.x = x↑−x: (15.72), (15.74), and the triangle
+//       inequality (15.73).
 //
 // Run:  dotnet fsi examples/proofs/OrderedDomain.fsx
 
@@ -19,6 +24,7 @@ open FSharp.Quotations
 open PropCalculus
 open IntegralDomain
 open OrderedDomain
+open DomainTerms
 open Induction
 
 fsi.PrintWidth <- 300
@@ -33,35 +39,32 @@ let thm (label: string) (f: unit -> Theorem) = ok label (try (f ()).Proof.Comple
 let rule (label: string) (f: unit -> Rule) =
     ok label (try (match f () with Derive(_, p, _) -> p.Complete | _ -> false) with e -> why label e)
 
+// Terms are written in the domain's own DSL (`DomainTerm.fs`): `+ * -` are the domain's operators,
+// `== !=` are = and ≠, `<. <=. >. >=.` are < ≤ > ≥, and `pos_of`, `min_of`, `max_of`, `abs_of` the rest.
 let d = Integers.integers :> OrderedDomain<int>
 let th = d :> Theory
-let r = d.Order
-let v (n: string) = Expr.Var(Var(n, typeof<int>)) |> Expr.Cast<int>
-let a, b, c = v "a", v "b", v "c"
-let P = pos_of r
-let lt, gt, le, ge = rel r.Lt, rel r.Gt, rel r.Le, rel r.Ge
+// `d.Var` makes a variable that is also a term. Bound as a `DomainTerm` so unary minus applies
+// (F#'s `~-` is `^a -> ^a`, and a variable's negation is not a variable).
+let var (n: string) : DomainTerm<int> = upcast d.Var n
+let a, b, c = var "a", var "b", var "c"
+let zero, one = d.Zero, d.One
 let ax (p: Prop) = th.AxEquiv p.Expr
-let add (x: Expr<int>) (y: Expr<int>) : Expr<int> = <@ %x + %y @>
-let mul (x: Expr<int>) (y: Expr<int>) : Expr<int> = <@ %x * %y @>
-let sub (x: Expr<int>) (y: Expr<int>) : Expr<int> = <@ %x - %y @>
-let neg (x: Expr<int>) : Expr<int> = <@ - %x @>
-let zero, one : Expr<int> * Expr<int> = <@ 0 @>, <@ 1 @>
 
 printfn "\n===== (A) The axioms of an ordered domain ====="
-ok "(15.30) Addition         pos.a ∧ pos.b ⇒ pos(a + b)"       (ax (((P a) * (P b)) ==> (P (add a b))))
-ok "  ... not  pos.a ∧ pos.b ⇒ pos(a − b)"                     (not (ax (((P a) * (P b)) ==> (P (sub a b)))))
-ok "(15.31) Multiplication   pos.a ∧ pos.b ⇒ pos(a·b)"         (ax (((P a) * (P b)) ==> (P (mul a b))))
-ok "  ... not  pos.a ∧ pos.b ⇒ pos(a·c)"                       (not (ax (((P a) * (P b)) ==> (P (mul a c)))))
-ok "(15.32)                  ¬pos.0"                            (ax (!!(P zero)))
-ok "  ... not  ¬pos.1"                                          (not (ax (!!(P one))))
-ok "(15.33)                  b ≠ 0 ⇒ (pos.b = ¬pos(−b))"        (ax ((!!(eq_t b zero)) ==> ((P b) == !!(P (neg b)))))
-ok "  ... not without b ≠ 0"                                    (not (ax ((P b) == !!(P (neg b)))))
-ok "(15.36) Less             a < b = pos(b − a)"                (ax ((lt a b) == (P (sub b a))))
-ok "  ... not  a < b = pos(a − b)"                              (not (ax ((lt a b) == (P (sub a b)))))
-ok "(15.37) Greater          a > b = pos(a − b)"                (ax ((gt a b) == (P (sub a b))))
-ok "(15.38) At most          a ≤ b = a < b ∨ a = b"             (ax ((le a b) == ((lt a b) + (eq_t a b))))
-ok "  ... not  a ≤ b = a < b ∨ b = c"                           (not (ax ((le a b) == ((lt a b) + (eq_t b c)))))
-ok "(15.39) At least         a ≥ b = a > b ∨ a = b"             (ax ((ge a b) == ((gt a b) + (eq_t a b))))
+ok "(15.30) Addition         pos.a ∧ pos.b ⇒ pos(a + b)"       (ax (((pos_of a) * (pos_of b)) ==> (pos_of (a + b))))
+ok "  ... not  pos.a ∧ pos.b ⇒ pos(a − b)"                     (not (ax (((pos_of a) * (pos_of b)) ==> (pos_of (a - b)))))
+ok "(15.31) Multiplication   pos.a ∧ pos.b ⇒ pos(a·b)"         (ax (((pos_of a) * (pos_of b)) ==> (pos_of (a * b))))
+ok "  ... not  pos.a ∧ pos.b ⇒ pos(a·c)"                       (not (ax (((pos_of a) * (pos_of b)) ==> (pos_of (a * c)))))
+ok "(15.32)                  ¬pos.0"                            (ax (!!(pos_of zero)))
+ok "  ... not  ¬pos.1"                                          (not (ax (!!(pos_of one))))
+ok "(15.33)                  b ≠ 0 ⇒ (pos.b = ¬pos(−b))"        (ax ((b != zero) ==> ((pos_of b) == !!(pos_of (-b)))))
+ok "  ... not without b ≠ 0"                                    (not (ax ((pos_of b) == !!(pos_of (-b)))))
+ok "(15.36) Less             a < b = pos(b − a)"                (ax ((a <. b) == (pos_of (b - a))))
+ok "  ... not  a < b = pos(a − b)"                              (not (ax ((a <. b) == (pos_of (a - b)))))
+ok "(15.37) Greater          a > b = pos(a − b)"                (ax ((a >. b) == (pos_of (a - b))))
+ok "(15.38) At most          a ≤ b = a < b ∨ a = b"             (ax ((a <=. b) == ((a <. b) + (a == b))))
+ok "  ... not  a ≤ b = a < b ∨ b = c"                           (not (ax ((a <=. b) == ((a <. b) + (b == c)))))
+ok "(15.39) At least         a ≥ b = a > b ∨ a = b"             (ax ((a >=. b) == ((a >. b) + (a == b))))
 
 printfn "\n===== (B) The order laws are theorems ====="
 thm  "(15.34)  b ≠ 0 ⇒ pos(b·b)"                                 (fun () -> sq_pos d b)
@@ -78,21 +81,26 @@ thm  "         0 ≤ a ∧ 0 ≤ b ⇒ 0 ≤ a + b"                         (fun
 thm  "         (a = b) ⇒ (b = a)       (3.84a + reflexivity)"     (fun () -> OrderedDomain.eq_sym th a b)
 rule "arith:   (b − a) + (c − b) = c − a   (Exercise 15.22)"      (fun () -> sub_chain d a b c)
 // A compound argument, to catch a mis-targeted rewrite inside a derivation.
-let ab = add a b
-thm  "(15.41d) at compound terms"                                 (fun () -> le_trans d ab (mul a b) (neg c))
-rule "(15.42)  at compound terms"                                 (fun () -> le_translate d (mul a b) ab (neg c))
+let ab = a + b
+thm  "(15.41d) at compound terms"                                 (fun () -> le_trans d ab (a * b) (-c))
+rule "(15.42)  at compound terms"                                 (fun () -> le_translate d (a * b) ab (-c))
 // Refusals: the theorems prove exactly their statements.
 ok "(15.41d) does not prove a ≤ b ∧ c ≤ b ⇒ a ≤ c"
-   (not (try (theorem th (((le a b) * (le c b)) ==> (le a c)) [ Taut (le_trans d a b c) |> apply ]).Proof.Complete with _ -> false))
+   (not (try (theorem th (((a <=. b) * (c <=. b)) ==> (a <=. c)) [ Taut (le_trans d a b c) |> apply ]).Proof.Complete with _ -> false))
 ok "(15.42) does not translate by different amounts"
-   (not (try (theorem th ((lt a b) == (lt (add a c) (add b a))) [ lt_translate d a b c |> at_left ]).Proof.Complete with _ -> false))
+   (not (try (theorem th ((a <. b) == (a + c <. b + a)) [ lt_translate d a b c |> at_left ]).Proof.Complete with _ -> false))
+// The DSL builds EXACTLY the trees raw quotations do, so the axiom patterns see no difference.
+ok "DSL terms build the same trees as quotations"
+   (sequal (a + -b * c).Expr <@ %a.Expr + -(%b.Expr) * %c.Expr @> && sequal (a <=. b).Expr <@ %a.Expr <= %b.Expr @>)
+ok "terms of two different domains do not mix"
+   (try (a + (IntegralDomain.IntegralDomain<int>({ d.Ops with Name = "Other" })).One) |> ignore; false with _ -> true)
 
 // The theory is GENERIC: the same theorems at a second carrier.
 let ops64 : DomainOps<int64> =
     { Name = "Int64"; Add = <@ (+) @>; Mul = <@ (*) @>; Zero = <@ 0L @>; One = <@ 1L @>; Neg = <@ (~-) @>; Sub = <@ (-) @> }
-let ord64 : OrderOps<int64> = { Pos = <@ pos<int64> @>; Lt = <@ (<) @>; Gt = <@ (>) @>; Le = <@ (<=) @>; Ge = <@ (>=) @> }
+let ord64 : OrderOps<int64> = { Pos = <@ pos<int64> @>; Lt = <@ (<) @>; Gt = <@ (>) @>; Le = <@ (<=) @>; Ge = <@ (>=) @>; Min = <@ min @>; Max = <@ max @>; Abs = <@ abs @> }
 let d64 = OrderedDomain<int64>(ops64, ord64)
-let p64, q64, s64 = Expr.Var(Var("p", typeof<int64>)) |> Expr.Cast<int64>, Expr.Var(Var("q", typeof<int64>)) |> Expr.Cast<int64>, Expr.Var(Var("s", typeof<int64>)) |> Expr.Cast<int64>
+let p64, q64, s64 = d64.Var "p", d64.Var "q", d64.Var "s"
 thm  "(15.41d) at int64"                                          (fun () -> le_trans d64 p64 q64 s64)
 thm  "(15.34)  at int64"                                          (fun () -> sq_pos d64 p64)
 thm  "succ_not_le at int64"                                       (fun () -> succ_not_le d64 p64)
@@ -122,6 +130,59 @@ ok "Discreteness is not an axiom either — Induction derives it from (12.8)"
    (not (ind.IsAxiom ((leq n (m + 1)) == ((leq n m) + ((n :> Term<int>) == ((m + 1) :> Term<int>))))))
 thm  "Discreteness — a theorem of Induction"
      (fun () -> theorem ind ((leq n (m + 1)) == ((leq n m) + ((n :> Term<int>) == ((m + 1) :> Term<int>)))) [ discrete ind n m |> at_left ])
+
+printfn "\n===== (D) The rest of §15.1: irreflexivity, antisymmetry, totality, indirect equality ====="
+rule "         (a < a) = false"                                   (fun () -> lt_irrefl d a)
+rule "         (a < b ∧ b < a) = false"                           (fun () -> lt_asym d a b)
+thm  "(15.45)  a ≤ b ∧ b ≤ a ⇒ a = b   Antisymmetry"            (fun () -> le_antisym d a b)
+thm  "(15.44)  a ≤ b ∨ b ≤ a          Totality (of Trichotomy)" (fun () -> le_total d a b)
+rule "         (a ≥ b) = (b ≤ a)"                                 (fun () -> ge_le d a b)
+rule "         (a = b) = (b = a)"                                 (fun () -> eq_comm th a b)
+// REGRESSION: le_trans's case `b = c ∧ a < b` rewrote the first `c` in `a < c` — inside `a` when `a`
+// contains `c`. It failed at a := −c (found by abs(abs x) = abs x, below).
+thm  "(15.41d) at a := −c, b := 0   (a contains c)"           (fun () -> le_trans d (-c) zero c)
+// (15.47) as a derived rule: prove the body at a metavariable z, get a = b.
+rule "(15.47)  indirect equality yields x↓y = y↓x"               (fun () -> min_sym d a b)
+ok "(15.47)  refuses a body that proves something else"
+   (try below_eq d a b (fun z -> ident th ((z <=. a) == (z <=. a)) []) |> ignore; false with _ -> true)
+
+printfn "\n===== (E) §15.2 Minimum ↓ and maximum ↑ — from Definition (15.53) only ====="
+ok "(15.53)  z ≤ x↓y = z ≤ x ∧ z ≤ y   is an axiom"             (ax ((c <=. min_of a b) == ((c <=. a) * (c <=. b))))
+ok "  ... not  z ≤ x↓y = z ≤ x ∨ z ≤ y"                          (not (ax ((c <=. min_of a b) == ((c <=. a) + (c <=. b)))))
+ok "(15.53)  z ≥ x↑y = z ≥ x ∧ z ≥ y   is an axiom"             (ax ((c >=. max_of a b) == ((c >=. a) * (c >=. b))))
+ok "  ... not  z ≤ x↑y = z ≤ x ∧ z ≤ y"                          (not (ax ((c <=. max_of a b) == ((c <=. a) * (c <=. b)))))
+rule "         (x↑y ≤ z) = (x ≤ z ∧ y ≤ z)"                       (fun () -> max_le d a b c)
+rule "(15.54)  x↓y = y↓x"                                         (fun () -> min_sym d a b)
+rule "(15.54)  x↑y = y↑x"                                         (fun () -> max_sym d a b)
+rule "(15.55)  (x↓y)↓z = x↓(y↓z)"                                 (fun () -> min_assoc d a b c)
+rule "(15.55)  (x↑y)↑z = x↑(y↑z)"                                 (fun () -> max_assoc d a b c)
+rule "(15.56)  x↓x = x"                                           (fun () -> min_idem d a)
+rule "(15.56)  x↑x = x"                                           (fun () -> max_idem d a)
+thm  "(15.57)  x↓y ≤ x ∧ x↓y ≤ y"                                 (fun () -> min_le d a b)
+thm  "(15.57)  x ≤ x↑y ∧ y ≤ x↑y"                                 (fun () -> max_ge d a b)
+rule "(15.58)  (x ≤ y) = (x↓y = x)"                               (fun () -> min_eq d a b)
+rule "(15.58)  (y ≤ x) = (x↑y = x)"                               (fun () -> max_eq d a b)
+thm  "(15.59)  x↓y = x ∨ x↓y = y"                                 (fun () -> min_cases d a b)
+thm  "(15.59)  x↑y = x ∨ x↑y = y"                                 (fun () -> max_cases d a b)
+rule "(15.60)  c + (x↓y) = (c + x)↓(c + y)"                       (fun () -> min_add d c a b)
+rule "(15.60)  c + (x↑y) = (c + x)↑(c + y)"                       (fun () -> max_add d c a b)
+rule "(15.54)  at compound terms  (a+b)↓(−c) = (−c)↓(a+b)"        (fun () -> min_sym d (a + b) (-c))
+rule "(15.58)  at compound terms, x inside y"                     (fun () -> min_eq d a (a + b))
+ok "(15.58)  does not prove (x ≤ y) = (x↓y = y)"
+   (not (try (theorem th ((a <=. b) == (min_of a b == b)) [ min_eq d a b |> at_left ]).Proof.Complete with _ -> false))
+
+printfn "\n===== (F) §15.3 Absolute value — (15.71) abs.x = x↑−x ====="
+ok "(15.71)  abs.x = x↑−x   is an axiom"                          (ax (abs_of a == max_of a (-a)))
+ok "  ... not  abs.x = x↑x"                                       (not (ax (abs_of a == max_of a a)))
+rule "(15.72)  abs.x = abs(−x)"                                   (fun () -> abs_neg d a)
+thm  "         x ≤ abs.x ∧ −x ≤ abs.x"                            (fun () -> abs_ge d a)
+thm  "         0 ≤ abs.x"                                         (fun () -> abs_nonneg d a)
+rule "(15.74)  abs(abs.x) = abs.x"                                (fun () -> abs_abs d a)
+thm  "         a ≤ b ∧ c ≤ e ⇒ a + c ≤ b + e"                     (fun () -> le_add d a b c (-a))
+thm  "(15.73)  abs(x + y) ≤ abs.x + abs.y   Triangle inequality"  (fun () -> triangle d a b)
+// And at the second carrier.
+thm  "(15.73)  at int64"                                          (fun () -> triangle d64 p64 q64)
+rule "(15.60)  at int64"                                          (fun () -> min_add d64 s64 p64 q64)
 
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1

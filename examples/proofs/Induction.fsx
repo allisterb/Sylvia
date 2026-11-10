@@ -466,41 +466,41 @@ printfn "\n===== (K) Integral domains (Gries ch.15 §15.1): the theorems behind 
 let dom = induction :> IntegralDomain.IntegralDomain<int>
 let proved (label: string) (f: unit -> Rule) =
     ok label (try (match f () with Derive(_, p, _) -> p.Complete | _ -> false) with e -> why label e)
-let xe, ye, ze, we = x.Expr, y.Expr, (IntVar "z").Expr, (IntVar "w").Expr
-let xy = (x + y).Expr                                      // a compound argument, to catch mis-targeting
-proved "(15.8)  cancellation   (a + b = a + c) = (b = c)"   (fun () -> IntegralDomain.cancel_add dom xe ye ze)
+let w' = IntVar "w"                                     // with z' (above): the theorems take any Term<int>
+let xy = x + y                                             // a compound argument, to catch mis-targeting
+proved "(15.8)  cancellation   (a + b = a + c) = (b = c)"   (fun () -> IntegralDomain.cancel_add dom x y z')
 proved "(15.9)  zero           a·0 = 0"                     (fun () -> IntegralDomain.zero_mul dom xy)
-proved "(15.10a) unique zero   (a + z = a) = (z = 0)"       (fun () -> IntegralDomain.unique_zero dom xe ze)
-named  "(15.10b) unique one    a ≠ 0 ⇒ ((a·z = a) = (z = 1))" (fun () -> IntegralDomain.unique_one dom xe ze)
-proved "(15.11) zero divisors  (a·b = 0) = (a = 0 ∨ b = 0)" (fun () -> IntegralDomain.zero_divisors dom xe ye)
-named  "(15.12) unique inverse"                              (fun () -> IntegralDomain.unique_inverse dom xe ye ze)
-proved "(15.15) (x + a = 0) = (x = −a)"                     (fun () -> IntegralDomain.add_eq_zero dom xe ye)
-proved "(15.16) (−a = −b) = (a = b)"                        (fun () -> IntegralDomain.neg_eq dom xe ye)
+proved "(15.10a) unique zero   (a + z = a) = (z = 0)"       (fun () -> IntegralDomain.unique_zero dom x z')
+named  "(15.10b) unique one    a ≠ 0 ⇒ ((a·z = a) = (z = 1))" (fun () -> IntegralDomain.unique_one dom x z')
+proved "(15.11) zero divisors  (a·b = 0) = (a = 0 ∨ b = 0)" (fun () -> IntegralDomain.zero_divisors dom x y)
+named  "(15.12) unique inverse"                              (fun () -> IntegralDomain.unique_inverse dom x y z')
+proved "(15.15) (x + a = 0) = (x = −a)"                     (fun () -> IntegralDomain.add_eq_zero dom x y)
+proved "(15.16) (−a = −b) = (a = b)"                        (fun () -> IntegralDomain.neg_eq dom x y)
 proved "(15.17) −(−a) = a"                                  (fun () -> IntegralDomain.neg_neg dom xy)
 proved "(15.18) −0 = 0"                                     (fun () -> IntegralDomain.neg_zero dom)
-proved "(15.19) −(a + b) = (−a) + (−b)"                     (fun () -> IntegralDomain.neg_add dom xe ye)
+proved "(15.19) −(a + b) = (−a) + (−b)"                     (fun () -> IntegralDomain.neg_add dom x y)
 proved "(15.20) −a = (−1)·a"                                (fun () -> IntegralDomain.neg_as_mul dom xy)
-proved "(15.21) (−a)·b = a·(−b)"                            (fun () -> IntegralDomain.neg_mul_comm dom xe ye)
-proved "(15.22) a·(−b) = −(a·b)"                            (fun () -> IntegralDomain.mul_neg dom xe ye)
-proved "(15.23) (−a)·(−b) = a·b"                            (fun () -> IntegralDomain.neg_mul_neg dom xe ye)
-proved "(15.24) a − 0 = a"                                  (fun () -> IntegralDomain.sub_zero dom xe)
-proved "(15.25) (a − b) + (c − d) = (a + c) − (b + d)"      (fun () -> IntegralDomain.sub_add_sub dom xe ye ze we)
-proved "(15.26) (a − b) − (c − d) = (a + d) − (b + c)"      (fun () -> IntegralDomain.sub_sub_sub dom xe ye ze we)
-proved "(15.27) (a − b)·(c − d) = (a·c + b·d) − (a·d + b·c)" (fun () -> IntegralDomain.sub_mul_sub dom xe ye ze we)
-proved "(15.28) (a − b = c − d) = (a + d = b + c)"          (fun () -> IntegralDomain.sub_eq_sub dom xe ye ze we)
-proved "(15.29) (a − b)·c = a·c − b·c"                      (fun () -> IntegralDomain.sub_mul dom xe ye ze)
+proved "(15.21) (−a)·b = a·(−b)"                            (fun () -> IntegralDomain.neg_mul_comm dom x y)
+proved "(15.22) a·(−b) = −(a·b)"                            (fun () -> IntegralDomain.mul_neg dom x y)
+proved "(15.23) (−a)·(−b) = a·b"                            (fun () -> IntegralDomain.neg_mul_neg dom x y)
+proved "(15.24) a − 0 = a"                                  (fun () -> IntegralDomain.sub_zero dom x)
+proved "(15.25) (a − b) + (c − d) = (a + c) − (b + d)"      (fun () -> IntegralDomain.sub_add_sub dom x y z' w')
+proved "(15.26) (a − b) − (c − d) = (a + d) − (b + c)"      (fun () -> IntegralDomain.sub_sub_sub dom x y z' w')
+proved "(15.27) (a − b)·(c − d) = (a·c + b·d) − (a·d + b·c)" (fun () -> IntegralDomain.sub_mul_sub dom x y z' w')
+proved "(15.28) (a − b = c − d) = (a + d = b + c)"          (fun () -> IntegralDomain.sub_eq_sub dom x y z' w')
+proved "(15.29) (a − b)·c = a·c − b·c"                      (fun () -> IntegralDomain.sub_mul dom x y z')
 named  "used in an Integers proof   (x − y)·0 = 0"
-    (fun () -> theorem ind ((x - y) * 0 == 0) [ IntegralDomain.zero_mul dom (x - y).Expr |> at_left ])
+    (fun () -> theorem ind ((x - y) * 0 == 0) [ IntegralDomain.zero_mul dom (x - y) |> at_left ])
 ok "refuses x·0 = x by (15.9)"
-    (not (proves "x·0 = x" (fun () -> theorem ind (x * 0 == x) [ IntegralDomain.zero_mul dom xe |> at_left ])))
+    (not (proves "x·0 = x" (fun () -> theorem ind (x * 0 == x) [ IntegralDomain.zero_mul dom x |> at_left ])))
 ok "(15.9) for x does not rewrite y·0"
-    (not (proves "y·0 = 0 by x·0" (fun () -> theorem ind (y * 0 == 0) [ IntegralDomain.zero_mul dom xe |> at_left ])))
+    (not (proves "y·0 = 0 by x·0" (fun () -> theorem ind (y * 0 == 0) [ IntegralDomain.zero_mul dom x |> at_left ])))
 
 // The theory is GENERIC: the same theorems, at a second carrier.
 let ops64 : IntegralDomain.DomainOps<int64> =
     { Name = "Int64"; Add = <@ (+) @>; Mul = <@ (*) @>; Zero = <@ 0L @>; One = <@ 1L @>; Neg = <@ (~-) @>; Sub = <@ (-) @> }
 let dom64 = IntegralDomain.IntegralDomain<int64>(ops64)
-let p64, q64 = Expr.Var(Var("p", typeof<int64>)) |> Expr.Cast<int64>, Expr.Var(Var("q", typeof<int64>)) |> Expr.Cast<int64>
+let p64, q64 = dom64.Var "p", dom64.Var "q"            // variables of the int64 domain
 proved "(15.23) at int64   (−p)·(−q) = p·q"                 (fun () -> IntegralDomain.neg_mul_neg dom64 p64 q64)
 proved "(15.11) at int64   (p·q = 0) = (p = 0 ∨ q = 0)"     (fun () -> IntegralDomain.zero_divisors dom64 p64 q64)
 printfn "\n===== (L) Π — the product quantifier, Split off term for Π, and n! by induction ====="

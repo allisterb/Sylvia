@@ -7,7 +7,7 @@ Companion to [`prover-predicate-calculus.md`](prover-predicate-calculus.md) and
 
 Runnable checks: `dotnet fsi examples/proofs/Induction.fsx` (**136/136**),
 `dotnet fsi examples/proofs/InductiveDefinitions.fsx` (**49/49**, §20) and
-`dotnet fsi examples/proofs/OrderedDomain.fsx` (**48/48**, §21: Gries ch.15's ordered domains).
+`dotnet fsi examples/proofs/OrderedDomain.fsx` (**89/89**, §21–23: Gries ch.15's ordered domains, min/max, abs).
 
 **Status.** Induction over the integers is mechanized as **one axiom** — Gries (12.8), induction over
 `{n₀, n₀+1, …}` — plus a combinator that discharges it, and a lemma (`hypothesis_at`) that packages
@@ -931,3 +931,114 @@ yet.
 axiom, a theorem, refuses `y+2`, refuses a plain `Integers`); OrderedDomain 48/48; InductiveDefinitions
 49/49; SetTheory 175/175; PredCalculus 24/24; E 5/5; Sledgehammer 7/7; Reconstruct 29/29;
 AdversarialSweep ALL CLEAR; PropCalculus, IntegerAlgebra, VerifyRuleFixes clean.
+
+## 23. The rest of §15.1, and §15.2–15.3: minimum, maximum, absolute value
+
+`Theories/OrderedDomain.fs`, generic over the carrier; `OrderedDomain.fsx` (D)–(F), 89/89 in all,
+with each theorem also checked at compound arguments and at `int64` where it matters.
+
+**§15.1, the parts min/max need.** `lt_irrefl` `(a < a) = false` (`pos(a−a)` is `pos.0`); `lt_asym`;
+**(15.45) Antisymmetry** (four cases through the `by_cases4` helper, now shared with (15.41d));
+**Totality** `a ≤ b ∨ b ≤ a`, the part of (15.44) Trichotomy that min/max use, from (15.33) at
+`e = b − a`; `ge_le` `(a ≥ b) = (b ≤ a)`; `eq_comm`. (15.43) monotonicity of `·`, and Trichotomy's
+full equivalence chain, are still not proved.
+
+**(15.47) indirect equality, as a derived rule.** `a = b ≡ (∀z |: z ≤ a ≡ z ≤ b)` is Gries' device
+for every min/max law. `below_eq d a b body` (and its dual `above_eq`, for `a ≤ z`) hands `body` a
+fresh schema METAVARIABLE `z`. It instantiates the proved `(z ≤ a) = (z ≤ b)` at `z := a` and
+`z := b` with `InstantiateTerms` (sound because `z` is unconstrained). Reflexivity then gives `a ≤ b`
+and `b ≤ a`, and Antisymmetry gives `a = b`. No quantifier and no new kernel case is needed. It
+refuses a body that proves anything else.
+
+**Minimum ↓ and maximum ↑ (§15.2).** `OrderOps` gained `Min`, `Max`, `Abs` (F#'s `min`/`max`/`abs`
+at `int` and `int64`). (15.53), *Definition of ↓ and ↑*, is the only new axiom pair:
+`(z ≤ x↓y) = (z ≤ x ∧ z ≤ y)` and `(z ≥ x↑y) = (z ≥ x ∧ z ≥ y)`. Gries quantifies over `z`; an axiom
+SCHEME is the same statement. Everything else is a theorem: (15.54) Symmetry, (15.55) Associativity,
+(15.56) Idempotency (each by indirect equality, as Gries proves them), (15.57), (15.58), and (15.59)
+`x↓y = x ∨ x↓y = y` (by Totality). (15.60) Distributivity of `+` translates `z ≤ c + m` by `−c`.
+↑ uses the derived `≤` form `max_le` `(x↑y ≤ z) = (x ≤ z ∧ y ≤ z)`, and `≥` statements are given in
+`≤` form (`x ≤ x↑y` for Gries' `x↑y ≥ x`). Not done: (15.61)/(15.62), which need (15.43), and the
+quantified ↓/↑ of (15.63)–(15.70).
+
+**Absolute value (§15.3).** (15.71) `abs.x = x↑−x` is an axiom (a definition). Theorems: (15.72)
+`abs.x = abs(−x)`, `x ≤ abs.x ∧ −x ≤ abs.x`, `0 ≤ abs.x` (by Totality on `0` and `x`), (15.74)
+`abs(abs.x) = abs.x`, `le_add` (`a ≤ b ∧ c ≤ e ⇒ a + c ≤ b + e`), and **(15.73) the Triangle
+inequality** `abs(x + y) ≤ abs.x + abs.y`, which is `max_le` and two `le_add`s.
+
+**Consistency of the new definitions.** F#'s `min`, `max`, `abs` satisfy (15.53) and (15.71) on ℤ,
+so the extension has a model. (`abs Int32.MinValue` overflows in .NET; the theory is about ℤ, as
+everywhere else here.)
+
+**A bug this found (MIS-TARGETED SUBSTITUTION again).** `le_trans`'s case `b = c ∧ a < b`
+rewrote `c → b` addressing the whole of `a < c`. Leftmost-outermost, that hits the first `c`, which
+is inside `a` whenever `a` contains `c`. So `le_trans` at `a := −A, c := A` failed, and that is
+exactly what `abs(abs x) = abs x` needs. It failed to prove; it did not prove anything false. The
+rewrite is now addressed at `c` itself, and (D) carries a regression at `a := −c`. The other `Deduce'`
+rewrites in the file target a left operand, which leftmost order reaches first, or are addressed
+exactly.
+
+**Also.** `conseq_false` is now a `lemma` (log noise, as in §20/§21).
+
+**Gate.** Solution builds; suite 149/149; OrderedDomain 89/89; InductiveDefinitions 49/49; Induction
+136/136; SetTheory 175/175; PredCalculus 24/24; E 5/5; Sledgehammer 7/7; Reconstruct 29/29;
+AdversarialSweep ALL CLEAR; PropCalculus, IntegerAlgebra, VerifyRuleFixes clean.
+
+## 24. `DomainTerm` — the domain theories written in the DSL, not in quotations
+
+The ch.15 theories took their operators as data (`DomainOps`, `OrderOps`: records of quotations), so
+that one proof serves `int`, `int64`, or a carrier whose `+` is not F#'s. Until now no DSL term type
+could be built from operators given as data: `IntTerm` is hard-wired to F#'s `int` operators,
+`Scalar<'t>` runs every operator through the CAS (which reshapes trees and throws on unknown terms),
+and `Term<'t>`/`ElemVar<'t>` have no algebra. So `IntegralDomain.fs` and `OrderedDomain.fs` built
+every term by hand: `bin o.Add a b`, `un o.Neg a`, `eq_t`, `rel r.Le`, `pos_of r`.
+
+**What was added** (`Theories/DomainTerm.fs`, module `DomainTerms`):
+
+- `DomainTerm<'t>`, a `Term<'t>` that carries its SIGNATURE (`DomainOps`, and `OrderOps` if the
+  domain is ordered). `+ * -` and unary `-` build the signature's operators. `== !=` build `=` and
+  `¬(=)`. `<. <=. >. >=.` build `< ≤ > ≥`. `pos_of`, `min_of` (↓), `max_of` (↑) and `abs_of`
+  build the rest. F#'s own `<`/`<=` cannot be used: they must return `bool`.
+- `DomainVar<'t>`, a variable that is also a term (the `IntVar` design): `ISymbolicVar<'t>` and
+  `IFreshVar`.
+- On the theory: `d.Term e` (from an `Expr` or any `Term`), `d.Var "a"`, `d.Zero`, `d.One`. There is
+  a virtual `Ordering`, which `OrderedDomain` overrides, so terms made from an ordered domain have
+  the relations.
+- The records moved into `DomainTerms`. `IntegralDomain.DomainOps` and `OrderedDomain.OrderOps` are
+  abbreviations, so existing annotated record literals still compile.
+
+**Same trees.** The operators go through the one builder the raw proofs used
+(`expand_as <@ (%op) %a %b @>`), so a DSL proof is checked by exactly the same kernel steps.
+`OrderedDomain.fsx` (B) checks `sequal` against hand-written quotations. At `int` the trees also
+equal `IntTerm`'s, so `Induction` passes `IntTerm`s straight in.
+
+**A term carries the signature, not a theory.** Several theories share one language: `Integers` and
+every `Induction` theory derived from it build the same `int` terms. A term tied to a theory instance
+would make a term built for `integers` wrong inside an `Induction` proof. Mixing two DIFFERENT
+signatures (structurally unequal ops records) is a runtime error, checked in (B).
+
+**The API takes any `Term<'t>`.** Each theorem reads its arguments as terms of `d` (`d.Term a`), so
+callers can pass `IntVar`s, `IntTerm`s or `DomainTerm`s directly. Callers that hold a raw
+`Expr<'t>` (the `Schema` caches in `Integers`) wrap it with `d.Term`. `below_eq`/`above_eq` hand
+their body a `DomainTerm` metavariable.
+
+**What a proof looks like now** (`sub_chain`, before → after):
+
+```fsharp
+ax th (s (s b c) a) (s b (s c a))   |> at_left          // before
+ax th ((b + c) + a) (b + (c + a))   |> at_left          // after
+lemma th (((lt a b) * (lt b c)) ==> (lt a c)) [ … ]     // before
+lemma th (((a <. b) * (b <. c)) ==> (a <. c)) [ … ]     // after
+```
+
+**F# notes.** The relations share `==`'s precedence (below `+`/`*`). So `a + b <=. c` is
+`(a + b) <=. c`, but a conjunction of relations needs parentheses: `(a <=. b) * (b <=. c)`. Unary
+minus on a `DomainVar` needs an upcast (`~-` is `^a -> ^a`), as for `IntVar`. Write `(-a)`, never
+`f a -b`, which parses as a subtraction.
+
+**Not changed.** The axiom patterns still match raw `Expr`s (they are the recognizers, not proofs),
+and `eq_sym`/`eq_comm` are carrier-generic over `Term<'t>`.
+
+**Gate.** Solution builds; suite 149/149; OrderedDomain 91/91 (+2: same trees, no mixing of
+domains); InductiveDefinitions 49/49; Induction 136/136; SetTheory 175/175; PredCalculus 24/24; E 5/5;
+Sledgehammer 7/7; Reconstruct 29/29; AdversarialSweep ALL CLEAR; PropCalculus, IntegerAlgebra,
+VerifyRuleFixes clean.

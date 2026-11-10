@@ -1265,7 +1265,7 @@ module PropCalculus =
 
     /// false ⇒ p  (Gries 3.75)
     [<Theorem "false ⇒ p">]
-    let conseq_false (p:Prop) = theorem prop_calculus (F ==> p) [
+    let conseq_false (p:Prop) = lemma prop_calculus (F ==> p) [
         def_implies
         ident_or p |> CommuteL |> Taut' |> apply
     ]

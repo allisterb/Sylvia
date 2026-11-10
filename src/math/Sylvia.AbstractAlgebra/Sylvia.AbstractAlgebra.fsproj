@@ -26,6 +26,7 @@
     <Compile Include="Definitions\SetAlgebra.fs" />
     <Compile Include="Definitions\Combination.fs" />
     <Compile Include="Theories\BooleanAlgebra.fs" />
+    <Compile Include="Theories\DomainTerm.fs" />
     <Compile Include="Theories\IntegralDomain.fs" />
     <Compile Include="Theories\OrderedDomain.fs" />
     <Compile Include="Theories\SetAlgebra.fs" />

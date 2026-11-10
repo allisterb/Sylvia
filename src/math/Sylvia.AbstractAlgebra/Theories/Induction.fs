@@ -285,7 +285,7 @@ module Induction =
             ]
         let c2 =
             lemma th (eq0 ==> z) [
-                Deduce' (OrderedDomain.eq_sym th zero.Expr d) |> apply_right              // d → 0
+                Deduce' (OrderedDomain.eq_sym th zero D) |> apply_right              // d → 0
                 ax_ident th ((leq 0 0) == T)              |> apply_right
             ]
         let bwd =
@@ -311,15 +311,15 @@ module Induction =
         let D = y1 + nx
         let zero = IntTerm 0 :> Term<int>
         ident th ((leq X y1) == ((leq X Y) + ((X :> Term<int>) == (y1 :> Term<int>)))) [
-            OrderedDomain.le_translate dom x y1.Expr nx.Expr                  |> at_left                       // → x + −x ≤ d
+            OrderedDomain.le_translate dom X y1 nx                            |> at_left                       // → x + −x ≤ d
             ax_ident th (((X + nx) :> Term<int>) == zero)                     |> at [left_branch; left_branch] // (15.13)
             zs D.Expr                                                         |> at_left                       // → 1 ≤ d ∨ 0 = d
-            OrderedDomain.le_translate dom <@ 1 @> D.Expr x                   |> at [left_branch; left_branch] // 1 ≤ d → 1 + x ≤ d + x
+            OrderedDomain.le_translate dom (IntTerm 1) D X                    |> at [left_branch; left_branch] // 1 ≤ d → 1 + x ≤ d + x
             Ident (Integers.ring_ident th (IntTerm 1 + X) (X + 1))            |> at [left_branch; left_branch; left_branch]
             Ident (Integers.ring_ident th (D + X) (Y + 1))                    |> at [left_branch; left_branch; right_branch]
             Integers.le_translate th X Y |> Commute                           |> at [left_branch; left_branch] // x+1 ≤ y+1 → x ≤ y
-            IntegralDomain.rev th (X + nx).Expr <@ 0 @>                       |> at [left_branch; right_branch; left_branch]  // 0 → x + −x
-            OrderedDomain.cancel_add_right dom x y1.Expr nx.Expr              |> at [left_branch; right_branch]               // → x = y+1
+            IntegralDomain.rev th (X + nx) (IntTerm 0)                        |> at [left_branch; right_branch; left_branch]  // 0 → x + −x
+            OrderedDomain.cancel_add_right dom X y1 nx                        |> at [left_branch; right_branch]               // → x = y+1
         ]
 
     type private DiscreteLemmas = { ZeroSplit: Expr<int> -> Rule; Discrete: Expr<int> -> Expr<int> -> Rule }
@@ -516,7 +516,7 @@ module Induction =
     /// is symmetry of ≡, so nothing flips `a = b` at a non-bool type directly; this derives it from
     /// Substitution (3.84a) and reflexivity: `a = b ∧ a = a` is `a = b ∧ b = a`. With `Deduce'` it
     /// rewrites `b` to `a` under a hypothesis `a = b`, and with `mp` it flips a proved identity.
-    let eq_sym (th: Theory) (a: Term<'t>) (b: Term<'t>) : Theorem = OrderedDomain.eq_sym th a.Expr b.Expr
+    let eq_sym (th: Theory) (a: Term<'t>) (b: Term<'t>) : Theorem = OrderedDomain.eq_sym th a b
 
     /// `x ≤ x + 1` — `pos.1` in the ordered domain (`Integers.le_succ`), NOT Discreteness, which is
     /// derived from it.

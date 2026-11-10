@@ -268,7 +268,8 @@ module Integers =
 
     /// The integers as an ordered domain: `pos` and the relations it defines, at `int`.
     let int_order : OrderedDomain.OrderOps<int> =
-        { Pos = <@ OrderedDomain.pos<int> @>; Lt = <@ (<) @>; Gt = <@ (>) @>; Le = <@ (<=) @>; Ge = <@ (>=) @> }
+        { Pos = <@ OrderedDomain.pos<int> @>; Lt = <@ (<) @>; Gt = <@ (>) @>; Le = <@ (<=) @>; Ge = <@ (>=) @>
+          Min = <@ min @>; Max = <@ max @>; Abs = <@ abs @> }
 
     /// The theory of integers: an ordered domain at `int` (Gries §15.1), plus discreteness, literal
     /// evaluation and the rewrite rules below. A caller's extra axioms and rules go on top —
@@ -325,13 +326,14 @@ module Integers =
     let private order_of (th: Theory) : OrderLemmas =
         order_lemmas.GetValue(th, fun _ ->
             let d = order_domain th
-            let one : Expr<int> = <@ 1 @>
-            { Refl = Tactics.Schema.t1 "le_refl" (OrderedDomain.le_refl d)
-              Trans = Tactics.Schema.th3 "le_trans" (OrderedDomain.le_trans d)
-              Translate = Tactics.Schema.t2 "le_translate" (fun a b -> OrderedDomain.le_translate d a b one)
-              SuccNotLe = Tactics.Schema.t1 "succ_not_le" (fun a -> Ident (PropCalculus.mp (OrderedDomain.succ_not_le d a) (one_ne_zero th)))
-              NonnegAdd = Tactics.Schema.th2 "nonneg_add" (OrderedDomain.nonneg_add d)
-              Succ = Tactics.Schema.th1 "le_succ" (fun a -> PropCalculus.mp (OrderedDomain.le_succ d a) (one_ne_zero th)) })
+            // The schemas instantiate at raw metavariable expressions; `d.Term` reads each as a term of `d`.
+            let t (e: Expr<int>) = d.Term e
+            { Refl = Tactics.Schema.t1 "le_refl" (fun a -> OrderedDomain.le_refl d (t a))
+              Trans = Tactics.Schema.th3 "le_trans" (fun a b c -> OrderedDomain.le_trans d (t a) (t b) (t c))
+              Translate = Tactics.Schema.t2 "le_translate" (fun a b -> OrderedDomain.le_translate d (t a) (t b) d.One)
+              SuccNotLe = Tactics.Schema.t1 "succ_not_le" (fun a -> Ident (PropCalculus.mp (OrderedDomain.succ_not_le d (t a)) (one_ne_zero th)))
+              NonnegAdd = Tactics.Schema.th2 "nonneg_add" (fun a b -> OrderedDomain.nonneg_add d (t a) (t b))
+              Succ = Tactics.Schema.th1 "le_succ" (fun a -> PropCalculus.mp (OrderedDomain.le_succ d (t a)) (one_ne_zero th)) })
 
     /// `(x ≤ x) = true` — Reflexivity (15.46).
     let le_refl (th: Theory) (x: Term<int>) : Rule = (order_of th).Refl x.Expr
@@ -442,8 +444,8 @@ module Integers =
             | _ -> failwithf "ring: %s is not an integral domain over int" (th.GetType().Name)
         let lem =
             lemmas.GetValue(th, fun _ ->
-                { Neg = Tactics.Schema.t1 "neg" (IntegralDomain.neg_as_mul dom)
-                  Zero = Tactics.Schema.t1 "zero" (IntegralDomain.zero_mul dom) })
+                { Neg = Tactics.Schema.t1 "neg" (fun x -> IntegralDomain.neg_as_mul dom (dom.Term x))
+                  Zero = Tactics.Schema.t1 "zero" (fun x -> IntegralDomain.zero_mul dom (dom.Term x)) })
         let mutable cur = expand e
         let steps = ResizeArray<RuleApplication>()
         let nav (path: Dir list) = (prefix @ path) |> List.map (function DL -> left_branch | DR -> right_branch | DU -> apply_unary)
@@ -477,7 +479,7 @@ module Integers =
         //    the literal −(1) folded to −1 so the next pass does not find it again.
         fix (function Subtract _ -> true | _ -> false) (fun p ->
             match getAt cur p with
-            | Subtract(a, b) -> step p (IntegralDomain.sub_def dom (Expr.Cast<int> a) (Expr.Cast<int> b))
+            | Subtract(a, b) -> step p (IntegralDomain.sub_def dom (dom.Term (Expr.Cast<int> a)) (dom.Term (Expr.Cast<int> b)))
             | _ -> ())
         fix (function Negate _ -> true | _ -> false) (fun p ->
             match getAt cur p with
