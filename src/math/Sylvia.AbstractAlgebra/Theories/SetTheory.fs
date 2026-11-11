@@ -377,7 +377,7 @@ module SetTheory =
                     :: sub a [left_branch; left_branch] @ sub b [left_branch; right_branch; apply_unary])
 
     /// The rewrite rule `(v ∈ s) = translate v s` (see `translate`), in the set theory over 't.
-    let unfold (v: #ISymbolicVar<'t>) (s: SetTerm<'t>) : Rule = unfold_in (set_theory<'t> :> Theory) v s
+    let unfold (v: #ISymbolicVar<'t>) (s: SetTerm<'t>) : Rule = unfold_in (set_theory<'t>) v s
 
     /// Metatheorem (11.25a): prove a set identity `Es = Fs` via its propositional translation.
     ///
@@ -388,7 +388,7 @@ module SetTheory =
     /// Metatheorem (11.25c) — `Es = U` valid iff `Ep` is valid — needs no separate tactic: it is
     /// `meta_set_ident Es universe`, whose body reduces to `Ep = true`.
     let meta_set_ident (lhs: SetTerm<'t>) (rhs: SetTerm<'t>) : Theorem =
-        let th = set_theory<'t> :> Theory
+        let th = set_theory<'t>
         let v = fresh_dummy<'t> "v" [ expand lhs.Expr; expand rhs.Expr ]
         let goal = lhs == rhs
         let ext = ax_ident th (goal == qall v T ((memb v lhs) == (memb v rhs)))          // Extensionality 11.4
@@ -406,7 +406,7 @@ module SetTheory =
     /// each side of the implication is unfolded; `decide` proves the body and `Taut` (not `Taut'` — the
     /// body is an implication, not an equality) replaces it with `true`. Raises if `lhs ⊄ rhs`.
     let meta_subset (lhs: SetTerm<'t>) (rhs: SetTerm<'t>) : Theorem =
-        let th = set_theory<'t> :> Theory
+        let th = set_theory<'t>
         let v = fresh_dummy<'t> "v" [ expand lhs.Expr; expand rhs.Expr ]
         let goal = lhs |<| rhs
         let sub_ax = ax_ident th (goal == qall v (memb v lhs) (memb v rhs))               // Subset 11.13
@@ -424,7 +424,7 @@ module SetTheory =
     /// (`𝒫S : set(set(t))`). So it sits one layer up: 11.23 takes the goal DOWN to a subset obligation,
     /// which 11.25(b) then discharges.
     let powerset_member (t: SetTerm<'t>) (s: SetTerm<'t>) : Theorem =
-        let th = set_theory<'t> :> Theory
+        let th = set_theory<'t>
         // `t |?| s.Powerset` is ambiguous when 't is a type variable: `SetTerm<'t>` IS a
         // `Term<Set<'t>>`, so both the `(Term<'u>, SetTerm<'u>)` and the `(SetTerm<'u>, SetTerm<Set<'u>>)`
         // overloads apply, and inference degenerates 't to obj. Both build the same call
@@ -608,7 +608,7 @@ module SetTheory =
     /// an axiom of S — so this needs no `Pred` at all. 9.18b would say it in one step, but it is a
     /// derived theorem taking predicates, and the axiom plus a double negation is cheaper.
     let de_morgan_family_union (x: #ISymbolicVar<'u>) (R: Prop) (E: SetTerm<'t>) : Theorem =
-        let th = set_theory<'t> :> Theory
+        let th = set_theory<'t>
         let v = fresh_dummy<'t> "v" [ expand R.Expr; expand E.Expr; expand x.Expr ]
         let lhs, rhs = -(qunion x R E), qinter x R (-E)
         let goal = lhs == rhs
@@ -627,7 +627,7 @@ module SetTheory =
 
     /// ~(∩x | R : E) = (∪x | R : ~E)   (De Morgan over a family intersection).
     let de_morgan_family_inter (x: #ISymbolicVar<'u>) (R: Prop) (E: SetTerm<'t>) : Theorem =
-        let th = set_theory<'t> :> Theory
+        let th = set_theory<'t>
         let v = fresh_dummy<'t> "v" [ expand R.Expr; expand E.Expr; expand x.Expr ]
         let lhs, rhs = -(qinter x R E), qunion x R (-E)
         let goal = lhs == rhs
@@ -647,7 +647,7 @@ module SetTheory =
     /// (∪x | false : E) = ∅   (empty range). Note Empty range (8.13) is one of the axioms that is
     /// NOT generic over the quantified operator, which is exactly why this has to reach an ∃ first.
     let empty_range_union (x: #ISymbolicVar<'u>) (E: SetTerm<'t>) : Theorem =
-        let th = set_theory<'t> :> Theory
+        let th = set_theory<'t>
         let v = fresh_dummy<'t> "v" [ expand E.Expr; expand x.Expr ]
         let lhs = qunion x F E
         let goal = lhs == empty_set<'t>
@@ -664,7 +664,7 @@ module SetTheory =
     /// (∩x | false : E) = U   (empty range, dual). The ∀ with a false range is itself an axiom of S
     /// rather than an identity, so it is discharged with `Taut` instead of a rewrite.
     let empty_range_inter (x: #ISymbolicVar<'u>) (E: SetTerm<'t>) : Theorem =
-        let th = set_theory<'t> :> Theory
+        let th = set_theory<'t>
         let v = fresh_dummy<'t> "v" [ expand E.Expr; expand x.Expr ]
         let lhs = qinter x F E
         let goal = lhs == universe<'t>
@@ -684,7 +684,7 @@ module SetTheory =
     /// not checked here: an `S` mentioning `x` simply fails to match 9.21 and the proof does not
     /// close, which is a safe failure rather than a wrong theorem.
     let distrib_inter_family_union (x: #ISymbolicVar<'u>) (R: Prop) (S: SetTerm<'t>) (E: SetTerm<'t>) : Theorem =
-        let th = set_theory<'t> :> Theory
+        let th = set_theory<'t>
         let v = fresh_dummy<'t> "v" [ expand R.Expr; expand E.Expr; expand S.Expr; expand x.Expr ]
         let lhs, rhs = S * (qunion x R E), qunion x R (S * E)
         let goal = lhs == rhs
@@ -713,7 +713,7 @@ module SetTheory =
     /// `F` is a family — `SetTerm<Set<'t>>` — and `u` is a dummy ranging over SETS, so this is the
     /// shape (11.76) Partition is stated in. A plain `SetVar` serves as both the dummy and the body.
     let family_union_upper_bound (u: SetVar<'t>) (F: SetTerm<Set<'t>>) (A: SetTerm<'t>) : Theorem =
-        let th = set_theory<'t> :> Theory
+        let th = set_theory<'t>
         let y = fresh_dummy<'t> "v" [ expand F.Expr; expand A.Expr; expand u.Expr ]
         let inF (s: SetTerm<'t>) : Prop =
             binary_call(None, SetOps.elementOf<Set<'t>>, s.Expr, F.Expr) |> expand_as<bool> |> Prop
@@ -809,7 +809,7 @@ module SetTheory =
     /// `false`, and Σ's Empty range (8.13) closes it. The first law that needed a rule to be
     /// addressable at a ★ term's range at all.
     let size_empty<'t when 't: equality> : Theorem =
-        let th = set_theory<'t> :> Theory
+        let th = set_theory<'t>
         let v = fresh_dummy<'t> "v" []
         theorem th (empty_set<'t>.Size == intv 0) [
             ax_ident th (empty_set<'t>.Size == size_sum v empty_set<'t>)  |> at_left
@@ -824,7 +824,7 @@ module SetTheory =
     /// axiom. `e` must not mention the dummy — otherwise the ∃'s One-Point instance does not match
     /// and the proof simply fails to close.
     let size_singleton (x: #ISymbolicVar<'t>) (e: Term<'t>) : Theorem =
-        let th = set_theory<'t> :> Theory
+        let th = set_theory<'t>
         let s = singleton x e
         let v = fresh_dummy<'t> "v" [ expand s.Expr ]
         let vx = eq_elem v.Expr x.Expr
@@ -843,7 +843,7 @@ module SetTheory =
     /// idempotent. Gries' `#(S∪T) = #S + #T − #(S∩T)` is this identity with a subtraction, which the
     /// theory of sets has no axiom for; `Integers` does, and is a separate theory.
     let size_union_inter (s: SetTerm<'t>) (t: SetTerm<'t>) : Theorem =
-        let th = set_theory<'t> :> Theory
+        let th = set_theory<'t>
         let v = fresh_dummy<'t> "v" [ expand s.Expr; expand t.Expr ]
         theorem th ((s + t).Size + (s * t).Size == s.Size + t.Size) [
             ax_ident th ((s + t).Size == size_sum v (s + t))                        |> at [left_branch; left_branch]
@@ -865,7 +865,7 @@ module SetTheory =
     /// both are proved by rewriting the other side of their own goal down to a reflexivity — see the
     /// note on orientation above.
     let size_disjoint_union (s: SetTerm<'t>) (t: SetTerm<'t>) (disjoint: Theorem) : Theorem =
-        let th = set_theory<'t> :> Theory
+        let th = set_theory<'t>
         let target = expand ((s * t) == empty_set<'t>).Expr
         if not (sequal (expand disjoint.Stmt) target) then
             failwithf "size_disjoint_union: the disjointness proof is of\n  %s\nbut this law needs\n  %s"
