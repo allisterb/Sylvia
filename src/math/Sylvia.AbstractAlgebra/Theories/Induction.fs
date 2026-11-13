@@ -46,6 +46,11 @@ module Induction =
         let l, r = int_term l, int_term r
         <@ %l.Expr <= %r.Expr @> |> expand_as<bool> |> Prop
 
+    /// `l < r` over the integers, as a proposition — `leq`'s companion, with the same arguments.
+    let inline lt l r : Prop =
+        let l, r = int_term l, int_term r
+        <@ %l.Expr < %r.Expr @> |> expand_as<bool> |> Prop
+
     /// A dummy as an integer term.
     let tm (x: #ISymbolicVar<int>) : IntTerm = IntTerm(x.Expr)
 
@@ -641,6 +646,201 @@ module Induction =
             Taut at_base                                       |> at_right
             ident_and T                                        |> apply
         ]
+
+    (* ------------------------------------------------------------------------------------------
+       Well ordering (Gries 15.48–15.49) — a THEOREM, from induction.
+
+       Gries POSTULATES (15.49), "ℕ is well ordered", and derives (15.50) — no integer between 0 and 1
+       — from it. Here the order is reversed: (12.8) is the axiom, (15.50) is `zero_or_one_le` above,
+       and (15.49) is proved below by strong induction. Gries notes after (15.49) that well ordering
+       is enough to make ⟨ℕ,<⟩ admit induction; this is the converse.
+
+       A subset S of ℕ is given by a predicate: `x ∈ S` is `0 ≤ x ∧ P.x`. Then (15.48) for S is
+
+           (∃b | 0 ≤ b : P.b)  ≡  (∃b | 0 ≤ b ∧ P.b : (∀c | 0 ≤ c ∧ c < b : ¬P.c))
+
+       — `S ≠ ∅` on the left; on the right a `b ∈ S` below which no `c` is in S (`c ∉ S` for `c < b`
+       is `0 ≤ c ⇒ ¬P.c`, traded into the range).
+       ------------------------------------------------------------------------------------------ *)
+
+    /// ((x ∨ e) = (y ∨ e)) ⇒ ((e ⇒ ¬x) ⇒ (x ⇒ y))
+    let private glue_drop1 = OrderedDomain.taut3 "ind_drop1" (fun x y e -> ((x + e) == (y + e)) ==> ((e ==> !!x) ==> (x ==> y)))
+    /// ((x ∨ e) = (y ∨ e)) ⇒ ((e ⇒ ¬y) ⇒ (y ⇒ x))
+    let private glue_drop2 = OrderedDomain.taut3 "ind_drop2" (fun x y e -> ((x + e) == (y + e)) ==> ((e ==> !!y) ==> (y ==> x)))
+    /// (h ⇒ a) ⇒ ((h ⇒ s) ⇒ (h ⇒ (a ∧ s)))
+    let private glue_and = OrderedDomain.taut3 "ind_and" (fun h a s -> (h ==> a) ==> ((h ==> s) ==> (h ==> (a * s))))
+    /// (h ⇒ x) ⇒ ((x ⇒ y) ⇒ (h ⇒ y))
+    let private glue_trans = OrderedDomain.taut3 "ind_trans" (fun h x y -> (h ==> x) ==> ((x ==> y) ==> (h ==> y)))
+    /// (a ∧ ((a ∧ p) ⇒ ¬i)) ⇒ (i ⇒ ¬p)
+    let private glue_min = OrderedDomain.taut3 "ind_min" (fun a p i -> (a * ((a * p) ==> !!i)) ==> (i ==> !!p))
+
+    let private lt_succ_le_at (th: Theory) (c: Term<int>) (b: Term<int>) : Theorem =
+        let d = Integers.order_domain th
+        let c', b' = d.Term c, d.Term b
+        let b1 = b' + d.One
+        let X, Y, E = (c' <. b1), (c' <=. b'), (c' == b1)
+        let xy =
+            lemma th ((X + E) == (Y + E)) [
+                ax_ident th ((c' <=. b1) == (X + E)) |> Commute   |> at_left                         // (15.38)
+                discrete th c b                                    |> at_left                         // Discreteness
+            ]
+        let ex =
+            lemma th (E ==> !!X) [
+                Deduce' (reflex_implies E)                         |> at [right_branch; apply_unary; left_branch]  // c → b+1
+                OrderedDomain.lt_irrefl d b1                       |> at [right_branch; apply_unary]
+                not_false                                          |> apply_right
+            ]
+        let ey =
+            lemma th (E ==> !!Y) [
+                Deduce' (reflex_implies E)                         |> at [right_branch; apply_unary; left_branch]
+                Integers.succ_not_le th b                          |> at [right_branch; apply_unary]
+                not_false                                          |> apply_right
+            ]
+        let fwd = mp (mp (OrderedDomain.in_theory th (glue_drop1 X Y E)) xy) ex
+        let bwd = mp (mp (OrderedDomain.in_theory th (glue_drop2 X Y E)) xy) ey
+        lemma th (X == Y) [
+            mutual_implication' X Y |> Commute                     |> apply
+            Taut (conj fwd bwd)                                    |> apply
+        ]
+
+    /// `(c < b + 1) = (c ≤ b)` — the strict bound of a well-ordering range as the inclusive bound of an
+    /// inductive hypothesis. Both sides are `c ≤ b+1` without `c = b+1`: (15.38) on the left,
+    /// Discreteness on the right, and `c = b+1` excludes each (irreflexivity; `succ_not_le`).
+    let lt_succ_le (th: Theory) (c: Term<int>) (b: Term<int>) : Theorem = lt_succ_le_at th c b
+
+    /// The pieces of a well-ordering statement for `P`, with dummies `b` (the element) and `c` (the
+    /// ones below it). `minimal x` is `(∀c | 0 ≤ c ∧ c < x : ¬P.c)`, "nothing in S lies below x".
+    type private WellOrdering =
+        { N0: IntPred; Rng: IntPred; Min: IntPred; minimal: Term<int> -> Prop; Q: IntPred }
+
+    let private wo_parts (b: IntVar) (c: IntVar) (P: Pred<int>) : WellOrdering =
+        if vequal b.Var c.Var then failwithf "well ordering: the dummies must differ (both are %s)." b.Name
+        if occurs_at_all c.Var (expand P.[tm b].Expr) then failwithf "well ordering: %s occurs in P.%s." c.Name b.Name
+        if occurs_at_all b.Var (expand P.[tm c].Expr) then failwithf "well ordering: %s occurs in P.%s." b.Name c.Name
+        let minimal (x: Term<int>) = qall c ((leq 0 (tm c)) * (lt (tm c) x)) (!!P.[tm c])
+        let N0 = pred_of b (leq 0 (tm b))
+        { N0 = N0; Rng = pred_of b ((leq 0 (tm b)) * P.[tm b]); Min = pred_of b (minimal (tm b))
+          minimal = minimal; Q = pred_of b (!!P.[tm b]) }
+
+    /// `(∀b | 0 ≤ b ∧ P.b : ¬minimal.b) ⇒ (∀b | 0 ≤ b : ¬P.b)` — if no element of S is minimal, S is
+    /// empty. By induction (12.8) on `¬P`: the hypothesis `(∀c | 0 ≤ c ∧ c ≤ b : ¬P.c)` IS
+    /// `minimal(b+1)` once `c < b+1` is `c ≤ b`, so `P(b+1)` would make `b+1` minimal; and at the base
+    /// `minimal.0` has an empty range. The premise `H` stays OUTSIDE the induction predicate — it binds
+    /// `c`, which (12.8) forbids in `P.n` — and is pulled through the step's ∀ by (9.5).
+    let private no_minimal_empty (th: Theory) (b: IntVar) (c: IntVar) (P: Pred<int>) : Theorem =
+        let w = wo_parts b c P
+        let d = Integers.order_domain th
+        let zero = IntTerm 0
+        let H = forall(b, w.Rng, -w.Min)
+        let instH (e: Term<int>) = lemma th (H ==> (w.Rng.[e] ==> (-w.Min).[e])) [ trade_forall_implies b w.Rng (-w.Min) |> at_left ]  // (9.13)
+        // Base: minimal.0 is vacuous — no c has 0 ≤ c < 0 (15.41b, irreflexivity).
+        let R0 = (leq 0 (tm c)) * (lt (tm c) 0)
+        let range0 =
+            let absurd = lemma th (R0 ==> F) [
+                            OrderedDomain.lt_irrefl d zero |> Commute       |> at_right
+                            Taut (OrderedDomain.le_lt_trans d zero (tm c) zero) |> apply ]
+            lemma th (R0 == F) [
+                ident_eq_false R0                                   |> apply
+                ident_implies_false_not R0 |> Commute               |> apply
+                Taut absurd                                         |> apply ]
+        let P0 = P.[zero]
+        let base_eq =
+            lemma th (((leq 0 0 * P0) ==> !!(w.minimal zero)) == !!P0) [
+                Integers.le_refl th zero                            |> at [left_branch; left_branch; left_branch]   // 0 ≤ 0 → T
+                commute_and T P0                                    |> at [left_branch; left_branch]
+                ident_and P0                                        |> at [left_branch; left_branch]
+                Ident range0                                        |> at [left_branch; right_branch; apply_unary; select_range]
+                PredCalculus.empty_range                            |> at [left_branch; right_branch; apply_unary]  // (8.13)
+                not_false |> Commute                                |> at [left_branch; right_branch; apply_unary]
+                double_negation F                                   |> at [left_branch; right_branch]
+                ident_implies_false_not P0                          |> at_left ]
+        let bse =
+            lemma th (H ==> !!P0) [
+                Ident base_eq |> Commute                            |> at_right
+                Taut (instH zero)                                   |> apply ]
+        // Step: H at b+1, with minimal(b+1) rewritten to the inductive hypothesis.
+        let b1 = succ b
+        let A, A1 = leq 0 (tm b), leq 0 b1
+        let Pb1 = P.[b1]
+        let IH = hypothesis 0 b c w.Q
+        let Y = IH ==> !!Pb1
+        let eqM = lemma th ((w.minimal b1) == IH) [ Ident (lt_succ_le th c b) |> at [left_branch; select_range; right_branch] ]
+        let at_succ =
+            lemma th (H ==> ((A1 * Pb1) ==> !!IH)) [
+                Ident eqM |> Commute                                |> at [right_branch; right_branch; apply_unary]
+                Taut (instH b1)                                     |> apply ]
+        let body =
+            lemma th (A ==> (H ==> Y)) [
+                shunt' A H Y |> Commute                             |> apply
+                Establish (le_step th 0 (tm b))                     |> apply        // 0 ≤ b+1
+                Establish at_succ                                   |> apply
+                Deduce (OrderedDomain.in_theory th (glue_min A1 Pb1 IH)) |> apply_right ]
+        let gen =
+            lemma th (qall b A (H ==> Y)) [
+                trade_forall_implies b w.N0 (pred_of b (H ==> Y))   |> apply
+                Taut body                                           |> at [select_body]
+                ident_forall_true' b ]
+        let step = inductive_case 0 b c w.Q
+        let stp =
+            lemma th (H ==> step) [
+                ident_implies_not_or H step                         |> apply
+                distrib_or_forall' b w.N0 (!!H) (pred_of b Y)       |> apply        // (9.5): b is not free in H
+                ident_implies_not_or H Y |> Commute                 |> at [select_body]
+                Taut gen                                            |> apply ]
+        let both = mp (mp (OrderedDomain.in_theory th (glue_and H (!!P0) step)) bse) stp
+        mp (mp (OrderedDomain.in_theory th (glue_trans H ((!!P0) * step) (conclusion 0 b w.Q))) both)
+           (axiom th (induction_axiom 0 b c w.Q))                                    // (12.8)
+
+    /// **Descent**: `(∀b | 0 ≤ b ∧ P.b : (∃c | 0 ≤ c ∧ c < b : P.c)) ⇒ (∀b | 0 ≤ b : ¬P.b)` — if below
+    /// every element of S there is a smaller one, S is empty. Well ordering in the form a proof by
+    /// "minimal counterexample" uses: exhibit, for any `b` with `P.b`, a smaller `c` with `P.c`.
+    let descent (th: Theory) (b: IntVar) (c: IntVar) (P: Pred<int>) : Theorem =
+        let w = wo_parts b c P
+        let below = pred_of c ((leq 0 (tm c)) * (lt (tm c) (tm b)))
+        let smaller = pred_of b (exists(c, below, P))
+        lemma th ((forall(b, w.Rng, smaller)) ==> (conclusion 0 b w.Q)) [
+            ident_exists_not_forall c below P                      |> at [left_branch; select_body]   // (9.17)
+            Taut (no_minimal_empty th b c P)                        |> apply ]
+
+    /// **(15.49) Well ordering** of ℕ, as (15.48) for the subset `{x | 0 ≤ x ∧ P.x}`:
+    ///
+    /// ```
+    /// (∃b | 0 ≤ b : P.b)  =  (∃b | 0 ≤ b ∧ P.b : (∀c | 0 ≤ c ∧ c < b : ¬P.c))
+    /// ```
+    ///
+    /// `⇒` is `no_minimal_empty` contraposed (De Morgan 9.18b on both sides); `⇐` is Monotonicity of ∃
+    /// (9.27). A THEOREM of `Induction` theories; Gries' axiom. `P` must not mention `b` or `c`.
+    let well_ordering (th: Theory) (b: IntVar) (c: IntVar) (P: Pred<int>) : Theorem =
+        let w = wo_parts b c P
+        let LHS, RHS = exists(b, w.N0, P), exists(b, w.Rng, w.Min)
+        let fwd =
+            lemma th (LHS ==> RHS) [
+                def_implies_contr LHS RHS                           |> apply        // ¬RHS ⇒ ¬LHS
+                ident_not_exists_forall_not b w.Rng w.Min           |> at_left      // (9.18b)
+                ident_not_exists_forall_not b w.N0 P                |> at_right
+                Taut (no_minimal_empty th b c P)                    |> apply ]
+        let PM = P * w.Min
+        let weaken =
+            lemma th (forall(b, w.N0, PM ==> P)) [
+                Taut (strengthen_and P.[tm b] (w.minimal (tm b)))   |> at [select_body]
+                ident_forall_true b w.N0 ]
+        let bwd =
+            lemma th (RHS ==> LHS) [
+                trade_exists_and_and b P w.Min w.N0                 |> at_left      // (9.20)
+                Taut (mp (OrderedDomain.in_theory th (mono_exists b w.N0 PM P)) weaken) |> apply ]  // (9.27)
+        lemma th (LHS == RHS) [
+            mutual_implication' LHS RHS |> Commute                  |> apply
+            Taut (conj fwd bwd)                                     |> apply ]
+
+    /// `(0 ≤ e ∧ P.e) ⇒ (∃b | 0 ≤ b ∧ P.b : (∀c | 0 ≤ c ∧ c < b : ¬P.c))` — a natural number with
+    /// property P gives a LEAST one: ∃-introduction (9.28) at `e`, then (15.49).
+    let least_element (th: Theory) (b: IntVar) (c: IntVar) (P: Pred<int>) (e: Term<int>) : Theorem =
+        let w = wo_parts b c P
+        let e = int_term e
+        lemma th (w.Rng.[e] ==> exists(b, w.Rng, w.Min)) [
+            Ident (well_ordering th b c P) |> Commute               |> at_right
+            trade_exists_and b w.N0 P                               |> at_right     // (9.19)
+            Taut (exists_intro b (w.N0 * P) e)                      |> apply ]      // (9.28)
 
     (* Module information members *)
 

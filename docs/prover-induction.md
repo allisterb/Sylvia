@@ -1107,12 +1107,66 @@ takes 0.65 s, and `not_lt` drops from 5.3 s to 1.8 s. After first use, most theo
 it runs two `mul_max` case splits. A per-theory schema cache, as `Integers` uses for its order
 lemmas, would make repeat calls nearly free. `OrderedDomain.fsx` runs in ~60 s (A–F alone: ~13 s).
 
-**Not done.** The quantified ↓/↑ (15.63)–(15.70). Well ordering (15.49), the next step, for
-§15.4's division algorithm. NOTE: in the book (15.49) is an AXIOM about ℕ, and (15.50) is a theorem
-proved from it. Here the order is reversed: (15.50) is `zero_or_one_le`, derived from induction
-(12.8) (§22), so (15.49) would be a theorem.
+**Not done.** The quantified ↓/↑ (15.63)–(15.70). (Well ordering (15.49), listed here as next,
+is §26.)
 
 **Gate.** Solution builds; suite 149/149; OrderedDomain 133/133; InductiveDefinitions 49/49;
 Induction 136/136; SetTheory 175/175; PredCalculus 24/24; E 5/5; Sledgehammer 7/7; Reconstruct
 29/29; CaDiCaL/Native* green; AdversarialSweep ALL CLEAR; PropCalculus, IntegerAlgebra,
 VerifyRuleFixes clean.
+
+## 26. Well ordering (15.49): a theorem, from induction
+
+`Theories/Induction.fs` (end); `Induction.fsx` (M), 151/151 in all.
+
+**The book's order, reversed.** Gries postulates (15.49), "ℕ is well ordered (under <)", and
+proves (15.50), "no element between 0 and 1", from it (pp. 309–310). Here (12.8) is the only axiom.
+(15.50) is `zero_or_one_le` (§22), and (15.49) is proved by strong induction. Gries notes after
+(15.49) that well ordering is enough to make ⟨ℕ,<⟩ admit induction; this is the converse.
+
+**The statement.** (15.48) quantifies over subsets `S ⊆ ℕ`. A subset is given here by a predicate
+`P`, with `x ∈ S` meaning `0 ≤ x ∧ P.x`, and the theorem is a scheme in `P`:
+
+```
+(∃b | 0 ≤ b : P.b)  =  (∃b | 0 ≤ b ∧ P.b : (∀c | 0 ≤ c ∧ c < b : ¬P.c))
+```
+
+The left side is `S ≠ ∅`. On the right, `c ∉ S` for `c < b` is `0 ≤ c ⇒ ¬P.c`, traded into the
+range. The ranges keep `0 ≤`, and must: over ℤ the statement is false (`P.x := x < 0`).
+
+| Function | Statement | How |
+|---|---|---|
+| `lt_succ_le` | `(c < b+1) = (c ≤ b)` | Both are `c ≤ b+1` minus `c = b+1`: (15.38) on the left, Discreteness on the right, and `c = b+1` excludes each (irreflexivity, `succ_not_le`) |
+| `descent` | `(∀b \| 0 ≤ b ∧ P.b : (∃c \| 0 ≤ c ∧ c < b : P.c)) ⇒ (∀b \| 0 ≤ b : ¬P.b)` | Induction (12.8) on `¬P`; see below |
+| `well_ordering` (15.49) | the scheme above | `⇒`: `descent`'s core, contraposed (De Morgan 9.18b on both sides). `⇐`: Monotonicity of ∃ (9.27) |
+| `least_element` | `(0 ≤ e ∧ P.e) ⇒ (∃b \| 0 ≤ b ∧ P.b : (∀c \| 0 ≤ c ∧ c < b : ¬P.c))` | ∃-introduction (9.28) at `e`, then (15.49) |
+
+**The proof.** The core is `H ⇒ (∀b | 0 ≤ b : ¬P.b)`, where `H` says no element of S is minimal:
+`(∀b | 0 ≤ b ∧ P.b : ¬(∀c | 0 ≤ c ∧ c < b : ¬P.c))`. Strong induction proves `¬P`, with the
+dummy `c` as the hypothesis dummy. The inductive hypothesis `(∀c | 0 ≤ c ∧ c ≤ b : ¬P.c)` is then
+literally "nothing in S below b+1", once `lt_succ_le` turns `c < b+1` into `c ≤ b`. So `P(b+1)`
+would make `b+1` minimal, which `H` at `b+1` (9.13) forbids. The base case is the same argument at
+0, where the range `0 ≤ c ∧ c < 0` is empty (15.41b with irreflexivity, then (8.13)).
+
+`H` cannot go into the induction predicate. It binds `c`, and (12.8) refuses an inductive
+hypothesis dummy that occurs in `P.n` at all. So the base case and the step are each proved under
+`H` as an implication. The step's body `0 ≤ b ⇒ (H ⇒ (IH ⇒ ¬P(b+1)))` is generalized, and `H` is
+pulled out through the ∀ by (9.5), which needs `b` not FREE in `H`; it is bound there. Two small
+`taut3` glues put the two halves into the induction axiom's antecedent. Nothing is trusted beyond
+(12.8) and the logic.
+
+**Guards.** `b` and `c` must differ, and `P` may mention neither. A `c` in `P.b` would be captured
+by the ∀c of the minimality condition. All three refusals are exercised in (M), along with a plain
+`Integers` theory (no (12.8)) failing to prove it.
+
+**Using it: (15.50) Gries' way.** (M) re-proves `(∀b | 0 ≤ b : ¬(0 < b ∧ b < 1))` through
+`descent`, as in the book. For any `b` with `0 < b < 1`, `c := b·b` is smaller and still in the
+gap: (15.43) gives `0 < b·b` and `b·b < 1·b`, then (15.41a). The proof is ∃-introduction under
+`Establish`ed facts, with no ∃-elimination (`witness`) needed. This is the "least counterexample"
+pattern §15.4 needs (division algorithm, gcd).
+
+**Cost.** `lt_succ_le` costs ~3.4 s on first use, almost all of it the one-time `discrete` schema
+and its glues. After that, `well_ordering` is ~0.1 s per call. `Induction.fsx` runs in ~19 s.
+
+**Gate.** Solution builds; suite 149/149; Induction 151/151; InductiveDefinitions 49/49;
+OrderedDomain 133/133; SetTheory 175/175; AdversarialSweep ALL CLEAR.

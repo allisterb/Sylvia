@@ -12,7 +12,9 @@
 //       `f(n+1) = f.n + 2`, and `(∀n | 0 ≤ n : f.n = 2·n)`;
 //   (E) `by_induction` refuses proofs of anything but the two obligations;
 //   …
-//   (K) the integral-domain theorems of Gries ch.15 §15.1, which the ring normalizer of (J) rests on.
+//   (K) the integral-domain theorems of Gries ch.15 §15.1, which the ring normalizer of (J) rests on;
+//   (L) Π, Split off term for Π, and n! by induction;
+//   (M) Well ordering (15.49) as a THEOREM from (12.8), and (15.50) re-proved through it, Gries' way.
 //
 // The dummies are `IntVar`s — integer variables that are ALSO integer terms — so the statements are
 // written over the variables themselves: `2 * n`, `n + 1`, `f n`.
@@ -583,5 +585,87 @@ printfn "  %s" (thf.PrintFormula (expand thmf.Stmt))
 named "BY INDUCTION    (∀n | 0 ≤ n : (Πi | 1 ≤ i ≤ n : i) = n!)"  (fun () -> thmf)
 ok "it is the statement claimed"
    (sequal (expand thmf.Stmt) (expand (qall n (leq 0 n) ((qprod i k1n i) == fact n)).Expr))
+
+printfn "\n===== (M) Well ordering (Gries 15.48–15.49) — a THEOREM, from (12.8) ====="
+// Gries postulates (15.49), "ℕ is well ordered", and derives (15.50) from it. Here (12.8) is the axiom,
+// (15.50) is `zero_or_one_le` (section G), and (15.49) is proved by strong induction. A subset of ℕ is
+// a predicate S restricted to 0 ≤ x, and (15.48) for it reads
+//     (∃b | 0 ≤ b : S.b)  =  (∃b | 0 ≤ b ∧ S.b : (∀c | 0 ≤ c ∧ c < b : ¬S.c)).
+let b, c = IntVar "b", IntVar "c"
+let S = intpred "S"
+let minimal (Q: Pred<int>) (x: Term<int>) = qall c ((leq 0 c) * (lt c x)) (!!Q.[c])
+let wo_stmt (Q: Pred<int>) = (qex b (leq 0 b) Q.[b]) == (qex b ((leq 0 b) * Q.[b]) (minimal Q b))
+let same (t: Theorem) (p: Prop) = sequal (expand t.Stmt) (expand p.Expr)
+
+named "(c < b+1) = (c ≤ b) — (15.38), Discreteness, and c = b+1 excluded"  (fun () -> lt_succ_le ind c b)
+ok "... it is the statement claimed"            (same (lt_succ_le ind c b) ((lt c (b + 1)) == (leq c b)))
+ok "Well ordering is NOT an axiom"              (not (ind.IsAxiom (wo_stmt S)))
+let wo = well_ordering ind b c S
+printfn "  %s" (ind.PrintFormula (expand wo.Stmt))
+named "(15.49) WELL ORDERING — by induction"    (fun () -> wo)
+ok "... it is the statement claimed"            (same wo (wo_stmt S))
+let three = pred_of b (leq 3 b)
+named "... at a concrete predicate, 3 ≤ b"      (fun () -> well_ordering ind b c three)
+ok "... and is that instance"                   (same (well_ordering ind b c three) (wo_stmt three))
+let le5 = least_element ind b c S (IntTerm 5)
+named "least_element: 0 ≤ 5 ∧ S.5 gives a LEAST b with S.b" (fun () -> le5)
+ok "... it is the statement claimed"
+   (same le5 (((leq 0 5) * S.[IntTerm 5]) ==> (qex b ((leq 0 b) * S.[b]) (minimal S b))))
+let below = pred_of c ((leq 0 c) * (lt c b))
+ok "descent: (∀b | 0 ≤ b ∧ S.b : (∃c | 0 ≤ c ∧ c < b : S.c)) ⇒ (∀b | 0 ≤ b : ¬S.b)"
+   (same (descent ind b c S) ((qall b ((leq 0 b) * S.[b]) (exists(c, below, S))) ==> (qall b (leq 0 b) (!!S.[b]))))
+// The guards: the two dummies differ, and S mentions neither — `c` free in S.b would be captured by
+// the ∀c of `minimal`.
+ok "refused: the same dummy twice"              (not (proves "b, b" (fun () -> well_ordering ind b b S)))
+ok "refused: a predicate mentioning c"          (not (proves "S mentions c" (fun () -> well_ordering ind b c (pred_of b (leq c b)))))
+ok "refused: plain Integers — no (12.8), no well ordering"
+   (not (proves "Integers" (fun () -> well_ordering (Integers.Integers()) b c S)))
+
+// (15.50) GRIES' WAY — through well ordering, by DESCENT, the form a "least counterexample" proof
+// takes: below any b with 0 < b < 1 lies c := b·b with 0 < c < 1, since (15.43) gives b·b < 1·b. So
+// the set is empty. (Section G proves the same fact directly by induction.)
+let odom = Integers.order_domain ind
+let taut3 (name: string) (f: Prop -> Prop -> Prop -> Prop) =
+    Tactics.Schema.p3 name (fun x y z -> let s = f x y z in lemma prop_calculus s (autoproof_anf s).Steps)
+let in_ind (t: Theorem) = lemma ind (Prop(Expr.Cast<bool> t.Stmt)) [ Taut t |> apply ]
+/// (p ⇒ (x = m)) ⇒ ((p ∧ x) ⇒ m)
+let glue_mono = taut3 "ex_mono" (fun p x m -> (p ==> (x == m)) ==> ((p * x) ==> m))
+let unit_gap = pred_of b ((lt 0 b) * (lt b 1))
+let B = odom.Term b
+let zero, one, bb = odom.Zero, odom.One, B * B
+let X0, X1 = lt 0 b, lt b 1
+let sq_pos =   // 0 < b ⇒ 0 < b·b   — (15.43) at a, b, c := 0, b, b
+    lemma ind (X0 ==> (zero <. bb)) [
+        Ident (Integers.ring_ident ind zero (zero * B))    |> at [right_branch; left_branch]     // 0 → 0·b
+        idemp_and X0 |> Commute                            |> at_left
+        Taut (mp (in_ind (glue_mono X0 X0 (zero * B <. bb))) (OrderedDomain.lt_mul odom zero B B)) |> apply ]
+let sq_below =   // 0 < b ∧ b < 1 ⇒ b·b < b   — (15.43) at a, b, c := b, 1, b
+    lemma ind ((X0 * X1) ==> (bb <. B)) [
+        Ident (Integers.ring_ident ind B (one * B))        |> at [right_branch; right_branch]    // b → 1·b
+        Taut (mp (in_ind (glue_mono X0 X1 (bb <. one * B))) (OrderedDomain.lt_mul odom B one B)) |> apply ]
+let lt_le0 =     // 0 < b·b ⇒ 0 ≤ b·b   — (15.38)
+    lemma ind ((zero <. bb) ==> (zero <=. bb)) [
+        ax_ident ind ((zero <=. bb) == ((zero <. bb) + (zero == bb))) |> at_right
+        Deduce (weaken_or (zero <. bb) (zero == bb))       |> apply_right ]
+let smaller_body =
+    lemma ind (((leq 0 b) * (X0 * X1)) ==> exists(c, below, unit_gap)) [
+        trade_exists_and c below unit_gap                  |> at_right                            // (9.19)
+        Establish sq_pos                                   |> apply
+        Establish sq_below                                 |> apply
+        Establish (OrderedDomain.lt_trans odom bb B one)    |> apply                               // b·b < b < 1
+        Establish lt_le0                                   |> apply
+        Deduce (exists_intro c (below * unit_gap) bb)      |> apply_right ]                       // (9.28) at c := b·b
+let gap_rng = pred_of b ((leq 0 b) * unit_gap.[b])
+let every_has_smaller =
+    lemma ind (forall(b, gap_rng, pred_of b (exists(c, below, unit_gap)))) [
+        trade_forall_implies b gap_rng (pred_of b (exists(c, below, unit_gap))) |> apply
+        Taut smaller_body                                  |> at [select_body]
+        ident_forall_true' b ]
+let no_unit_gap = mp (descent ind b c unit_gap) every_has_smaller
+printfn "  %s" (ind.PrintFormula (expand no_unit_gap.Stmt))
+named "(15.50) BY WELL ORDERING:  (∀b | 0 ≤ b : ¬(0 < b ∧ b < 1))"  (fun () -> no_unit_gap)
+ok "... it is the statement claimed"
+   (same no_unit_gap (qall b (leq 0 b) (!!((lt 0 b) * (lt b 1)))))
+
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1

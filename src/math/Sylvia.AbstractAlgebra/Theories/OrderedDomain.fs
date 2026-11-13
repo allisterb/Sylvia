@@ -154,7 +154,7 @@ module OrderedDomain =
     // and an `Induction` theory needs (15.34) for `succ_not_le` — so they are proved ONCE per process,
     // in the logic, as schemas over boolean metavariables (`Tactics.Schema.p3`, sound by uniform
     // substitution), and each instance is re-homed in the caller's theory by one `Taut` step.
-    let private taut3 (name: string) (f: Prop -> Prop -> Prop -> Prop) =
+    let internal taut3 (name: string) (f: Prop -> Prop -> Prop -> Prop) =
         Tactics.Schema.p3 name (fun x y z -> let s = f x y z in lemma prop_calculus s (autoproof_anf s).Steps)
     /// (nz ⇒ (p = ¬q)) ⇒ ((nz ∧ ¬p) ⇒ q)
     let private glue_neg = taut3 "od_neg" (fun nz p q -> (nz ==> (p == !!q)) ==> ((nz * !!p) ==> q))
@@ -163,7 +163,7 @@ module OrderedDomain =
     /// (nz ⇒ p) ⇒ ((nz ⇒ (p = ¬q)) ⇒ (nz ⇒ (q = false)))
     let private glue_false = taut3 "od_false" (fun nz p q -> (nz ==> p) ==> ((nz ==> (p == !!q)) ==> (nz ==> (q == F))))
     /// A logic theorem as a theorem of `th`, so that `mp` can combine it with `th`'s own.
-    let private in_theory (th: Theory) (t: Theorem) : Theorem = lemma th (Prop(Expr.Cast<bool> t.Stmt)) [ Taut t |> apply ]
+    let internal in_theory (th: Theory) (t: Theorem) : Theorem = lemma th (Prop(Expr.Cast<bool> t.Stmt)) [ Taut t |> apply ]
 
     (* Theorems for ordered domains (Gries 15.34 – 15.46) *)
 
