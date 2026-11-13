@@ -15,7 +15,9 @@
 //       indirect equality as a derived rule;
 //   (E) §15.2 minimum ↓ and maximum ↑ from Definition (15.53) alone: (15.54)–(15.60);
 //   (F) §15.3 absolute value from (15.71) abs.x = x↑−x: (15.72), (15.74), and the triangle
-//       inequality (15.73).
+//       inequality (15.73);
+//   (G) the rest of §15.1–15.3 — (15.35), (15.41b/c), (15.43) Monotonicity of ·, (15.44) Trichotomy,
+//       (15.45) as an equivalence, (15.61)/(15.62) ↓ and ↑ under ·, (15.75) and (15.76).
 //
 // Run:  dotnet fsi examples/proofs/OrderedDomain.fsx
 
@@ -183,6 +185,67 @@ thm  "(15.73)  abs(x + y) ≤ abs.x + abs.y   Triangle inequality"  (fun () -> t
 // And at the second carrier.
 thm  "(15.73)  at int64"                                          (fun () -> triangle d64 p64 q64)
 rule "(15.60)  at int64"                                          (fun () -> min_add d64 s64 p64 q64)
+
+printfn "\n===== (G) The rest of §15.1 — (15.35), (15.41b/c), (15.43)–(15.45) — and ↓/↑ with · and − ====="
+// Several of these are assembled by modus ponens from propositional glue rather than proved as a
+// stated `lemma`, so check the STATEMENT each one proves, not only that its proof is complete.
+let same (s: Expr) (p: Prop) = sequal (expand s) (expand p.Expr)
+let proves (label: string) (expected: Prop) (f: unit -> Theorem) =
+    ok label (try (let t = f () in t.Proof.Complete && same t.Stmt expected) with e -> why label e)
+let provesR (label: string) (expected: Prop) (f: unit -> Rule) =
+    ok label (try (match f () with Derive(_, p, _) -> p.Complete && same p.Stmt expected | _ -> false) with e -> why label e)
+let X, Y, Z = (a <. b), (a == b), (a >. b)
+provesR "         (a > b) = (b < a)"                            ((a >. b) == (b <. a))                    (fun () -> gt_lt d a b)
+proves  "(15.41b) a ≤ b ∧ b < c ⇒ a < c"                        (((a <=. b) * (b <. c)) ==> (a <. c))     (fun () -> le_lt_trans d a b c)
+proves  "(15.41c) a < b ∧ b ≤ c ⇒ a < c"                        (((a <. b) * (b <=. c)) ==> (a <. c))     (fun () -> lt_le_trans d a b c)
+provesR "         ¬(a < b) = (b ≤ a)"                           (!!(a <. b) == (b <=. a))                 (fun () -> not_lt d a b)
+proves  "(15.44)  (a<b ≡ a=b ≡ a>b) ∧ ¬(a<b ∧ a=b ∧ a>b)  Trichotomy"
+                                                                (((X == Y) == Z) * !!((X * Y) * Z))       (fun () -> trichotomy d a b)
+provesR "(15.45)  (a ≤ b ∧ b ≤ a) = (a = b)   Antisymmetry"     ((((a <=. b) * (b <=. a))) == (a == b))   (fun () -> le_antisym_eq d a b)
+proves  "         0 < c ∧ a < b ⇒ a·c < b·c"                    (((zero <. c) * (a <. b)) ==> (a * c <. b * c))   (fun () -> lt_mul_pos d a b c)
+proves  "         0 < c ∧ a·c < b·c ⇒ a < b"                    (((zero <. c) * (a * c <. b * c)) ==> (a <. b))   (fun () -> lt_mul_cancel d a b c)
+proves  "(15.43)  0 < c ⇒ (a < b ≡ a·c < b·c)   Monotonicity"   ((zero <. c) ==> ((a <. b) == (a * c <. b * c)))  (fun () -> lt_mul d a b c)
+proves  "(15.35)  pos.a ⇒ (pos.b ≡ pos(a·b))"                   ((pos_of a) ==> ((pos_of b) == (pos_of (a * b))))  (fun () -> pos_mul d a b)
+proves  "         0 ≤ c ∧ a ≤ b ⇒ c·a ≤ c·b"                    (((zero <=. c) * (a <=. b)) ==> (c * a <=. c * b)) (fun () -> le_mul_nonneg d c a b)
+provesR "         (a ≤ b) = (−b ≤ −a)"                          ((a <=. b) == (-b <=. -a))                (fun () -> le_neg d a b)
+proves  "(15.61)  0 ≤ c ⇒ c·(x↓y) = (c·x)↓(c·y)"                ((zero <=. c) ==> (c * min_of a b == min_of (c * a) (c * b)))  (fun () -> mul_min d c a b)
+proves  "(15.61)  0 ≤ c ⇒ c·(x↑y) = (c·x)↑(c·y)"                ((zero <=. c) ==> (c * max_of a b == max_of (c * a) (c * b)))  (fun () -> mul_max d c a b)
+proves  "         c ≤ 0 ∧ a ≤ b ⇒ c·b ≤ c·a"                    (((c <=. zero) * (a <=. b)) ==> (c * b <=. c * a)) (fun () -> le_mul_nonpos d c a b)
+proves  "(15.62)  c ≤ 0 ⇒ c·(x↑y) = (c·x)↓(c·y)"                ((c <=. zero) ==> (c * max_of a b == min_of (c * a) (c * b)))  (fun () -> mul_max_nonpos d c a b)
+proves  "(15.62)  c ≤ 0 ⇒ c·(x↓y) = (c·x)↑(c·y)"                ((c <=. zero) ==> (c * min_of a b == max_of (c * a) (c * b)))  (fun () -> mul_min_nonpos d c a b)
+provesR "         −(x↓y) = (−x)↑(−y)   ((15.62) at c := −1)"    (-(min_of a b) == max_of (-a) (-b))       (fun () -> neg_min d a b)
+provesR "         −(x↑y) = (−x)↓(−y)"                           (-(max_of a b) == min_of (-a) (-b))       (fun () -> neg_max d a b)
+proves  "         0 ≤ x ⇒ abs.x = x"                            ((zero <=. a) ==> (abs_of a == a))        (fun () -> abs_of_nonneg d a)
+proves  "         x ≤ 0 ⇒ abs.x = −x"                           ((a <=. zero) ==> (abs_of a == -a))       (fun () -> abs_of_nonpos d a)
+provesR "(15.75)  abs(x·y) = abs.x · abs.y"                     (abs_of (a * b) == abs_of a * abs_of b)   (fun () -> abs_mul d a b)
+proves  "(15.76)  −(abs.x + abs.y) ≤ x + y ≤ abs.x + abs.y"
+                                                                ((-(abs_of a + abs_of b) <=. a + b) * (a + b <=. abs_of a + abs_of b))  (fun () -> abs_bounds d a b)
+// Compound arguments where one term contains another — the MIS-TARGETED SUBSTITUTION class.
+thm  "(15.41b) at a := −c, b := 0   (a contains c)"           (fun () -> le_lt_trans d (-c) zero c)
+thm  "(15.41c) at a := −c, b := 0   (a contains c)"           (fun () -> lt_le_trans d (-c) zero c)
+rule "         ¬(a < b) = (b ≤ a)  at a := a + b, b := a"     (fun () -> not_lt d (a + b) a)
+thm  "(15.44)  at a := a, b := a + b"                         (fun () -> trichotomy d a (a + b))
+thm  "(15.44)  at a := a + b, b := b"                         (fun () -> trichotomy d (a + b) b)
+thm  "(15.43)  at a := a + c   (a contains the multiplier)"   (fun () -> lt_mul d (a + c) b c)
+thm  "         0 ≤ c ∧ a ≤ b ⇒ c·a ≤ c·b  at a := c + a"      (fun () -> le_mul_nonneg d c (c + a) b)
+thm  "(15.61)  at x := c·a   (x contains c)"                  (fun () -> mul_min d c (c * a) b)
+thm  "(15.62)  at x := c·a   (x contains c)"                  (fun () -> mul_max_nonpos d c (c * a) b)
+rule "         −(x↓y) = (−x)↑(−y)  at x := a + b, y := a"     (fun () -> neg_min d (a + b) a)
+rule "(15.75)  at x := a + b, y := a   (y inside x)"          (fun () -> abs_mul d (a + b) a)
+thm  "(15.76)  at x := −a, y := a"                            (fun () -> abs_bounds d (-a) a)
+// Refusals: no hypothesis is dropped.
+ok "(15.43) does not prove a < b ≡ a·c < b·c without 0 < c"
+   (not (try (theorem th ((a <. b) == (a * c <. b * c)) [ Taut (lt_mul d a b c) |> apply ]).Proof.Complete with _ -> false))
+ok "(15.61) does not prove c·(x↓y) = (c·x)↓(c·y) without 0 ≤ c"
+   (not (try (theorem th (c * min_of a b == min_of (c * a) (c * b)) [ Taut (mul_min d c a b) |> apply ]).Proof.Complete with _ -> false))
+// And at the second carrier.
+proves  "(15.43)  at int64"  ((d64.Zero <. s64) ==> ((p64 <. q64) == (p64 * s64 <. q64 * s64)))  (fun () -> lt_mul d64 p64 q64 s64)
+thm  "(15.44)  at int64"                                      (fun () -> trichotomy d64 p64 q64)
+thm  "(15.61)  at int64"                                      (fun () -> mul_min d64 s64 p64 q64)
+rule "(15.75)  at int64"                                      (fun () -> abs_mul d64 p64 q64)
+ok "(15.62) does not prove c·(x↑y) = (c·x)↓(c·y) from 0 ≤ c"
+   (let wrong = (zero <=. c) ==> (c * max_of a b == min_of (c * a) (c * b))
+    not (try (theorem th wrong [ Taut (mul_max_nonpos d c a b) |> apply ]).Proof.Complete with _ -> false))
 
 printfn "\n%s (%d failure(s))" (if failures = 0 then "ALL PASS" else "FAILURES") failures
 if failures > 0 then exit 1

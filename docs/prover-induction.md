@@ -958,7 +958,8 @@ SCHEME is the same statement. Everything else is a theorem: (15.54) Symmetry, (1
 `x↓y = x ∨ x↓y = y` (by Totality). (15.60) Distributivity of `+` translates `z ≤ c + m` by `−c`.
 ↑ uses the derived `≤` form `max_le` `(x↑y ≤ z) = (x ≤ z ∧ y ≤ z)`, and `≥` statements are given in
 `≤` form (`x ≤ x↑y` for Gries' `x↑y ≥ x`). Not done: (15.61)/(15.62), which need (15.43), and the
-quantified ↓/↑ of (15.63)–(15.70).
+quantified ↓/↑ of (15.63)–(15.70). (§25 proves (15.61)/(15.62), and also (15.75)/(15.76), which this
+section missed.)
 
 **Absolute value (§15.3).** (15.71) `abs.x = x↑−x` is an axiom (a definition). Theorems: (15.72)
 `abs.x = abs(−x)`, `x ≤ abs.x ∧ −x ≤ abs.x`, `0 ≤ abs.x` (by Totality on `0` and `x`), (15.74)
@@ -1041,4 +1042,77 @@ and `eq_sym`/`eq_comm` are carrier-generic over `Term<'t>`.
 **Gate.** Solution builds; suite 149/149; OrderedDomain 91/91 (+2: same trees, no mixing of
 domains); InductiveDefinitions 49/49; Induction 136/136; SetTheory 175/175; PredCalculus 24/24; E 5/5;
 Sledgehammer 7/7; Reconstruct 29/29; AdversarialSweep ALL CLEAR; PropCalculus, IntegerAlgebra,
+VerifyRuleFixes clean.
+
+## 25. The rest of §15.1, and ↓/↑ under `·` and `−`
+
+`Theories/OrderedDomain.fs`; `OrderedDomain.fsx` (G), 133/133 in all. This closes everything in
+§15.1–15.3 except the quantified ↓/↑ of (15.63)–(15.70).
+
+**Checked against the book.** Gries & Schneider is now at `reference/books/gries.pdf`, with the
+solutions manual at `reference/books/griessolns.pdf`. Pages render with `bin/mutool.exe draw`
+(PDF page = book page + 11). Every number in §21–§25 was checked against pp. 307–315. That found two errors in the first version of this section:
+
+- **(15.62) is not negation.** It is `c ≤ 0 ⇒ c·(x↑y) = (c·x)↓(c·y)` (and the same with ↑ and ↓
+  swapped). `neg_min`/`neg_max` are only its `c := −1` case. Both are now proved, under the right
+  labels.
+- **§15.3 has two more theorems**, which §23 missed: (15.75) `abs(x·y) = abs.x·abs.y` and (15.76)
+  `−(abs.x + abs.y) ≤ x + y ≤ abs.x + abs.y`. Both are now proved.
+
+Gries writes (15.61)'s hypothesis as `c ≥ 0`; here it is `0 ≤ c`, the `≤` form used throughout
+(`ge_le` bridges them).
+
+| Theorem | Statement | How |
+|---|---|---|
+| `gt_lt` | `(a > b) = (b < a)` | Both are `pos(a − b)` (15.36)/(15.37) |
+| `le_lt_trans` (15.41b) | `a ≤ b ∧ b < c ⇒ a < c` | (15.38) cases: (15.41a), or Substitution |
+| `lt_le_trans` (15.41c) | `a < b ∧ b ≤ c ⇒ a < c` | The same |
+| `not_lt` | `¬(a < b) = (b ≤ a)` | Totality covers; asymmetry and irreflexivity exclude |
+| `trichotomy` (15.44) | `(a < b ≡ a = b ≡ a > b) ∧ ¬(a < b ∧ a = b ∧ a > b)` | `not_lt`'s cases and the pairwise exclusions |
+| `le_antisym_eq` (15.45) | `(a ≤ b ∧ b ≤ a) = (a = b)` | `le_antisym`, and Substitution + Reflexivity |
+| `lt_mul_pos` | `0 < c ∧ a < b ⇒ a·c < b·c` | `(b − a)·c = b·c − a·c` (15.29), then Multiplication (15.31) |
+| `lt_mul_cancel` | `0 < c ∧ a·c < b·c ⇒ a < b` | Contraposition through `not_lt`, and `le_mul_pos` |
+| `lt_mul` (15.43) | `0 < c ⇒ (a < b ≡ a·c < b·c)` | The two above |
+| `pos_mul` (15.35) | `pos.a ⇒ (pos.b ≡ pos(a·b))` | (15.43) at `0, b, a`, (15.40) and (15.9) |
+| `le_mul_pos`, `le_mul_nonneg` | `0 < c ∧ a ≤ b ⇒ a·c ≤ b·c`; `0 ≤ c ∧ a ≤ b ⇒ c·a ≤ c·b` | Cases; at `c = 0` both sides are `0` |
+| `le_neg` | `(a ≤ b) = (−b ≤ −a)` | (15.42) by `(−a) + (−b)` |
+| `le_mul_nonpos` | `c ≤ 0 ∧ a ≤ b ⇒ c·b ≤ c·a` | `le_mul_nonneg` at `−c`, then (15.22) and `le_neg` |
+| `mul_min`, `mul_max` (15.61) | `0 ≤ c ⇒ c·(x↓y) = (c·x)↓(c·y)`, and for ↑ | Cases on Totality. When `x ≤ y`: `x↓y = x` and `c·x ≤ c·y`, so both sides are `c·x` (15.58) |
+| `mul_max_nonpos`, `mul_min_nonpos` (15.62) | `c ≤ 0 ⇒ c·(x↑y) = (c·x)↓(c·y)`, and with ↑/↓ swapped | The same, with `le_mul_nonpos` |
+| `neg_min`, `neg_max` | `−(x↓y) = (−x)↑(−y)`, `−(x↑y) = (−x)↓(−y)` | (15.62) at `c := −1`, proved directly with `le_neg` |
+| `abs_of_nonneg`, `abs_of_nonpos` | `0 ≤ x ⇒ abs.x = x`; `x ≤ 0 ⇒ abs.x = −x` | (15.58) for `x↑−x` |
+| `abs_mul` (15.75) | `abs(x·y) = abs.x · abs.y` | Cases on the sign of `x`, then (15.61) at `x` or `−x`, and (15.54) |
+| `abs_bounds` (15.76) | `−(abs.x + abs.y) ≤ x + y ≤ abs.x + abs.y` | `le_add` of the halves of `abs_ge`, with `le_neg` for the left half |
+
+Gries derives (15.43) from (15.35). Here it runs the other way: (15.35) is (15.43) at `a := 0`,
+because (15.43)'s `⇒` half is just (15.29) + (15.31) and its `⇐` half is contraposition.
+
+**Style.** The case proofs put the hypothesis to work with `Deduce'`, using (15.58) as a
+conditional rewrite (`min_left`: `x ≤ y ⇒ x↓y = x`). Inside them, `Establish` derives facts such
+as `c·x ≤ c·y` that later steps use. `by_totality` turns the two cases into the theorem. Every
+rewrite of a variable is addressed exactly, and (G) checks each theorem at arguments where one
+term contains another.
+
+**Statements are checked, not only completeness.** `lt_mul`, `mul_min` and the others built by
+`mp`/`conj` from propositional glue do not assert a statement the way `lemma` does. So (G)
+compares every proved statement with the expected one. The refusal checks confirm that `lt_mul`
+and `mul_min` do not prove their conclusions without the hypothesis.
+
+**Glue cost.** As before, the propositional glue is `taut3` schemas, proved once per process by
+the ANF search. The cost depends on the formula's size, not just its atom count. One glue stating
+all of Trichotomy from its four premises took 24 s to find. Split into four small glues
+(`od_cover`, `od_excl`, `od_one`, `od_not_all`), joined by mutual implication and `conj`, it
+takes 0.65 s, and `not_lt` drops from 5.3 s to 1.8 s. After first use, most theorems here cost
+0.05–2 s. The outlier is `abs_mul`, at ~5 s per call, because theorems replay their derivations and
+it runs two `mul_max` case splits. A per-theory schema cache, as `Integers` uses for its order
+lemmas, would make repeat calls nearly free. `OrderedDomain.fsx` runs in ~60 s (A–F alone: ~13 s).
+
+**Not done.** The quantified ↓/↑ (15.63)–(15.70). Well ordering (15.49), the next step, for
+§15.4's division algorithm. NOTE: in the book (15.49) is an AXIOM about ℕ, and (15.50) is a theorem
+proved from it. Here the order is reversed: (15.50) is `zero_or_one_le`, derived from induction
+(12.8) (§22), so (15.49) would be a theorem.
+
+**Gate.** Solution builds; suite 149/149; OrderedDomain 133/133; InductiveDefinitions 49/49;
+Induction 136/136; SetTheory 175/175; PredCalculus 24/24; E 5/5; Sledgehammer 7/7; Reconstruct
+29/29; CaDiCaL/Native* green; AdversarialSweep ALL CLEAR; PropCalculus, IntegerAlgebra,
 VerifyRuleFixes clean.
