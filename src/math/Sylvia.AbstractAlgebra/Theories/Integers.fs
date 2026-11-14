@@ -274,7 +274,7 @@ module Integers =
     /// The theory of integers: an ordered domain at `int` (Gries §15.1), plus discreteness, literal
     /// evaluation and the rewrite rules below. A caller's extra axioms and rules go on top —
     /// `Induction` is one.
-    type Integers(?axioms: Axioms, ?rules: Rules) = inherit OrderedDomain.OrderedDomain<int>(int_ops, int_order,
+    type Integers(?axioms: Axioms, ?rules: Rules, ?extends: Theory list) = inherit OrderedDomain.OrderedDomain<int>(int_ops, int_order,
         BooleanAlgebra.combine_axioms (defaultArg axioms (fun _ -> None)) integer_axioms, [
         reduce
         right_assoc_add
@@ -290,7 +290,7 @@ module Integers =
         ident_add
         ident_mul
         assoc_add_sub
-    ] @ defaultArg rules [])
+    ] @ defaultArg rules [], defaultArg extends [])
     
     let integers = Integers()
 

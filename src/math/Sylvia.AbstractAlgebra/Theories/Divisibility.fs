@@ -68,10 +68,11 @@ module Divisibility =
     (* Theory *)
 
     /// Integer arithmetic, Σ and Π, induction (12.8) — everything `Induction` has — and (15.77). A
-    /// caller's own axioms and rules go on top, as with `Induction`.
-    type Divisibility(?axioms: Axioms, ?rules: Rules) =
+    /// caller's own axioms and rules go on top, as with `Induction`. It accepts theorems proved in
+    /// the canonical `Induction.induction` (and, through it, `Integers.integers`).
+    type Divisibility(?axioms: Axioms, ?rules: Rules, ?extends: Theory list) =
         inherit Induction.Induction(BooleanAlgebra.combine_axioms (defaultArg axioms (fun _ -> None)) divisibility_axioms,
-                                    defaultArg rules [])
+                                    defaultArg rules [], (Induction.induction :> Theory) :: defaultArg extends [])
 
     /// The theory: `Induction` and (15.77), with nothing extra.
     let divisibility = Divisibility()

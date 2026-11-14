@@ -24,6 +24,7 @@ module Tactics =
             failwithf "The proof of %s is not complete, so it cannot be replaced with true." (p.Theory.PrintFormula p.Stmt)
         Derive(sprintf "Replace the theorem %s with true in (expression)" (p.Theory.PrintFormula p.Stmt), p,
                fun (pf: Proof) e -> if pf.Complete then FsExpr.replace_first_expr pf.Stmt T.Expr.Raw e else e)
+        |> Rule.Trusted
 
     /// The constant true is a theorem.
     let Truth commute rule = 
@@ -152,6 +153,7 @@ module Tactics =
             let rule =
                 Derive(sprintf "Instantiate the theorem %s in (expression)" (print t.Stmt), proof,
                        fun (pf: Proof) e -> if pf.Complete && sequal e stmt then T.Expr.Raw else e)
+                |> Rule.Trusted
             Theorem(stmt, Proof(stmt, theory, [ Apply rule ], true))
 
 
@@ -208,6 +210,7 @@ module Tactics =
             let rule =
                 Derive(sprintf "Instantiate the theorem %s in (expression)" (print t.Stmt), proof,
                        fun (pf: Proof) e -> if pf.Complete && sequal e stmt then T.Expr.Raw else e)
+                |> Rule.Trusted
             Theorem(stmt, Proof(stmt, theory, [ Apply rule ], true))
 
     /// Derive a theorem SCHEMA once, at metavariables, and instantiate it per call.

@@ -85,10 +85,10 @@ module OrderedDomain =
     (* Theory *)
 
     /// An ordered domain over `'t`: an integral domain with `pos`, and a caller's axioms and rules on top.
-    type OrderedDomain<'t when 't: equality>(ops: DomainOps<'t>, order: OrderOps<'t>, ?axioms: Axioms, ?rules: Rules) =
+    type OrderedDomain<'t when 't: equality>(ops: DomainOps<'t>, order: OrderOps<'t>, ?axioms: Axioms, ?rules: Rules, ?extends: Theory list) =
         inherit IntegralDomain<'t>(ops,
                                    BooleanAlgebra.combine_axioms (defaultArg axioms (fun _ -> None)) (ordered_domain_axioms ops order),
-                                   defaultArg rules [])
+                                   defaultArg rules [], defaultArg extends [])
         member val Order = order
         override _.Ordering = Some order
 

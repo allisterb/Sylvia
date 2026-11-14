@@ -40,17 +40,33 @@ module SetAlgebra =
     
     (* Theory *)
 
+    // Join/meet are the ∪ / ∩ SetTerm operators (op_BarPlusBar / op_BarMultiplyBar), so a set
+    // expression written `S |+| T` / `S |*| T` matches BOTH these Boolean-algebra laws AND the
+    // membership operator axioms in SetTheory. (`<@ (|+|) @>` is a direct method reference that
+    // SpecificCall accepts — unlike a `fun a b -> a |+| b` lambda, which it rejects.)
+    type internal SetOps<'t when 't: equality>() =
+        static member val Join = <@ (|+|) : Set<'t> -> Set<'t> -> Set<'t> @>
+        static member val Meet = <@ (|*|) : Set<'t> -> Set<'t> -> Set<'t> @>
+        static member val Zero = <@ Set.Empty : Set<'t> @>
+        static member val One = <@ Set.U : Set<'t> @>
+        static member val Comp = <@ Set.(~-) : Set<'t> -> Set<'t> @>
+        /// The Boolean-algebra rules, built ONCE per element type, so `set_algebra<'t>`, every
+        /// `SetTheory<'t>` and the `left_assoc<'t>`… below share the very same rule objects — the
+        /// kernel admits an `Admit` step by object identity, not by name.
+        static member val Rules : Rules =
+            builtin_rules SetOps<'t>.Join SetOps<'t>.Meet SetOps<'t>.Zero SetOps<'t>.One SetOps<'t>.Comp
+
     type SetAlgebra<'t when 't: equality>(?axioms:Axioms, ?rules:Rules) =
-        // Join/meet are the ∪ / ∩ SetTerm operators (op_BarPlusBar / op_BarMultiplyBar), so a set
-        // expression written `S |+| T` / `S |*| T` matches BOTH these Boolean-algebra laws AND the
-        // membership operator axioms in SetTheory. (`<@ (|+|) @>` is a direct method reference that
-        // SpecificCall accepts — unlike a `fun a b -> a |+| b` lambda, which it rejects.)
         inherit BooleanAlgebra<Set<'t>>("Set Algebra",
-            <@ (|+|) : Set<'t> -> Set<'t> -> Set<'t> @>, <@ (|*|) : Set<'t> -> Set<'t> -> Set<'t> @>,
-            <@ Set.Empty @>, <@ Set.U @>, <@ Set.(~-) @>,
-            ?axioms = axioms, ?rules = rules)
-    
-    let set_algebra<'t when 't: equality> = SetAlgebra<'t>()
+            SetOps<'t>.Join, SetOps<'t>.Meet, SetOps<'t>.Zero, SetOps<'t>.One, SetOps<'t>.Comp,
+            ?axioms = axioms, ?rules = rules, builtins = SetOps<'t>.Rules)
+
+    type internal SetAlgebraInstance<'t when 't: equality>() =
+        static member val Value = SetAlgebra<'t>()
+
+    /// The set algebra over `'t` — ONE instance per element type (a generic `let` value is re-evaluated
+    /// at every use, which made each mention of `set_algebra<int>` a different theory).
+    let set_algebra<'t when 't: equality> = SetAlgebraInstance<'t>.Value
 
     (* Admissible Rules *)
     

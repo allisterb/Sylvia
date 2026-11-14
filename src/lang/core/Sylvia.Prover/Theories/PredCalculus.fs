@@ -459,8 +459,15 @@ module PredCalculus =
         let g = expand goal.Expr
         let tgt = expand obligation.Expr
         let step = Derive(sprintf "Witness %s for %s in (∃%s|R:P)" xhat.Name x.Name x.Name, sub.Proof,
-                          fun _ e -> if sequal e g then tgt else e)
-        Theorem(g, Proof(g, pred_calculus, (Apply step) :: sub.Proof.Steps, true))
+                          fun _ e -> if sequal e g then tgt else e) |> Rule.Trusted
+        // The conclusion lives in the SUBPROOF's theory. It used to be fixed at `pred_calculus`,
+        // which (rightly) refused any subproof from a theory — so ∃-elimination was unavailable in
+        // `Integers`, `Divisibility`, …. In a theory T the metatheorem is sound under the assumption
+        // the kernel already makes whenever a theorem with a free `d` rewrites under a binder on `d`
+        // (generalization): T's axioms are SCHEMES, closed under substitution, so no axiom says
+        // anything about the particular variable x̂ and a theorem about x̂ holds for every value.
+        let theory = sub.Proof.Theory
+        Theorem(g, Proof(g, theory, (Apply step) :: sub.Proof.Steps, true))
 
     (* Module information members *)
 

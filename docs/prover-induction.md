@@ -608,8 +608,9 @@ normalization tactic (§16) → integral domain → ordered domain → well-orde
 associativity, commutativity, identity (both sides, `+ 0` and `· 1`), distributivity (both sides),
 additive inverse (15.13), subtraction (15.14) and cancellation of `·` (15.7, `c ≠ 0` or `¬(c = 0)`
 accepted). `Integers` is now `IntegralDomain<int>`; its own axioms shrank to the order facts (and the
-legacy ∃ form). Theorems proved over `IntegralDomain<'t>` apply in `Integers` and `Induction` because
-those theories derive from it — the kernel's `IsAssignableFrom` check.
+legacy ∃ form). Theorems over `IntegralDomain<'t>` are functions of the theory, so they are proved in
+`Integers` or `Induction` directly. (The kernel's old `IsAssignableFrom` test, which would have let
+such theorems cross between theories, was unsound and is gone — see §28.)
 
 **(15.8)–(15.29) are theorems**, each proved from those axioms, mostly following Gries' own proofs —
 cancellation (15.8, by mutual implication), zero (15.9, verbatim Gries: cancel `a·a`), unique zero/one
@@ -1190,9 +1191,8 @@ theory sits on `Induction` because (15.81) needs "nothing between 0 and 1" and (
 ordering, and both come from (12.8).
 
 **∃ inside a theory, without a new rule.** Every theorem here is ∃-introduction and ∃-elimination.
-Introduction is (9.28) `exists_intro`, used with `mp`/`Deduce`. Elimination is NOT
-`PredCalculus.witness` (9.30), which only accepts subproofs in the predicate calculus; called with a
-`Divisibility` subproof, the kernel refuses its step. Instead, ex.9.27 turns `(∃x|R:P) ⇒ Q` into
+Introduction is (9.28) `exists_intro`, used with `mp`/`Deduce`. Elimination was written before
+`PredCalculus.witness` (9.30) worked inside a theory (it does since §28), so it does not use it. Instead, ex.9.27 turns `(∃x|R:P) ⇒ Q` into
 `(∀x|R: P ⇒ Q)`. Trading (9.2) makes the range a premise. The body is then rewritten to `T` by a
 theorem proved about the dummy itself, and (9.8) closes the goal. That is the generalization step
 `generalize_step` already uses. `dvd_elim` packages it for `∣`, and `exists_elim` for any
@@ -1245,3 +1245,125 @@ either. The natural route is `least_element` again: Bézout via the least positi
 
 **Gate.** Solution builds; suite 149/149; Divisibility 51/51; Induction 151/151;
 InductiveDefinitions 49/49; OrderedDomain 133/133; SetTheory 175/175; AdversarialSweep ALL CLEAR.
+
+## 28. Which theorems a proof may use — a soundness fix — and Witness (9.30) inside a theory
+
+**The rule.** A `Derive`/`Deduce`/`Establish` step carries the proof of the theorem it uses, and the
+kernel (`Proof`'s `accepts`) decides whether that theorem may be used in the current proof. It may if
+it was proved in the logic (`Proof.Logic`, i.e. `S`; `prop_calculus` and `pred_calculus` are both
+`S`), or in a theory the current one `Includes`: itself, or a theory INSTANCE it declares it
+`extends` (`Theory(axioms, rules, ?formula_printer, ?extends)`), transitively.
+
+**The bug it replaces.** The test used to be on .NET classes: accept a theorem if its theory's class
+was a base class of the current theory's. A class does not determine a theory's axioms, so this was
+unsound, measured three ways, each proving `F` (`false`):
+- a plain `Theory(anyAxioms, [])` has class `Theory`, a base class of every theory, so its `⊢ F = T` was
+  accepted by `integers` and `divisibility`;
+- `Integers.Integers(extraAxioms)` has the same class as `integers`, so its theorems were accepted by
+  `integers`;
+- the same instance's theorems were accepted by `divisibility`, a subclass.
+
+No library proof relied on the class test. With it made strict (logic or same instance only), the
+whole gate passed unchanged, before any `extends` was declared.
+
+**Declared, not inferred.** `Induction` (every instance) extends the canonical `Integers.integers`, and
+`Divisibility` extends `Induction.induction`. Both are true because each constructor only ADDS axioms
+and rules to its base. The relation is fixed when the extending theory is built, and only the
+extending theory states it. So a theory can choose whose theorems it accepts, but can never make
+another theory accept its own. `IntegralDomain`, `OrderedDomain`, `Integers`, `Induction` and
+`Divisibility` all take `?extends` and pass it down.
+
+**Witness (9.30) inside a theory.** `PredCalculus.witness` used to build its conclusion as a proof in
+`pred_calculus`, with the caller's subproof inside it. A `Divisibility` subproof inside an `S` proof is
+the direction the kernel refuses, and must refuse: if `S` could absorb integer facts, every theory
+would accept them. The conclusion now lives in the subproof's own theory.
+
+In a theory `T` this is sound under the assumption the kernel already makes whenever a theorem with a
+free `d` rewrites under a binder on `d` (generalization, as `dvd_elim` does): `T`'s axioms are schemes,
+closed under substitution, so none says anything about the particular eigenvariable `x̂`. A theory
+whose axiom recognizes a specific free variable, such as a hypothesis "x#0 = 5", breaks both
+generalization and `witness`. No library theory has one.
+
+`Divisibility.fsx` (I) checks the four refusals above, a `Divisibility` theorem refused in `integers`,
+theorems of the canonical `integers` and `induction` accepted in `divisibility`, and `witness`
+proving `(∃k |: c·k = b) ⇒ c ∣ b` as a `Divisibility` theorem. `TheoryAcceptanceTests` in the prover
+suite checks the kernel cases with plain theories.
+
+**Still open: rules carry their own functions.** The theory check only governs WHICH proof justifies a
+step. The step's rewrite is an F# function inside the `Rule`, and the kernel does not check that the
+function matches the justification. Measured (scratch probe), each of these proves `F` in `integers`:
+- `Admit` with a borrowed rule NAME and any function (only the name is checked against the theory's
+  rules);
+- `Rule.Define` with any function (not checked at all);
+- `Derive` justified by a real `S` theorem but with any function.
+
+Every library combinator builds its rules correctly (`Subst`, `Subst'`, `Subst''` compute the rewrite
+from the theorem). So this matters only for code that constructs `Rule` cases directly, such as an
+agent writing F# against the libraries. Closing it means making the kernel, not the rule, determine the
+rewrite:
+- identify an `Admit` by reference against the theory's rule list;
+- compute `Derive`/`Deduce` rewrites from the carried proof;
+- check or retire `Define`.
+
+Closed the same day — see §29.
+
+**Gate.** Solution builds; suite 152/152 (3 new); Divisibility 61/61 (10 new); Induction 151/151;
+InductiveDefinitions 49/49; OrderedDomain 133/133; SetTheory 175/175; PredCalculus 24/24;
+VerifyRuleFixes passed; AdversarialSweep ALL CLEAR (3556 instantiations).
+
+## 29. Rules cannot be forged — what the kernel checks, and what it deliberately does not
+
+**The line drawn.** The kernel does not judge a theory: a theory whose axioms accept everything
+proves `false`, and `⊢_T false` is then a TRUE statement about `T`. Checking that a theory is
+consistent is impossible in general, and nothing here tries. What the kernel guarantees instead is
+that a theorem's label is honest — `⊢_T φ` really was derived from `T`'s axioms and rules and the
+logic's — so that "do I trust this result?" is one reference comparison for whoever consumes it
+(`thm.Proof.Theory` is the instance they trust). §28 made the label honest across theories; this
+section makes it honest across RULES. Every check added is O(1) or a short list scan per step.
+
+**What was forgeable, and what each is now.** `Rule` is a public union whose cases carry F#
+functions, and the kernel checked everything about a step except the function:
+- `Admit(name, f)` was accepted if `name` matched one of the theory's rules. Now the rule must be the
+  very OBJECT in `Proof.Logic.Rules` or the proof's theory's `Rules` (`admitted` in `Proof`). This
+  also removed a list of every rule name that the `Proof` constructor built for EVERY proof; the scan
+  now runs only at an `Admit` step.
+- `Derive(_, p, f)` / `Deduce(_, p, f)` were accepted if `p`'s theory was acceptable; `f` was
+  arbitrary, so a real `S` proof with `fun _ _ -> T` proved `false`, and so did a real `Ident` taken
+  apart and re-wrapped. `Rule` must stay a public union (its cases are matched in many places), so F#
+  cannot stop anyone constructing one. Instead every library constructor registers what it builds
+  (`Rule.Trusted`, internal), and the kernel refuses an unregistered `Derive`/`Deduce` (`KernelBuilt`
+  in `Proof.fs`: a weak-keyed `ConditionalWeakTable`, one lookup per step). The registered
+  constructors — and so the functions in the trusted base — are `Subst`/`Subst'`/`Subst''`
+  (`LogicalRules`), `theoremIsTrue`/`Instantiate`/`InstantiateTerms` (`Tactics`) and
+  `PredCalculus.witness`. Every other tactic reaches these.
+- `Rule.Define` (and `LogicalRules.Define`, `ProofOps.def`) turned any equation into a rewrite and
+  was never checked. Nothing in `src`, `examples` or `tests` built one, so it is REMOVED. A definition
+  is an axiom of its theory, used through `Ident`.
+- `Proof.Complete` was `abstract … default`, so a subclass of `Proof` could declare anything
+  complete. `Proof` is now `[<Sealed>]` and `Complete` a plain property; nothing subclassed it.
+- `Proof.Logic` had a public setter, so one assignment swapped the logic every theory trusts. It can
+  now be set at most once, and only before the first `Proof` is constructed; nothing set it.
+
+**A consequence: one `SetAlgebra` per element type.** `set_algebra<'t>` was a generic `let` VALUE,
+re-evaluated at every mention, and each `BooleanAlgebra` instance built its seven rules afresh — so
+`SetAlgebra.commute<int>` was never the object inside the `SetTheory<int>` a proof used. Name
+matching hid this. Now the rules are built once per `'t` (`SetOps<'t>.Rules`, passed as the new
+`builtins` argument of `BooleanAlgebra`) and `set_algebra<'t>` is one instance per `'t`.
+
+**Where in-process checking stops.** Code running in the same process can still use reflection:
+mutate private fields, call internal members, construct a registered rule through `Rule.Trusted`.
+No kernel check prevents that, and adding more would cost performance for no gain. The remaining
+defence belongs to whoever runs untrusted code (e.g. a Giant agent's FSI script): reject scripts
+that use `System.Reflection`, re-run the script in a fresh process, and check the final theorem's
+theory by reference. Full independence — exporting proofs as data for a separate checker — is the
+principled answer and is not justified yet.
+
+**Tests.** `RuleForgeryTests` in the prover suite: the four forgeries refused, the library's own
+`reduce`/`Taut` still accepted, `Proof.Logic` refused once proofs exist.
+
+**Gate.** Solution builds; suite 158/158 (6 new); every example script's check count identical to §28's
+(Divisibility 61, Induction 151, InductiveDefinitions 49, OrderedDomain 133, SetTheory 175,
+PredCalculus 24); VerifyRuleFixes passed; AdversarialSweep ALL CLEAR (3556 instantiations, 6 s vs
+7 s before — within noise). The `SetAlgebra` change above was made before the run, found by reading
+the code (SetTheory.fsx (T) uses `SetAlgebra.commute<int>` & co. inside `SetTheory` proofs), so it
+was never observed failing; nothing else in the library tripped the new checks.

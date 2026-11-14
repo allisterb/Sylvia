@@ -8,8 +8,32 @@ open FSharp.Quotations
 open Descriptions
 open Formula
 
-/// A theory is a set of axioms and a set of rules that transform one formula into another
-type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =
+/// The `Derive`/`Deduce` rules built by this library's own code — the only ones the kernel accepts.
+///
+/// A `Derive`/`Deduce` rule carries a proof AND an F# function that performs its rewrite, and the
+/// kernel checks only the proof. A rule built by hand can pair a real proof with any function at all,
+/// and `Derive(_, <a real S proof>, <rewrite to T>)` proved `false` in `integers` (measured,
+/// 2026-11-14). `Rule` is a public union so its cases can be MATCHED everywhere, which means F#
+/// cannot stop anyone CONSTRUCTING them; instead, every library constructor registers the rule it
+/// builds here (`Rule.Trusted`), and the kernel refuses an unregistered one. The functions those
+/// constructors build are part of the trusted base (`Subst`/`Subst'`/`Subst''` in `LogicalRules`,
+/// `theoremIsTrue`/`Instantiate`/`InstantiateTerms` in `Tactics`, `PredCalculus.witness`).
+///
+/// Keyed by reference with weak keys, so nothing is retained; the check is one table lookup per
+/// `Derive`/`Deduce` step.
+type internal KernelBuilt private () =
+    static let table = System.Runtime.CompilerServices.ConditionalWeakTable<obj, obj>()
+    static let mark = obj()
+    static member Add (r: obj) = table.AddOrUpdate(r, mark)
+    static member Contains (r: obj) = let found, _ = table.TryGetValue r in found
+
+/// A theory is a set of axioms and a set of rules that transform one formula into another.
+///
+/// `extends` names the theory INSTANCES whose theorems a proof in this theory may use — each must
+/// have only axioms and rules that this theory also has. The kernel accepts a theorem from another
+/// theory only if it is from the logic (`Proof.Logic`) or from a theory this one `Includes`; see
+/// `Includes` for why this is a list of instances and not a test on .NET classes.
+type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string, ?extends: Theory list) =
     // `AxEquiv` is a pure function of the term for a given theory, and the `Proof` constructor calls
     // it on the whole statement after EVERY step — so a reconstruction re-answers it for the same
     // expression object thousands of times. Keyed on the INPUT, by reference, so a hit skips the
@@ -37,6 +61,22 @@ type Theory(axioms: Axioms, rules: Rules, ?formula_printer:Expr->string) =
     member val Axioms = axioms
     member val Rules = rules
     member val PrintFormula = defaultArg formula_printer Display.print_formula
+    /// The theory instances this theory declares it extends (see the type's summary).
+    member val Extends : Theory list = defaultArg extends []
+    /// Whether a theorem proved in `t` may be used in a proof in this theory: `t` is this very
+    /// instance, or one this theory `Extends`, directly or transitively. (The logic is accepted
+    /// separately by the kernel.)
+    ///
+    /// This is a relation between INSTANCES, declared by the extending theory when it is built. It
+    /// used to be a test on .NET classes — accept `t` if `t`'s class is a base class of this one's —
+    /// which was unsound: a class does not determine a theory's axioms. A plain
+    /// `Theory(anyAxioms, [])` has class `Theory`, a base class of every theory, and an
+    /// `Integers(extraAxioms)` has the same class as `integers`; theorems from either were accepted
+    /// by `integers`, and both proved `false` there (measured, 2026-11-13). Declaring the relation
+    /// at construction keeps it out of reach afterwards: a theory can only say whose theorems IT
+    /// accepts, never make another theory accept its own.
+    member x.Includes (t: Theory) : bool =
+        obj.ReferenceEquals(x, t) || x.Extends |> List.exists (fun b -> b.Includes t)
     /// Whether the single statement `a` is an instance of one of THIS theory's own axiom schemes.
     ///
     /// Not an equivalence test between two terms (an axiom is usually an equation `l = r`, which is
@@ -193,8 +233,6 @@ and Rule =
     /// `⊢ (∧Bᵢ) ⇒ Z` is a theorem then `A ⊨ Z`. Because it rewrites nothing, none of the
     /// substitution/Leibniz side conditions that constrain assumptions in equational logic apply.
     | Establish of string * Proof
-    /// A defined rule in a theory
-    | Define of string * (Expr -> Expr)
 with
     member x.Name =
         match x with
@@ -202,14 +240,15 @@ with
         | Derive(n, _, _) -> n
         | Deduce(n,_,_) -> n
         | Establish(n, _) -> n
-        | Define(n, _) -> n
     member x.Apply =
         match x with
         | Admit(_, r) -> r
         | Derive(_, p, r) -> r p
         | Deduce(_, p, r) -> r p
         | Establish(_, _) -> id          // records a fact; the expression is untouched
-        | Define(_, r) -> r
+    /// Register a `Derive`/`Deduce` rule built by this library's own code as one the kernel accepts
+    /// (see `KernelBuilt`). Internal: code outside the prover cannot vouch for a rule's function.
+    static member internal Trusted (r: Rule) : Rule = KernelBuilt.Add r; r
     /// A bare rule used where a RuleApplication is expected (e.g. as a proof step) means "apply
     /// the rule to the whole expression". This is the implicit form of `apply r` / `r |> apply`.
     /// (F# only applies this in a directly-typed position such as a RuleApplication-list element,
@@ -218,17 +257,27 @@ with
 
 and Rules = Rule list
 
-and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
+and [<Sealed>] Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
     /// The logical theory used for the proof.
     static let mutable logic:Theory = Theory.S
+    /// Whether `logic` can no longer change: once any proof has been checked against it, or it has
+    /// been set once (see `Logic`).
+    static let mutable logicFixed = false
     /// The proof log level.
-    static let mutable logLevel:int = 1 
+    static let mutable logLevel:int = 1
 
-    let ruleNames = List.concat [
-            let logicRules = (logic.Rules: Rule list) in logicRules |> List.map (fun (r:Rule) -> r.Name) 
-            theory.Rules |> List.map (fun (r:Rule) -> r.Name)
-        ]
+    do logicFixed <- true
+    /// Whether `r` is one of the admitted rules of the logic or of this proof's theory — the very
+    /// object, not a rule with the same NAME. A name check let `Admit(<a real rule's name>, anyFn)`
+    /// prove `false` (measured, 2026-11-14). Only consulted at an `Admit` step, so a proof without
+    /// one pays nothing (the name check built a list of every rule name for every proof).
+    let admitted (r: Rule) =
+        let same (r': Rule) = obj.ReferenceEquals(r', r)
+        (logic.Rules: Rule list) |> List.exists same || (theory.Rules: Rule list) |> List.exists same
     let stepNames: string list = steps |> List.map (fun r -> r.RuleName)
+    /// Whether a `Derive`/`Deduce`/`Establish` step may use a theorem proved in `t`: one from the
+    /// logic, or from a theory this proof's theory `Includes` (an instance relation — see there).
+    let accepts (t: Theory) = obj.ReferenceEquals(t, logic) || theory.Includes t
     let print_formula = theory.PrintFormula
     let logBuilder = System.Text.StringBuilder()
     let l = defaultArg lemma false
@@ -370,14 +419,18 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
                     | _ -> step.Rule
         do            
             match rule with
-            | Admit(n,_) -> if (not (ruleNames |> List.contains (n))) then 
+            | Admit(n,_) -> if not (admitted rule) then
                                 failwithf "Rule at step %i (%s) is not an admitted logical inference rule or part of the admitted rules of the current theory." stepId n
-            | Derive(n, p, _) -> 
-                if not ((p.Theory = logic) || (p.Theory = theory) || (p.Theory.GetType().IsAssignableFrom(theory.GetType()))) then 
+            | Derive(n, p, _) ->
+                if not (KernelBuilt.Contains rule) then
+                    failwithf "Substitution rule at step %i (%s) was not built by the prover's own rule constructors, so its rewrite is not tied to its proof." stepId n
+                if not (accepts p.Theory) then
                     failwithf "Substitution rule at step %i (%s) does not use the rules of the current proof logic or theory." stepId n
-            | Deduce(n,p,_) -> 
+            | Deduce(n,p,_) ->
+                if not (KernelBuilt.Contains rule) then
+                    failwithf "Deduction rule at step %i (%s) was not built by the prover's own rule constructors, so its rewrite is not tied to its proof." stepId n
                 if current_ant.IsNone then failwithf "Deduction rule at step %i (%s) cannot be used since %s is not a logical implication with an antecedent and consequent." stepId n (print_formula a)
-                if not ((p.Theory = logic) || (p.Theory = theory) || (p.Theory.GetType().IsAssignableFrom(theory.GetType()))) then 
+                if not (accepts p.Theory) then 
                     failwithf "Deduction rule at step %i (%s) does not use the rules of the current proof logic or theory." stepId n
                 let conjs = 
                     match p.Stmt with 
@@ -393,7 +446,7 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
                 if not step.RightApplication then failwith "A deduction rule can only be applied to the consequent of a logical implication."
             | Establish(n, p) ->
                 if current_ant.IsNone then failwithf "Establish rule at step %i (%s) cannot be used since %s is not a logical implication with an antecedent and consequent." stepId n (print_formula a)
-                if not ((p.Theory = logic) || (p.Theory = theory) || (p.Theory.GetType().IsAssignableFrom(theory.GetType()))) then
+                if not (accepts p.Theory) then
                     failwithf "Establish rule at step %i (%s) does not use the rules of the current proof logic or theory." stepId n
                 let conjs, con =
                     match p.Stmt with
@@ -435,12 +488,7 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
                     sprintf "%i. %s: No change." (stepId) (stepName.Replace("(expression)", step.Pos))
             | Establish(_, _) ->
                 // Establishing a fact never changes the expression, so "No change" would be noise.
-                sprintf "%i. %s." (stepId) (stepName.Replace("(expression)", step.Pos))
-            | Define(_, _) ->
-                if not ((sequal _a prevState)) then
-                    sprintf "%i. %s: %s \u2192 %s." (stepId) (stepName.Replace("(expression)", step.Pos)) (print_formula prevState) (print_formula _a)
-                else
-                    sprintf "%i. %s: No change." (stepId) (stepName.Replace("(expression)", step.Pos)))
+                sprintf "%i. %s." (stepId) (stepName.Replace("(expression)", step.Pos)))
         do if prooflog_on then prooflog_s msg.Value
         _state <- _a
         state.Add((_state, msg))
@@ -480,7 +528,9 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
     member val IsLemma = l
     member val Theory = theory
     member val Steps = steps
-    abstract Complete:bool; default val Complete = logic |- _state || theory |- _state
+    // Not virtual, and `Proof` is sealed: an overridable `Complete` let a subclass declare any proof
+    // complete, and every check that a theorem is proved reads this property.
+    member val Complete = logic |- _state || theory |- _state
     /// Step states with their (lazily formatted) step messages; same content as before,
     /// materialized on access so unread messages never pay for formatting.
     member x.State = state |> Seq.map (fun (e, m) -> e, m.Value) |> List.ofSeq
@@ -490,8 +540,17 @@ and Proof(a:Expr, theory: Theory, steps: RuleApplication list, ?lemma:bool) =
 
     /// Proof log level.
     static member LogLevel with get() = logLevel and set(v) = logLevel <- v
-    /// The default logical theory used by proofs. Defaults to S but can be changed to something else.
-    static member Logic with get() = logic and set(v) = logic <- v
+    /// The logical theory every proof uses alongside its own theory (normally S). It can be set at
+    /// most once, and only before any proof is constructed: every theory trusts the logic's axioms and
+    /// rules, so changing it later would silently change what earlier proofs — and every theory —
+    /// accept.
+    static member Logic
+        with get() = logic
+        and set(v) =
+            if logicFixed then
+                failwith "Proof.Logic can only be set once, before any proof is constructed."
+            logicFixed <- true
+            logic <- v
     static member (|-) (proof:Proof, expr:Expr) = sequal proof.Stmt expr && proof.Complete
     static member (+) (l:Proof, r:RuleApplication) = 
         if l.Complete then 
@@ -751,7 +810,7 @@ module LogicalRules =
         let subst (p:Proof) e = if p.Complete then replace_first_expr p.L p.R e else e
         if not p.Complete then
             failwithf "The proof of %A is not complete" (p.Theory.PrintFormula p.Stmt)
-        Derive(sprintf "Substitute %s \u2261 %s into (expression)" (p.Theory.PrintFormula p.L) (p.Theory.PrintFormula p.R), p, fun proof e -> subst proof e)
+        Derive(sprintf "Substitute %s \u2261 %s into (expression)" (p.Theory.PrintFormula p.L) (p.Theory.PrintFormula p.R), p, fun proof e -> subst proof e) |> Rule.Trusted
         
     /// Substitute an identity with a completed proof into another proof.
     let Ident (ident:Theorem) = ident.Proof |> Subst 
@@ -765,7 +824,7 @@ module LogicalRules =
             | Argument(a, c, _) -> a, c
             | _ -> failwithf "The theorem %s is not a logical implication." (p.Stmt |> p.Theory.PrintFormula)
         // Replace only the FIRST occurrence of the consequent with true.
-        Rule.Deduce(sprintf "Deduce %s from %s and substitute with true into (expression)" (p.Theory.PrintFormula con) (p.Theory.PrintFormula ant), p, fun _ e -> replace_first_expr con T.Expr.Raw e)
+        Rule.Deduce(sprintf "Deduce %s from %s and substitute with true into (expression)" (p.Theory.PrintFormula con) (p.Theory.PrintFormula ant), p, fun _ e -> replace_first_expr con T.Expr.Raw e) |> Rule.Trusted
 
     /// Substitute the consequent of a proven theorem p ==> q with true in a proof where p is one of the conjuncts of the antecedent.
     let Deduce(t:Theorem) = t.Proof |> Subst'
@@ -783,7 +842,7 @@ module LogicalRules =
             | Equals(l, r) -> l, r
             | _ -> failwithf "The theorem %s is not an identity." (con |> p.Theory.PrintFormula)
         // Replace only the FIRST occurrence of the identity's LHS with its RHS.
-        Rule.Deduce(sprintf "Deduce %s from %s and substitute %s with %s into (expression)" (p.Theory.PrintFormula con) (p.Theory.PrintFormula ant) (p.Theory.PrintFormula lcon) (p.Theory.PrintFormula rcon), p, fun _ e -> replace_first_expr lcon rcon e)
+        Rule.Deduce(sprintf "Deduce %s from %s and substitute %s with %s into (expression)" (p.Theory.PrintFormula con) (p.Theory.PrintFormula ant) (p.Theory.PrintFormula lcon) (p.Theory.PrintFormula rcon), p, fun _ e -> replace_first_expr lcon rcon e) |> Rule.Trusted
 
     /// Substitute the LHS q of a proven identity p ==> (q = r) with the RHS r in a proof where p is one of the conjuncts of the antecedent.
     let Deduce'(t:Theorem) = t.Proof |> Subst''
@@ -809,14 +868,9 @@ module LogicalRules =
             | _ -> failwithf "The theorem %s is not a logical implication." (p.Stmt |> p.Theory.PrintFormula)
         Rule.Establish(sprintf "Establish %s from %s" (p.Theory.PrintFormula con) (p.Theory.PrintFormula ant), p)
 
-    let Define (theory:Theory) (expr:Expr) = 
-        let rec subst (lhs:Expr, rhs:Expr) = 
-            function
-            | l when sequal l lhs -> rhs
-            | expr -> traverse expr (subst(lhs, rhs))
-        match expr with
-        | Equals(l, r) -> Rule.Define(sprintf "Substitute definition of %s \u2261 %s into (expression)" (theory.PrintFormula l) (theory.PrintFormula r), subst(l, r))
-        | _ -> failwithf "The formula %A is not an identity." (theory.PrintFormula expr)
+    // `Define` (and the `def` built on it) are gone: they turned ANY equation into a rewrite rule
+    // and the kernel never checked it, so `Define theory (F = T)` proved `false`. A definition is an
+    // axiom of its theory (see `Divisibility`'s (15.77)) and is used through `Ident`/`Subst`.
 
 
 [<AutoOpen>]
@@ -936,13 +990,6 @@ module Proof =
     let deduce' p = p |> Deduce'
     let deduce_ident p = deduce' p
     
-    (* Definitions *)
-    let def (theory:Theory) (e:Prop) = 
-        let f = e.Expr |> expand
-        match f with
-        | Equals(_, _) -> Define theory f
-        | _ -> failwithf "The expression %s is not an identity." (theory.PrintFormula f)
-
     (* Automation *)
     let autoproof (e: Prop) (theory:Theory) (simplify: Rule) (moves: RuleApplication list) (budget: int) : Proof =
         let goal = expand e.Expr

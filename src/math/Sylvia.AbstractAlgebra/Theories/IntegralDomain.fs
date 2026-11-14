@@ -98,9 +98,10 @@ module IntegralDomain =
     (* Theory *)
 
     /// An integral domain over `'t`, with a caller's extra axioms and rules on top.
-    type IntegralDomain<'t when 't: equality>(ops: DomainOps<'t>, ?axioms: Axioms, ?rules: Rules) =
+    /// `extends`: theory instances whose theorems this one accepts (see `Theory.Includes`).
+    type IntegralDomain<'t when 't: equality>(ops: DomainOps<'t>, ?axioms: Axioms, ?rules: Rules, ?extends: Theory list) =
         inherit Theory(BooleanAlgebra.combine_axioms (defaultArg axioms (fun _ -> None)) (integral_domain_axioms ops),
-                       defaultArg rules [])
+                       defaultArg rules [], extends = defaultArg extends [])
         member val Ops = ops
         /// The order operators, when the domain is ordered (`OrderedDomain` overrides this).
         abstract Ordering: OrderOps<'t> option

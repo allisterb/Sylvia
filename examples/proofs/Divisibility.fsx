@@ -9,7 +9,9 @@
 //   (D) (15.82), (15.84), (15.85) and Gries' exercise 15.65 (with its − twin) by ∃-elimination;
 //   (E) (15.86), and its instance ¬(2 ∣ 3);
 //   (F) Theorem (15.87), the division theorem, from Well ordering (15.49);
-//   (G) refusals: wrong witnesses, the wrong theory, captured dummies.
+//   (G) refusals: wrong witnesses, the wrong theory, captured dummies;
+//   (H) every non-schema theorem at arguments that contain one another;
+//   (I) which theories' theorems a proof may use, and Witness (9.30) inside this theory.
 //
 // Run:  dotnet fsi examples/proofs/Divisibility.fsx
 
@@ -151,5 +153,38 @@ states "(15.87) at b, c := c·c, c" (division_stmt (tt c * tt c) c q r) (fun () 
 states "(15.87) at b, c := c, c"   (division_stmt c c q r)             (fun () -> division_theorem th c c)
 states "(a < b) = (a + 1 ≤ b) at b − 1, b" ((tt b - one <. tt b) == ((tt b - one + one) <=. tt b)) (fun () -> lt_iff_succ_le th (tt b - one) b)
 states "0 < x ⇒ 1 ≤ x at x := 1 + 1"  ((zero <. (one + one)) ==> (one <=. (one + one))) (fun () -> one_le_of_pos th (one + one))
+
+printfn "\n===== (I) Which theorems a proof may use; ∃-elimination by Witness (9.30) inside a theory ====="
+
+// A proof may use a theorem from the logic S, from its own theory, or from a theory INSTANCE its
+// theory declares it extends: `Divisibility` extends the canonical `induction`, which extends the
+// canonical `integers`. This was once a test on .NET classes, under which the first four refusals
+// below all proved `false` (measured 2026-11-13).
+let anything : Axioms = fun _ -> Some (Descriptions.axiom_name "Bogus" "anything")
+let prove_false_with (src: Theory) (dst: Theory) () =
+    let fEqT = axiom src (F == T)                          // ⊢_src  F = T
+    lemma dst F [ Ident fEqT |> apply ]
+refuses "refused: F = T from a plain Theory, in Divisibility"             (prove_false_with (Theory(anything, [])) th)
+refuses "refused: F = T from Integers(extra axioms), in Integers"         (prove_false_with (Integers.Integers(anything)) integers)
+refuses "refused: F = T from Integers(extra axioms), in Divisibility"     (prove_false_with (Integers.Integers(anything)) th)
+refuses "refused: F = T from Induction(extra axioms), in Divisibility"    (prove_false_with (Induction.Induction(anything)) th)
+refuses "refused: a Divisibility theorem, in Integers"                    (fun () -> lemma integers (dvd c c) [ Taut (dvd_refl th c) |> apply ])
+states  "a theorem of the canonical integers, in Divisibility"           (D.Term c <=. D.Term c)
+                                                                          (fun () -> lemma th (D.Term c <=. D.Term c) [ Integers.le_refl integers c |> apply ])
+states  "a theorem of the canonical induction, in Divisibility"          (D.Term c <=. D.Term c)
+                                                                          (fun () -> lemma th (D.Term c <=. D.Term c) [ Integers.le_refl induction c |> apply ])
+ok "Divisibility includes induction and integers, not the reverse"        (th.Includes induction && th.Includes integers && not ((induction :> Theory).Includes th))
+
+// Witness (9.30) used to build its conclusion in pred_calculus, which refused any subproof from a
+// theory; the conclusion now lives in the subproof's theory.
+let ex_dvd = qex k T ((IntTerm c.Expr * k :> Term<int>) == b)
+let by_witness () =
+    witness k truepred (pred_of k ((IntTerm c.Expr * k :> Term<int>) == b)) (dvd c b) (fun kh ->
+        let bodyk = (IntTerm c.Expr * kh :> Term<int>) == b
+        lemma th ((T * bodyk) ==> dvd c b) [
+            dvd_def th c b                                                        |> at_right
+            Deduce (exists_intro d (pred_of d ((IntTerm c.Expr * d :> Term<int>) == b)) kh) |> apply_right ])
+states "witness: (∃k |: c·k = b) ⇒ c ∣ b, in Divisibility"                 (ex_dvd ==> dvd c b) by_witness
+ok     "... and the conclusion is a Divisibility theorem"                 (try obj.ReferenceEquals((by_witness ()).Proof.Theory, th) with e -> why "witness" e)
 
 printfn "\n%s" (if failures = 0 then "All divisibility checks passed." else sprintf "%d CHECK(S) FAILED." failures)

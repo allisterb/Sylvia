@@ -124,20 +124,28 @@ module BooleanAlgebra =
     let combine_axioms (extra: Axioms) (base': Axioms) : Axioms =
         fun e -> match extra e with | Some d -> Some d | None -> base' e
 
+    /// The seven admitted Boolean-algebra rules, in their fixed order (SetAlgebra indexes them).
+    let builtin_rules join meet zero one comp : Rules =
+        [
+            left_assoc join meet
+            right_assoc join meet
+            commute join meet
+            idemp join meet zero one comp
+            ident_ join meet zero one comp
+            complement join meet zero one comp
+            distrib join meet
+        ]
+
+    /// `builtins`, when given, must be `builtin_rules` at these same operators. It lets every instance
+    /// of one algebra share the SAME rule objects: the kernel admits an `Admit` step only if the rule
+    /// is the very object in the proof's theory, so rules built afresh per instance would refuse each
+    /// other (see `SetAlgebra`).
     type BooleanAlgebra<'t when 't: equality>(theoryName: string, join: Expr<'t->'t->'t>, meet: Expr<'t->'t->'t>, zero: Expr<'t>, one: Expr<'t>, comp: Expr<'t->'t>,
-        ?axioms:Axioms, ?rules:Rules, ?formula_printer:Expr->string) =
+        ?axioms:Axioms, ?rules:Rules, ?formula_printer:Expr->string, ?builtins: Rules) =
         // A subclass may supply extra axioms/rules; compose them with (not discard) the Boolean-algebra
         // ones. Extra axioms are tried first (so a subclass can specialize); extra rules are appended
         // AFTER the seven built-ins so their fixed indices (used by SetAlgebra) are preserved.
         inherit Theory(
             combine_axioms (defaultArg axioms (fun _ -> None)) (boolean_algebra_axioms theoryName join meet zero one comp),
-            [
-                left_assoc join meet
-                right_assoc join meet
-                commute join meet
-                idemp join meet zero one comp
-                ident_ join meet zero one comp
-                complement join meet zero one comp
-                distrib join meet
-            ] @ (defaultArg rules []),
+            (match builtins with Some b -> b | None -> builtin_rules join meet zero one comp) @ (defaultArg rules []),
             ?formula_printer = formula_printer)

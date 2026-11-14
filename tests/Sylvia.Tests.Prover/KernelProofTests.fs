@@ -1099,3 +1099,89 @@ type IsAxiomTests() =
         for stmt in [ p == p; p ==> q; q ==> p; (p * q) == (q * p) ] do
             let closes = (Proof(expand stmt.Expr, th, [], true)).Complete
             Assert.True((th.IsAxiom stmt) = closes, sprintf "IsAxiom disagrees with the kernel on %s" (src stmt.Expr))
+
+/// Tests for which theorems a proof may use (`Proof`'s `accepts`, `Theory.Includes`): one from the
+/// logic, from the proof's own theory, or from a theory INSTANCE the proof's theory declares it
+/// extends. This was once a test on .NET classes, under which a plain `Theory` with an axiom that
+/// accepts anything proved `false` in every other theory (measured 2026-11-13).
+type TheoryAcceptanceTests() =
+    inherit Sylvia.Tests.Prover.TestsRuntime()
+
+    do Proof.LogLevel <- 0
+
+    let p = boolvar "p"
+    let anything = Theory((fun _ -> Descriptions.axiom_name "Bogus" "anything" |> Some), [])
+    let fEqT = Theorem(Proof(expand (F == T).Expr, anything, [], true))   // ⊢_anything  F = T
+    /// A theory with one harmless axiom of its own, so each call is a distinct instance.
+    let own = (p == p).Expr |> expand
+    let mk (ext: Theory list) = Theory((fun e -> if sequal e own then Descriptions.axiom_name "own" "p = p" |> Some else None), [], extends = ext)
+    let proveF (th: Theory) = Proof(expand F.Expr, th, [ apply (Ident fEqT) ], true)
+
+    [<Fact>]
+    member _.``a theorem from another theory of the same class is not usable`` () =
+        // `anything` and `mk []` are both plain `Theory`s; the old class test accepted this, and the
+        // proof of F closed.
+        Assert.True(fEqT.Proof.Complete)
+        Assert.Throws<exn>(fun () -> proveF (mk []) |> ignore) |> ignore
+
+    [<Fact>]
+    member _.``a theorem from a declared base instance is usable, transitively`` () =
+        // The relation is opt-in and declared by the EXTENDING theory, so `anything` cannot make
+        // another theory accept its theorems.
+        let mid = mk [ anything ]
+        let top = mk [ mid ]
+        Assert.True(top.Includes anything && mid.Includes anything && not (anything.Includes mid))
+        Assert.True((proveF top).Complete)
+        Assert.True((proveF mid).Complete)
+
+    [<Fact>]
+    member _.``a theorem from the logic is usable in every theory`` () =
+        let th = mk []
+        let t = PropCalculus.reflex_implies p                      // proved in S
+        let pr = Proof(expand (p ==> p).Expr, th, [ apply (PropCalculus.Taut t) ], true)
+        Assert.True(pr.Complete)
+
+/// Tests that a rule's F# function cannot be forged. `Rule` is a public union, so its cases can be
+/// built by hand; each case below proved `false` before 2026-11-14 (an `Admit` was checked only by
+/// NAME, a `Derive`/`Deduce` only by its proof's theory, never by its function).
+type RuleForgeryTests() =
+    inherit Sylvia.Tests.Prover.TestsRuntime()
+
+    do Proof.LogLevel <- 0
+
+    let p = boolvar "p"
+    let th = Theory((fun _ -> None), [])
+    let toT = fun (_: Expr) -> T.Expr.Raw
+    let realS = (PropCalculus.reflex_implies p).Proof                   // a genuine theorem of S
+    let proveF (r: RuleApplication) = Proof(expand F.Expr, th, [ r ], true)
+
+    [<Fact>]
+    member _.``an Admit borrowing a logic rule's name is refused`` () =
+        Assert.Throws<exn>(fun () -> proveF (apply (Admit(PropCalculus.reduce.Name, toT))) |> ignore) |> ignore
+
+    [<Fact>]
+    member _.``a hand-built Derive with a real proof is refused`` () =
+        Assert.Throws<exn>(fun () -> proveF (apply (Derive("forged", realS, fun _ _ -> T.Expr.Raw))) |> ignore) |> ignore
+
+    [<Fact>]
+    member _.``a hand-built Deduce with a real proof is refused`` () =
+        let goal = expand (p ==> F).Expr
+        Assert.Throws<exn>(fun () ->
+            Proof(goal, th, [ apply_right (Rule.Deduce("forged", realS, fun _ _ -> T.Expr.Raw)) ], true) |> ignore) |> ignore
+
+    [<Fact>]
+    member _.``a real Derive re-wrapped with another function is refused`` () =
+        match Ident (PropCalculus.reflex_implies p) with
+        | Derive(n, pr, _) ->
+            Assert.Throws<exn>(fun () -> proveF (apply (Derive(n, pr, fun _ _ -> T.Expr.Raw))) |> ignore) |> ignore
+        | _ -> failwith "Ident did not build a Derive"
+
+    [<Fact>]
+    member _.``the library's own rules are still accepted`` () =
+        Assert.True((Proof(expand (F == F).Expr, th, [ apply PropCalculus.reduce ], true)).Complete)
+        Assert.True((Proof(expand (p ==> p).Expr, th, [ apply (PropCalculus.Taut (PropCalculus.reflex_implies p)) ], true)).Complete)
+
+    [<Fact>]
+    member _.``the logic cannot be changed once proofs exist`` () =
+        Proof(expand (F == F).Expr, th, [ apply PropCalculus.reduce ], true) |> ignore
+        Assert.Throws<exn>(fun () -> Proof.Logic <- Proof.Logic) |> ignore

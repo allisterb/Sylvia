@@ -152,10 +152,13 @@ module Induction =
     /// `examples/proofs/InductiveDefinitions.fsx`. Σ is here because the
     /// classic inductions are about sums, and Split off term (below) needs Σ's axioms and the
     /// integer order in the same theory.
-    type Induction(?axioms: Axioms, ?rules: Rules) =
+    ///
+    /// Every `Induction` only ADDS axioms and rules to `Integers()`, so it accepts theorems proved in
+    /// the canonical `Integers.integers` (`Theory.Includes`), plus any `extends` the caller declares.
+    type Induction(?axioms: Axioms, ?rules: Rules, ?extends: Theory list) =
         inherit Integers.Integers(BooleanAlgebra.combine_axioms (defaultArg axioms (fun _ -> None))
                                     (BooleanAlgebra.combine_axioms induction_axioms (BooleanAlgebra.combine_axioms Sums.sum_axioms Sums.prod_axioms)),
-                                  defaultArg rules [])
+                                  defaultArg rules [], (Integers.integers :> Theory) :: defaultArg extends [])
 
     /// The theory: integer arithmetic, Σ, and (12.8), with nothing extra.
     let induction = Induction()
