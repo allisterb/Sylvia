@@ -708,6 +708,29 @@ module Induction =
     /// Discreteness on the right, and `c = b+1` excludes each (irreflexivity; `succ_not_le`).
     let lt_succ_le (th: Theory) (c: Term<int>) (b: Term<int>) : Theorem = lt_succ_le_at th c b
 
+    /// `(a < b) = (a + 1 ≤ b)` — a strict bound as an inclusive one. `lt_succ_le` at `b − 1`, with
+    /// `b` written as `(b − 1) + 1` and Monotonicity (15.42) moving the `+ 1` across.
+    let lt_iff_succ_le (th: Theory) (a: Term<int>) (b: Term<int>) : Theorem =
+        let d = Integers.order_domain th
+        let a, b = d.Term a, d.Term b
+        let bm = b - d.One
+        lemma th ((a <. b) == ((a + d.One) <=. b)) [
+            Integers.ring th b (bm + d.One)                     |> at [left_branch; right_branch]   // b → (b − 1) + 1
+            Ident (lt_succ_le th a bm)                          |> at_left                          // → a ≤ b − 1
+            Integers.le_translate th a bm                       |> at_left                          // → a + 1 ≤ (b − 1) + 1
+            Integers.ring th (bm + d.One) b                     |> at [left_branch; right_branch]
+        ]
+
+    /// `0 < x ⇒ 1 ≤ x` — a positive integer is at least 1 (Gries 15.50, in the form proofs use).
+    let one_le_of_pos (th: Theory) (x: Term<int>) : Theorem =
+        let d = Integers.order_domain th
+        let zero, one, x = d.Zero, d.One, d.Term x
+        lemma th ((zero <. x) ==> (one <=. x)) [
+            Ident (lt_iff_succ_le th zero x)                    |> at_left
+            Integers.ring th (zero + one) one                   |> at [left_branch; left_branch]
+            Deduce (reflex_implies (one <=. x))                 |> apply_right
+        ]
+
     /// The pieces of a well-ordering statement for `P`, with dummies `b` (the element) and `c` (the
     /// ones below it). `minimal x` is `(∀c | 0 ≤ c ∧ c < x : ¬P.c)`, "nothing in S lies below x".
     type private WellOrdering =

@@ -1170,3 +1170,78 @@ and its glues. After that, `well_ordering` is ~0.1 s per call. `Induction.fsx` r
 
 **Gate.** Solution builds; suite 149/149; Induction 151/151; InductiveDefinitions 49/49;
 OrderedDomain 133/133; SetTheory 175/175; AdversarialSweep ALL CLEAR.
+
+## 27. Divisibility (§15.4): (15.77)–(15.87)
+
+`Theories/Divisibility.fs` (new); `examples/proofs/Divisibility.fsx`, 51/51. Two general facts
+went into `Induction.fs`: `lt_iff_succ_le` `(a < b) = (a + 1 ≤ b)` and `one_le_of_pos` `0 < x ⇒ 1 ≤ x`.
+
+**One axiom, a definition.** `Divisibility` is `Induction` plus Gries' (15.77):
+
+```
+c ∣ b  ≡  (∃d |: c·d = b)
+```
+
+`∣` is a fresh, uninterpreted symbol (`Divisibility.divides`, shown infix by its `[<Symbol "∣">]`).
+So (15.77) is a definitional extension and cannot introduce an inconsistency. The recognizer accepts
+any dummy that occurs in neither `c` nor `b`. It refuses a dummy that would be captured, the factors
+swapped, a non-`true` range, and a different right-hand side; all four refusals are in (A). The
+theory sits on `Induction` because (15.81) needs "nothing between 0 and 1" and (15.87) needs Well
+ordering, and both come from (12.8).
+
+**∃ inside a theory, without a new rule.** Every theorem here is ∃-introduction and ∃-elimination.
+Introduction is (9.28) `exists_intro`, used with `mp`/`Deduce`. Elimination is NOT
+`PredCalculus.witness` (9.30), which only accepts subproofs in the predicate calculus; called with a
+`Divisibility` subproof, the kernel refuses its step. Instead, ex.9.27 turns `(∃x|R:P) ⇒ Q` into
+`(∀x|R: P ⇒ Q)`. Trading (9.2) makes the range a premise. The body is then rewritten to `T` by a
+theorem proved about the dummy itself, and (9.8) closes the goal. That is the generalization step
+`generalize_step` already uses. `dvd_elim` packages it for `∣`, and `exists_elim` for any
+integer-dummy ∃. Nothing is added to the trusted base.
+
+| Function | Statement | How |
+|---|---|---|
+| `dvd_def` (15.77) | `c ∣ b → (∃d \|: c·d = b)` | the axiom, with a dummy fresh for `c`, `b` |
+| `dvd_intro` | `⊢ c·k = b` gives `⊢ c ∣ b` | (9.28) at `k` |
+| `dvd_elim` / `exists_elim` | `⊢ c·k = b ⇒ Q` (k the dummy) gives `⊢ c ∣ b ⇒ Q` | ex.9.27, (9.2), generalization, (9.8) |
+| `dvd_refl` (15.78), `dvd_zero` (15.79), `one_dvd` (15.80) | `c ∣ c`, `c ∣ 0`, `1 ∣ b` | witnesses 1, 0, `b`, each checked by `ring_ident` |
+| `unit_cases` | `x·y = 1 ⇒ x = 1 ∨ x = −1` | by the sign of `x`. Positive: `0 < y` (15.43), so `1 ≤ x, y`, then `x = x·1 ≤ x·y = 1` and (15.45). Negative: the same for `(−x)(−y)`. Zero: `0 = 1` (literal) |
+| `dvd_one` (15.81) | `c ∣ 1 ⇒ c = 1 ∨ c = −1` | `dvd_elim`, then `unit_cases` |
+| `dvd_trans` (15.82) | `d ∣ c ∧ c ∣ b ⇒ d ∣ b` | with `d·k = c`, `c ∣ b` is `(d·k) ∣ b`, witness `k·k'` |
+| `dvd_antisym` (15.83) | `b ∣ c ∧ c ∣ b ≡ b = c ∨ b = −c` | manual answer 15.60. If `c = 0`, `b = c·k₂ = 0`. Otherwise `c·(k₂·k₁) = c`, so `k₂·k₁ = 1` (15.10b) and `k₂ = ±1` |
+| `dvd_mul` (15.84), `dvd_mul_both` (15.85) | `b ∣ c ⇒ b ∣ c·d`, `b ∣ c ⇒ b·d ∣ c·d` | witnesses `k·d` and `k` |
+| `dvd_add` (ex.15.65), `dvd_sub` | `d ∣ x ∧ d ∣ y ⇒ d ∣ (x ± y)` | witness `k₁ ± k₂` |
+| `not_dvd_succ` (15.86) | `1 < b ∧ b ∣ c ⇒ ¬(b ∣ (c + 1))` | `b ∣ ((c + 1) − c) = 1`, then (15.81) leaves `b = ±1` |
+| `division_theorem` (15.87) | `0 < c ⇒ (∃q \|: (∃r \| 0 ≤ r ∧ r < c : b = q·c + r))` | Well ordering; see below |
+
+**(15.87) as the manual corrects it.** The book states the theorem for `c ≠ 0` with `0 ≤ r < c`,
+which is false for `c < 0`: the range is empty. The manual (answer 15.67) says to require `c > 0`.
+Gries proves existence with a loop (15.88). This is the textbook proof from (15.49):
+1. The set `S = {x | 0 ≤ x ∧ (∃k |: x = b − k·c)}` contains `e = b + abs.b·c` (quotient `−abs.b`;
+   `0 ≤ e` because `−b ≤ abs.b ≤ abs.b·c`). So it has a least element `x` (`least_element`).
+2. If `c ≤ x`, then `x − c` is in S (quotient `k + 1`) and `0 ≤ x − c < x`. Instantiating `x`'s
+   minimality (9.13) at it is a contradiction. So `x < c`.
+3. So `q, r := k, x`.
+
+The quotient `k` and the least element `x` are eliminated with `exists_elim`. The quotient and
+remainder are introduced with two (9.28)s, one under the other, after Trading (9.19) puts the
+remainder's range into its body. The caller's variables cannot capture: every dummy is chosen
+fresh. (F) proves the theorem at `b, c := q, r` and gets `q#1`, `r#1`.
+
+**Overlapping arguments.** A step addressed too coarsely rewrites the wrong occurrence once one
+argument contains another (§ on mis-targeted substitution). (15.81), (15.83) and (15.86) are derived
+once at schema metavariables (`Tactics.Schema.th1/th2`, per theory), so their instances cannot be
+affected. (H) runs every other theorem at arguments that contain one another, e.g. `(15.82)` at
+`b, b·b, b` and `(15.87)` at `c·c, c`.
+
+**Cost.** First use ~7 s, almost all of it one-time: `discrete`, the glues, the three schemas.
+After that (15.81)/(15.83)/(15.86) take ~0 ms per call (instantiation). The ∃-intro/elim theorems
+take ~20–40 ms, and (15.87) ~1.7 s, since its statement has binders and cannot be a schema.
+`Divisibility.fsx` runs in ~19 s.
+
+**Not done.** (15.89) uniqueness and the operators `÷`/`mod` (15.90)–(15.91); gcd (15.92) and its
+properties (15.96)–(15.104) (errata: (15.98)/(15.100) are `abs.b`, and (15.104) needs `0 ≤ d`);
+lcm (15.94); primes. Gries defines gcd as a quantified `↑`, i.e. (15.63)–(15.70), which are not done
+either. The natural route is `least_element` again: Bézout via the least positive `x·b + y·c`.
+
+**Gate.** Solution builds; suite 149/149; Divisibility 51/51; Induction 151/151;
+InductiveDefinitions 49/49; OrderedDomain 133/133; SetTheory 175/175; AdversarialSweep ALL CLEAR.
