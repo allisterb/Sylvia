@@ -14,9 +14,9 @@ open PredCalculus
 open DomainTerms
 open Induction
 
-/// Divisibility — Gries & Schneider ch.15, §15.4 (pp. 315–316).
+/// Divisibility — Gries & Schneider ch.15, §15.4 (pp. 315–325).
 ///
-/// THREE axioms, all definitions. (15.77) defines the relation `∣`:
+/// FIVE axioms, all definitions. (15.77) defines the relation `∣`:
 ///
 /// ```
 /// c ∣ b  ≡  (∃d |: c·d = b)
@@ -28,22 +28,34 @@ open Induction
 /// 0 < c  ⇒  (b = (b ÷ c)·c + b mod c  ∧  0 ≤ b mod c)  ∧  b mod c < c
 /// ```
 ///
-/// and the definition of gcd (in place of Gries' (15.92), which is a theorem here):
+/// the definition of gcd (in place of Gries' (15.92), which is a theorem here), and its dual, the
+/// definition of lcm (in place of (15.94)):
 ///
 /// ```
 /// (0 ≤ b gcd c ∧ (b gcd c ∣ b ∧ b gcd c ∣ c)) ∧ (∀d | d ∣ b ∧ d ∣ c : d ∣ b gcd c)
+/// (0 ≤ b lcm c ∧ (b ∣ b lcm c ∧ c ∣ b lcm c)) ∧ (∀m | b ∣ m ∧ c ∣ m : b lcm c ∣ m)
 /// ```
 ///
-/// All three are definitional extensions. `∣`, `÷`, `mod` and `gcd` are fresh symbols, so the axioms
-/// say nothing about anything else and cannot make the theory inconsistent. (15.90) can be stated
-/// because (15.87) proves a quotient and remainder exist and (15.89) proves they are unique. The gcd
-/// definition can be stated because `gcd_exists` proves such a value exists, without citing it (Bézout,
-/// from Well ordering), and `dvd_antisym_nonneg` makes it unique. (15.77) and the gcd definition are
-/// SCHEMES over their arguments and a dummy `d`, which must occur in neither, or the quantifier would
-/// capture it. (15.90) is a scheme over `b` and `c`. Everything else in the section is a theorem:
-/// (15.78)–(15.86), Gries' exercise 15.65 `d ∣ b ∧ d ∣ c ⇒ d ∣ (b + c)` and its `−` twin, Theorem
-/// (15.87), the division theorem, proved from Well ordering (15.49), (15.89), (15.90)–(15.91) as
-/// properties of `÷` and `mod`, Bézout, (15.92) and (15.96)–(15.107).
+/// and the definition of prime (Gries p. 322):
+///
+/// ```
+/// prime p  =  1 < p ∧ (∀d | 0 < d ∧ d ∣ p : d = 1 ∨ d = p)
+/// ```
+///
+/// All five are definitional extensions. `∣`, `÷`, `mod`, `gcd`, `lcm` and `prime` are fresh symbols,
+/// so the axioms say nothing about anything else and cannot make the theory inconsistent. (15.90) can
+/// be stated because (15.87) proves a quotient and remainder exist and (15.89) proves they are unique.
+/// The gcd and lcm definitions can be stated because `gcd_exists` and `lcm_exists` prove such values
+/// exist, without citing them (both from Well ordering), and `dvd_antisym_nonneg` makes them unique.
+/// The definitions of `∣` and of prime are explicit: they abbreviate formulas, so nothing has to
+/// exist. All but (15.90) are SCHEMES over their arguments and a dummy, which must occur in none of
+/// them, or the quantifier would capture it; (15.90) is a scheme over `b` and `c`. Relatively prime
+/// (15.105), `b ⊥ c`, is notation (`rel_prime`), not a symbol. Everything else in the section is a
+/// theorem: (15.78)–(15.86), Gries' exercise 15.65 `d ∣ b ∧ d ∣ c ⇒ d ∣ (b + c)` and its `−` twin,
+/// Theorem (15.87), the division theorem, proved from Well ordering (15.49), (15.89), (15.90)–(15.91)
+/// as properties of `÷` and `mod`, (15.92) and (15.94) themselves, (15.96)–(15.104), (15.106)–(15.108)
+/// (Bézout), (15.111)–(15.113) (Euclid's lemma), `(b gcd c)·(b lcm c) = abs(b·c)`, a prime divisor of
+/// every `n > 1`, and (15.116), that there are infinitely many primes.
 ///
 /// ∃-reasoning stays inside the theory. ∃-introduction is (9.28) `exists_intro`. ∃-elimination is
 /// ex.9.27, `((∃x|R:P) ⇒ Q) = (∀x|R: P ⇒ Q)`, followed by two steps: rewriting the ∀'s body to `T`
@@ -51,7 +63,7 @@ open Induction
 /// and (9.8). This was written before Metatheorem Witness (9.30), `PredCalculus.witness`, worked inside
 /// a theory. It does now (`docs/prover-induction.md` §28), and either route adds no rule of inference.
 ///
-/// The theory is `Induction` plus the three definitions: (15.81) needs "no integer lies between 0 and 1", which is
+/// The theory is `Induction` plus the five definitions: (15.81) needs "no integer lies between 0 and 1", which is
 /// induction, and (15.87) needs Well ordering, which is too.
 module Divisibility =
 
@@ -173,23 +185,119 @@ module Divisibility =
             Some (axiom_name "Divisibility" "Definition of gcd")
         | _ -> None
 
+    /// The least common multiple `b lcm c`. Uninterpreted, like `gcd`: its meaning is the axiom
+    /// `(|DefLcm|_|)`, and it is never evaluated.
+    [<Symbol "lcm">]
+    let lcm (b: int) (c: int) : int = invalidOp "lcm is a symbolic operator; its meaning is the definition of lcm."
+
+    let private lcm_op : Expr<int -> int -> int> = <@ lcm @>
+
+    /// `b lcm c` as an integer term.
+    let lcm_of (b: Term<int>) (c: Term<int>) : IntTerm = IntTerm(<@ lcm %b.Expr %c.Expr @> |> expand_as<int>)
+
+    /// The definition of lcm at `b`, `c`, with the dummy `m`:
+    /// `(0 ≤ b lcm c ∧ (b ∣ b lcm c ∧ c ∣ b lcm c)) ∧ (∀m | b ∣ m ∧ c ∣ m : b lcm c ∣ m)`.
+    let private lcm_spec_with (m: IntVar) (b: Term<int>) (c: Term<int>) : Prop =
+        let D = Integers.order_domain Integers.integers
+        let b', c', l, x = D.Term b, D.Term c, D.Term (lcm_of b c), D.Term (Induction.tm m)
+        ((D.Zero <=. l) * (dvd b' l * dvd c' l)) * PredCalculus.qall m (dvd b' x * dvd c' x) (dvd l x)
+
+    /// The dummy the library uses in the definition of lcm at `b`, `c`.
+    let private lcm_dummy (b: Term<int>) (c: Term<int>) : IntVar = fresh_int "m" [ b.Expr; c.Expr ]
+
+    /// **Definition of lcm** — a definitional axiom, the dual of the definition of gcd, a scheme over
+    /// any `b`, `c` and any dummy `m` occurring in neither:
+    ///
+    /// ```
+    /// (0 ≤ b lcm c ∧ (b ∣ b lcm c ∧ c ∣ b lcm c)) ∧ (∀m | b ∣ m ∧ c ∣ m : b lcm c ∣ m)
+    /// ```
+    ///
+    /// `b lcm c` is the non-negative common multiple that divides every common multiple. Gries'
+    /// (15.94) defines it as a minimum, `(↓k:ℤ⁺ | b ∣ k ∧ c ∣ k : k)` for `b, c ≠ 0`, and `0` when
+    /// either is 0. Both halves are THEOREMS here (`lcm_least`, `lcm_pos`, `lcm_zero`), and this form
+    /// covers the zero case without one: 0 is the only multiple of 0.
+    ///
+    /// A definitional extension: `lcm_exists` proves, WITHOUT this axiom, that such a value exists —
+    /// for `b, c ≠ 0` the least positive common multiple (Well ordering (15.49)), which divides every
+    /// common multiple because the remainder of one by it would be a smaller one; otherwise 0.
+    /// `dvd_antisym_nonneg` makes it unique.
+    let (|DefLcm|_|) (e: Expr) =
+        match e with
+        | And(And(LessEq(_, Binary lcm_op (b, c)), _), ForAll(_, [m], _, _))
+            when not (occurs_at_all m b) && not (occurs_at_all m c)
+                 && sequal e (lcm_spec_with (IntVar m.Name) (IntTerm(Expr.Cast<int> b)) (IntTerm(Expr.Cast<int> c))).Expr.Raw ->
+            Some (axiom_name "Divisibility" "Definition of lcm")
+        | _ -> None
+
+    /// The predicate "p is prime". Uninterpreted: its meaning is the axiom `(|DefPrime|_|)`.
+    [<Symbol "prime ">]   // a prefix symbol prints flush against its argument; the space gives `prime p`
+    let is_prime (p: int) : bool = invalidOp "prime is a symbolic predicate; its meaning is the definition of prime."
+
+    let private prime_op : Expr<int -> bool> = <@ is_prime @>
+
+    /// `prime p`, as a proposition.
+    let prime (p: Term<int>) : Prop = Prop(<@ is_prime %p.Expr @> |> expand_as<bool>)
+
+    /// The range `0 < d ∧ d ∣ p` and the body `d = 1 ∨ d = p` of the definition of prime.
+    let private prime_range (d: Term<int>) (p: Term<int>) : Prop =
+        let D = Integers.order_domain Integers.integers
+        (D.Zero <. D.Term d) * dvd d p
+    let private prime_body (d: Term<int>) (p: Term<int>) : Prop =
+        let D = Integers.order_domain Integers.integers
+        (D.Term d == D.One) + (D.Term d == D.Term p)
+
+    /// `(∀d | 0 < d ∧ d ∣ p : d = 1 ∨ d = p)` — "the only positive divisors of p are 1 and p".
+    let private prime_all (d: IntVar) (p: Term<int>) : Prop =
+        PredCalculus.qall d (prime_range (Induction.tm d) p) (prime_body (Induction.tm d) p)
+
+    /// The definition of prime at `p`, with the dummy `d`.
+    let private prime_spec_with (d: IntVar) (p: Term<int>) : Prop =
+        let D = Integers.order_domain Integers.integers
+        prime p == ((D.One <. D.Term p) * prime_all d p)
+
+    /// **Definition of prime** — Gries p. 322: "an integer p > 1 is prime if the only positive
+    /// integers that divide p are 1 and p". A scheme over any `p` and any dummy `d` not in `p`:
+    ///
+    /// ```
+    /// prime p  =  1 < p ∧ (∀d | 0 < d ∧ d ∣ p : d = 1 ∨ d = p)
+    /// ```
+    ///
+    /// An EXPLICIT definition — `prime` abbreviates a formula in the existing symbols — so it is
+    /// trivially conservative: there is nothing to prove exists.
+    let (|DefPrime|_|) (e: Expr) =
+        match e with
+        | Equals(Unary prime_op p, And(_, ForAll(_, [d], _, _)))
+            when not (occurs_at_all d p)
+                 && sequal e (prime_spec_with (IntVar d.Name) (IntTerm(Expr.Cast<int> p))).Expr.Raw ->
+            Some (axiom_name "Divisibility" "Definition of prime")
+        | _ -> None
+
+    /// **(15.105) Relatively prime**: `b ⊥ c ≡ b gcd c = 1`. Notation, not a new symbol: it builds
+    /// the proposition `b gcd c = 1`, so it adds nothing to the theory.
+    let rel_prime (b: Term<int>) (c: Term<int>) : Prop =
+        let D = Integers.order_domain Integers.integers
+        D.Term (gcd_of b c) == D.One
+
     let divisibility_axioms =
         function
         | DefDivides x -> Some x
         | DefDivMod x -> Some x
         | DefGcd x -> Some x
+        | DefLcm x -> Some x
+        | DefPrime x -> Some x
         | _ -> None
 
     (* Theory *)
 
-    /// Integer arithmetic, Σ and Π, induction (12.8) — everything `Induction` has — and the definitions of `∣`, `÷`/`mod` and `gcd`. A
+    /// Integer arithmetic, Σ and Π, induction (12.8) — everything `Induction` has — and the definitions
+    /// of `∣`, `÷`/`mod`, `gcd`, `lcm` and `prime`. A
     /// caller's own axioms and rules go on top, as with `Induction`. It accepts theorems proved in
     /// the canonical `Induction.induction` (and, through it, `Integers.integers`).
     type Divisibility(?axioms: Axioms, ?rules: Rules, ?extends: Theory list) =
         inherit Induction.Induction(BooleanAlgebra.combine_axioms (defaultArg axioms (fun _ -> None)) divisibility_axioms,
                                     defaultArg rules [], (Induction.induction :> Theory) :: defaultArg extends [])
 
-    /// The theory: `Induction` and the three definitions, with nothing extra.
+    /// The theory: `Induction` and the five definitions, with nothing extra.
     let divisibility = Divisibility()
 
     (* Building blocks *)
@@ -1590,7 +1698,8 @@ module Divisibility =
         let z = lemma th (Z2 ==> goal) ([ Establish gz |> apply ] @ intro zero zero)
         by_em th Z2 goal z nz
 
-    /// **Bézout's identity**: `(∃u |: (∃v |: b gcd c = u·b + v·c))`. The least positive combination of
+    /// **(15.108) Bézout's identity**: `(∃u |: (∃v |: b gcd c = u·b + v·c))` — for all integers; Gries
+    /// states it for naturals and proves it by induction on `c`. The least positive combination of
     /// `bezout_least` is a non-negative common divisor that `b gcd c` divides (15.84), so it is
     /// `b gcd c` (`gcd_eq`); and `0 gcd 0 = 0 = 0·0 + 0·0`.
     let gcd_bezout (th: Theory) (b: Term<int>) (c: Term<int>) : Theorem =
@@ -1800,6 +1909,759 @@ module Divisibility =
                 IntegralDomain.refl_true th (abs_of b')                 |> apply ])
     /// **(15.107)** `b gcd 0 = abs.b` — Euclid's base case; Gries states it for natural `b`, as `b gcd 0 = b`.
     let gcd_zero_right (th: Theory) (b: Term<int>) : Theorem = gcd_zero_right_c th b
+
+    (* ------------------------------------------------------------------------------------------
+       (15.111)–(15.113): what Bézout gives — common divisors, relatively prime, Euclid's lemma.
+       ------------------------------------------------------------------------------------------ *)
+
+    /// (z ⇒ x) ⇒ ((¬x ∧ z) ⇒ r)
+    let private glue_absurd' = OrderedDomain.taut3 "dv_absurd2" (fun x z r -> (z ==> x) ==> (((!!x) * z) ==> r))
+    /// (a ⇒ x) ⇒ ((a ⇒ ¬x) ⇒ (a ⇒ r))
+    let private glue_contra = OrderedDomain.taut3 "dv_contra" (fun x a r -> (a ==> x) ==> ((a ==> !!x) ==> (a ==> r)))
+    /// (r ⇒ x ∨ e) ⇒ ((r ∧ ¬e) ⇒ x)
+    let private glue_drop = OrderedDomain.taut3 "dv_drop" (fun x e r -> (r ==> (x + e)) ==> ((r * !!e) ==> x))
+
+    /// `∀`-generalization with a hypothesis pulled out: from `body : (R.x ∧ H) ⇒ P.x`, proved about
+    /// the dummy `x` itself (not free in `H`), conclude `H ⇒ (∀x | R : P)` — Trading (9.2), the body
+    /// as a theorem, (9.8), then (9.5).
+    let private gen_under (th: Theory) (x: IntVar) (R: Prop) (H: Prop) (P: Prop) (body: Theorem) : Theorem =
+        let Rx, Px = pred_of x R, pred_of x P
+        let body' = lemma th (R ==> (H ==> P)) [ shunt' R H P |> Commute |> apply; Taut body |> apply ]
+        let gen = lemma th (qall x R (H ==> P)) [
+                    trade_forall_implies x Rx (pred_of x (H ==> P))     |> apply
+                    Taut body'                                          |> at [select_body]
+                    ident_forall_true' x                                |> apply ]
+        lemma th (H ==> qall x R P) [
+            ident_implies_not_or H (qall x R P)                         |> apply
+            distrib_or_forall' x Rx (!!H) Px                            |> apply                                           // (9.5)
+            ident_implies_not_or H P |> Commute                         |> at [select_body]
+            Taut gen                                                    |> apply ]
+
+    let private dvd_gcd_iff_c =
+        cached3 "dv_dvd_gcd_iff" (fun th (k: Term<int>) (b: Term<int>) (c: Term<int>) ->
+            let D = Integers.order_domain th
+            let k', b', c', G = D.Term k, D.Term b, D.Term c, D.Term (gcd_of b c)
+            let L, R = dvd k' b' * dvd k' c', dvd k' G
+            let bwd = lemma th (R ==> L) [
+                        Establish (under th R (gcd_dvd_l th b c))       |> apply
+                        Establish (under th R (gcd_dvd_r th b c))       |> apply
+                        Establish (dvd_trans th k' G b')                |> apply                                           // (15.82)
+                        Establish (dvd_trans th k' G c')                |> apply
+                        Deduce (reflex_implies L)                       |> apply_right ]
+            lemma th (L == R) [
+                mutual_implication' L R |> Commute                      |> apply
+                Taut (conj (dvd_gcd th k b c) bwd)                      |> apply ])
+    /// **(15.111)** `k ∣ b ∧ k ∣ c ≡ k ∣ (b gcd c)` — `⇒` is the definition of gcd (Gries derives it from
+    /// Bézout (15.108)); `⇐` is Transitivity (15.82).
+    let dvd_gcd_iff (th: Theory) (k: Term<int>) (b: Term<int>) (c: Term<int>) : Theorem = dvd_gcd_iff_c th k b c
+
+    let private coprime_dvd_c =
+        cached3 "dv_coprime_dvd" (fun th (b: Term<int>) (c: Term<int>) (d: Term<int>) ->
+            let D = Integers.order_domain th
+            let one = D.One
+            let b', c', d' = D.Term b, D.Term c, D.Term d
+            let G = D.Term (gcd_of b c)
+            let A = (G == one) * dvd c' (b' * d')
+            let R = dvd c' d'
+            let avoid = [ b'.Expr.Raw; c'.Expr.Raw; d'.Expr.Raw ]
+            let u = fresh_int "u" avoid
+            let v = fresh_int "v" (u.Expr.Raw :: avoid)
+            let U, V = D.Term (tm u), D.Term (tm v)
+            let HB = G == U * b' + V * c'
+            let bdu, cdv = (b' * d') * U, (c' * d') * V
+            let ccdv = mp (dvd_mul th c' (c' * d') V) (mp (dvd_mul th c' c' d') (dvd_refl th c'))   // c ∣ (c·d)·v
+            let lin = lemma th (A ==> dvd c' (bdu + cdv)) [
+                        Establish (dvd_mul th c' (b' * d') U)           |> apply                                           // c ∣ (b·d)·u
+                        Establish (under th A ccdv)                     |> apply
+                        Deduce (dvd_add th c' bdu cdv)                  |> apply_right ]
+            // d = d·1 = d·(b gcd c) = d·(u·b + v·c) = (b·d)·u + (c·d)·v
+            let inner = lemma th ((HB * A) ==> R) [
+                        Integers.ring th d' (d' * one)                  |> at [right_branch; right_branch]
+                        Deduce' (OrderedDomain.eq_sym th G one)         |> at [right_branch; right_branch; right_branch]   // 1 → b gcd c
+                        Deduce' (reflex_implies HB)                     |> at [right_branch; right_branch; right_branch]   // → u·b + v·c
+                        Integers.ring th (d' * (U * b' + V * c')) (bdu + cdv) |> at [right_branch; right_branch]
+                        Deduce lin                                      |> apply_right ]
+            let Q = A ==> R
+            let inner' = lemma th (HB ==> Q) [ shunt' HB A R |> Commute |> apply; Taut inner |> apply ]
+            let EXv = qex v T HB
+            let tv_ = lemma th ((T * HB) ==> Q) [ commute_and T HB |> at_left; ident_and HB |> at_left; Taut inner' |> apply ]
+            let elimV = exists_elim th v truepred (pred_of v HB) Q tv_
+            let tu_ = lemma th ((T * EXv) ==> Q) [ commute_and T EXv |> at_left; ident_and EXv |> at_left; Taut elimV |> apply ]
+            let elimU = exists_elim th u truepred (pred_of u EXv) Q tu_
+            mp elimU (gcd_bezout_with th u v b c))
+    /// **(15.113)** `b ⊥ c ∧ c ∣ (b·d) ⇒ c ∣ d` — by Bézout (15.108), `1 = u·b + v·c`, so
+    /// `d = (b·d)·u + (c·d)·v`, and `c` divides both terms.
+    let coprime_dvd (th: Theory) (b: Term<int>) (c: Term<int>) (d: Term<int>) : Theorem = coprime_dvd_c th b c d
+
+    (* Primes — the definition, in parts *)
+
+    /// The definition of prime as a rewrite, `prime p → 1 < p ∧ (∀d | 0 < d ∧ d ∣ p : d = 1 ∨ d = p)`,
+    /// with the given dummy.
+    let private prime_def_with (th: Theory) (d: IntVar) (p: Term<int>) : Rule = ax_ident th (prime_spec_with d p)
+
+    /// The definition of prime as a rewrite, with a dummy `d` fresh for `p`.
+    let prime_def (th: Theory) (p: Term<int>) : Rule = prime_def_with th (fresh_int "d" [ p.Expr ]) p
+
+    /// `prime p ⇒ 1 < p`
+    let prime_gt_one (th: Theory) (p: Term<int>) : Theorem =
+        let D = Integers.order_domain th
+        let d = fresh_int "d" [ p.Expr ]
+        let G, ALL = (D.One <. D.Term p), prime_all d p
+        lemma th (prime p ==> G) [
+            prime_def_with th d p                                       |> at_left
+            Taut (strengthen_and G ALL)                                 |> apply ]
+
+    /// `prime p ⇒ 0 < p`
+    let prime_pos (th: Theory) (p: Term<int>) : Theorem =
+        let D = Integers.order_domain th
+        let zero, one, p' = D.Zero, D.One, D.Term p
+        lemma th (prime p ==> (zero <. p')) [
+            Establish (prime_gt_one th p)                               |> apply
+            Establish (under th (prime p) (zero_lt_one th))             |> apply
+            Deduce (OrderedDomain.lt_trans D zero one p')               |> apply_right ]
+
+    /// `prime p ∧ (0 < e ∧ e ∣ p) ⇒ e = 1 ∨ e = p` — the definition, instantiated (9.13) at `e`.
+    let prime_dvd (th: Theory) (p: Term<int>) (e: Term<int>) : Theorem =
+        let D = Integers.order_domain th
+        let d = fresh_int "d" [ p.Expr ]
+        let x = tm d
+        let Rp, Pp = pred_of d (prime_range x p), pred_of d (prime_body x p)
+        let ALL = prime_all d p
+        let all_of = lemma th (prime p ==> ALL) [
+                        prime_def_with th d p                           |> at_left
+                        commute_and (D.One <. D.Term p) ALL             |> at_left
+                        Taut (strengthen_and ALL (D.One <. D.Term p))   |> apply ]
+        let inst = lemma th (ALL ==> (Rp.[e] ==> Pp.[e])) [ trade_forall_implies d Rp Pp |> at_left ]                    // (9.13)
+        lemma th ((prime p * Rp.[e]) ==> Pp.[e]) [
+            Establish all_of                                            |> apply
+            Deduce (lemma th ((ALL * Rp.[e]) ==> Pp.[e]) [ shunt' ALL Rp.[e] Pp.[e] |> apply; Taut inst |> apply ]) |> apply_right ]
+
+    /// `0 < p ⇒ ¬(b = 0 ∧ p = 0)`
+    let private pos_not_both_zero (th: Theory) (b: DomainTerm<int>) (p: DomainTerm<int>) : Theorem =
+        let D = Integers.order_domain th
+        let zero = D.Zero
+        let Z2 = (b == zero) * (p == zero)
+        lemma th ((zero <. p) ==> !!Z2) [
+            def_implies_contr (zero <. p) (!!Z2)                        |> apply                                           // ¬¬Z ⇒ ¬(0 < p)
+            double_negation Z2                                          |> at_left
+            Deduce' (reflex_implies (p == zero))                        |> at [right_branch; apply_unary; right_branch]    // p → 0
+            OrderedDomain.lt_irrefl D zero                              |> at [right_branch; apply_unary]
+            not_false                                                   |> apply_right ]
+
+    let private prime_coprime_c =
+        cached2 "dv_prime_coprime" (fun th (p: Term<int>) (b: Term<int>) ->
+            let D = Integers.order_domain th
+            let zero, one = D.Zero, D.One
+            let p', b' = D.Term p, D.Term b
+            let g = D.Term (gcd_of b p)
+            let NP = !!(dvd p' b')
+            let H = prime p' * NP
+            let E1, E2 = (g == one), (g == p')
+            let gpos = lemma th (prime p' ==> (zero <. g)) [
+                        Establish (prime_pos th p)                      |> apply
+                        Establish (pos_not_both_zero th b' p')          |> apply
+                        Deduce (gcd_pos th b p)                         |> apply_right ]
+            // g = p would make p ∣ b.
+            let notp = lemma th (E2 ==> dvd p' b') [
+                        Deduce' (OrderedDomain.eq_sym th g p')          |> at [right_branch; left_branch]                  // p → b gcd p
+                        Taut (gcd_dvd_l th b p)                         |> apply_right ]
+            let cA = lemma th ((NP * E1) ==> E1) [ Deduce (reflex_implies E1) |> apply_right ]
+            let cB = mp (OrderedDomain.in_theory th (glue_absurd' (dvd p' b') E2 E1)) notp
+            lemma th (H ==> E1) [
+                Establish gpos                                          |> apply
+                Establish (under th H (gcd_dvd_r th b p))               |> apply
+                Establish (prime_dvd th p' g)                           |> apply                                           // g = 1 ∨ g = p
+                Deduce (by_cases2 th E1 E2 NP E1 cA cB)                 |> apply_right ])
+    /// `prime p ∧ ¬(p ∣ b) ⇒ b ⊥ p` — `b gcd p` is a positive divisor of `p`, so 1 or `p`, and `p` would
+    /// divide `b`.
+    let prime_coprime (th: Theory) (p: Term<int>) (b: Term<int>) : Theorem = prime_coprime_c th p b
+
+    let private euclid_lemma_c =
+        cached3 "dv_euclid_lemma" (fun th (p: Term<int>) (b: Term<int>) (c: Term<int>) ->
+            let D = Integers.order_domain th
+            let p', b', c' = D.Term p, D.Term b, D.Term c
+            let PB, PC = dvd p' b', dvd p' c'
+            let H = prime p' * dvd p' (b' * c')
+            let R = PB + PC
+            let cP = lemma th ((H * PB) ==> R) [ Deduce (weaken_or PB PC) |> apply_right ]
+            let cN = lemma th ((H * !!PB) ==> R) [
+                        Establish (prime_coprime th p b)                |> apply                                           // b gcd p = 1
+                        Establish (coprime_dvd th b p c)                |> apply                                           // (15.113)
+                        commute_or PB PC                                |> apply_right
+                        Deduce (weaken_or PC PB)                        |> apply_right ]
+            mp (mp (OrderedDomain.in_theory th (glue_cases H PB R)) cP) cN)
+    /// **(15.112) Theorem** (Euclid's lemma): `prime p ∧ p ∣ b·c ⇒ p ∣ b ∨ p ∣ c` — if `p ∤ b` then
+    /// `b ⊥ p` (`prime_coprime`), and (15.113).
+    let euclid_lemma (th: Theory) (p: Term<int>) (b: Term<int>) (c: Term<int>) : Theorem = euclid_lemma_c th p b c
+
+    (* A prime divisor, and infinitely many primes *)
+
+    /// `1 < n ⇒ (∃p | prime p : p ∣ n)`, with the given dummy `p`.
+    let private prime_divisor_with (th: Theory) (p: IntVar) (n: Term<int>) : Theorem =
+        let D = Integers.order_domain th
+        let zero, one = D.Zero, D.One
+        let n' = D.Term n
+        let avoid = [ n.Expr.Raw; p.Expr.Raw ]
+        let x = fresh_int "x" avoid
+        let y = fresh_int "y" (x.Expr.Raw :: avoid)
+        let d = fresh_int "d" (x.Expr.Raw :: y.Expr.Raw :: avoid)
+        let X, Dd = D.Term (tm x), D.Term (tm d)
+        let P = pred_of x ((one <. X) * dvd X n')
+        let minimal (w: Term<int>) = qall y ((leq 0 (tm y)) * (lt (tm y) w)) (!!P.[tm y])
+        let M = minimal (tm x)
+        let Rng = pred_of x ((leq 0 (tm x)) * P.[tm x])
+        let Min = pred_of x M
+        let A = Rng.[tm x] * Min.[tm x]
+        let goal = exists (p, pred_of p (prime (tm p)), pred_of p (dvd (D.Term (tm p)) n'))
+        let xpos = lemma th ((one <. X) ==> (zero <. X)) [
+                    Establish (under th (one <. X) (zero_lt_one th))    |> apply
+                    Deduce (OrderedDomain.lt_trans D zero one X)        |> apply_right ]
+        // The least x > 1 dividing n is prime: a positive divisor d ≠ 1 of x is > 1 and divides n, so
+        // d < x would contradict minimality; and d ≤ x (`dvd_le`).
+        let E1, E2 = (Dd == one), (Dd == X)
+        let RD = prime_range Dd X
+        let K = RD * A
+        let Rb = E1 + E2
+        let c1 = lemma th ((K * E1) ==> Rb) [ Deduce (weaken_or E1 E2) |> apply_right ]
+        let le_split = lemma th ((one <=. Dd) ==> ((one <. Dd) + E1)) [
+                        ax_ident th ((one <=. Dd) == ((one <. Dd) + (one == Dd))) |> at_left                             // (15.38)
+                        OrderedDomain.eq_comm th one Dd                 |> at [left_branch; right_branch]
+                        Taut (reflex_implies ((one <. Dd) + E1))        |> apply ]
+        let gt1 = mp (OrderedDomain.in_theory th (glue_drop (one <. Dd) E1 (one <=. Dd))) le_split                        // 1 ≤ d ∧ ¬(d = 1) ⇒ 1 < d
+        let Rm = pred_of y ((leq 0 (tm y)) * (lt (tm y) (tm x)))
+        let NPy = pred_of y (!!P.[tm y])
+        let inst = lemma th (M ==> (Rm.[Dd] ==> NPy.[Dd])) [ trade_forall_implies y Rm NPy |> at_left ]                   // (9.13)
+        let mi = lemma th ((M * Rm.[Dd]) ==> NPy.[Dd]) [ shunt' M Rm.[Dd] NPy.[Dd] |> apply; Taut inst |> apply ]
+        let A2 = K * !!E1
+        let ge = lemma th (A2 ==> (X <=. Dd)) [
+                    OrderedDomain.not_lt D Dd X |> Commute              |> at_right                                        // x ≤ d → ¬(d < x)
+                    ident_implies_false_not (Dd <. X) |> Commute        |> at_right
+                    shunt' A2 (Dd <. X) F |> Commute                    |> apply
+                    Establish (one_le_of_pos th Dd)                     |> apply
+                    Establish gt1                                       |> apply
+                    Establish (lt_le th zero Dd)                        |> apply
+                    Establish (dvd_trans th Dd X n')                    |> apply                                           // d ∣ n
+                    Establish (lemma th (((one <. Dd) * dvd Dd n') ==> P.[Dd]) [ Deduce (reflex_implies P.[Dd]) |> apply_right ]) |> apply
+                    Establish mi                                        |> apply
+                    Deduce (lemma th ((P.[Dd] * !!P.[Dd]) ==> F) [ contr P.[Dd] |> at_left ]) |> apply_right ]
+        let c2 = lemma th (A2 ==> Rb) [
+                    Establish ge                                        |> apply
+                    Establish xpos                                      |> apply
+                    Establish (dvd_le th X Dd)                          |> apply                                           // d ≤ x
+                    Establish (OrderedDomain.le_antisym D Dd X)         |> apply                                           // d = x
+                    commute_or E1 E2                                    |> apply_right
+                    Deduce (weaken_or E2 E1)                            |> apply_right ]
+        let body = mp (mp (OrderedDomain.in_theory th (glue_cases K E1 Rb)) c1) c2
+        let allA = gen_under th d RD A Rb body
+        let primeX = lemma th (A ==> prime X) [
+                        prime_def_with th d X                           |> at_right
+                        Establish allA                                  |> apply
+                        Deduce (reflex_implies ((one <. X) * prime_all d X)) |> apply_right ]
+        let Rp, Bp = pred_of p (prime (tm p)), pred_of p (dvd (D.Term (tm p)) n')
+        let xbody = lemma th (A ==> goal) [
+                        trade_exists_and p Rp Bp                        |> at_right                                        // (9.19)
+                        Establish primeX                                |> apply
+                        Deduce (exists_intro p (Rp * Bp) X)             |> apply_right ]
+        let elimX = exists_elim th x Rng Min goal xbody
+        let least = least_element th x y P n
+        lemma th ((one <. n') ==> goal) [
+            Establish (lemma th ((one <. n') ==> (zero <=. n')) [
+                        Establish (under th (one <. n') (zero_lt_one th)) |> apply
+                        Establish (OrderedDomain.lt_trans D zero one n') |> apply
+                        Deduce (lt_le th zero n')                       |> apply_right ]) |> apply
+            Establish (under th (one <. n') (dvd_refl th n'))           |> apply
+            Establish least                                             |> apply                                           // (15.49)
+            Deduce elimX                                                |> apply_right ]
+
+    /// **A prime divisor**: `1 < n ⇒ (∃p | prime p : p ∣ n)` — the step of (15.114)'s existence proof.
+    /// The least `x > 1` dividing `n` (Well ordering, `least_element`) is prime: a positive divisor
+    /// `d ≠ 1` of it is `> 1` and divides `n`, so it is not below `x`, and it divides `x`, so it is
+    /// not above.
+    let prime_divisor (th: Theory) (n: Term<int>) : Theorem =
+        prime_divisor_with th (fresh_int "p" [ n.Expr ]) n
+
+    // The factorial lemmas below reason about terms that contain a binder (the Π). Substitution
+    // (3.84a) refuses to exchange such a term — its capture check counts the Π's own dummy — so
+    // `eq_sym`, `Deduce'` and every lemma built on them fail at it. Each step that touches `n!` is
+    // therefore a schema lemma, derived once at metavariables (`cached1`–`cached3`): instantiating a
+    // binder-free statement at a value that contains a binder is safe (`Tactics.InstantiateTerms`).
+
+    /// `b ∣ c ⇒ b ∣ (c·d)` — (15.84), as a schema.
+    let private dvd_mul_s = cached3 "dv_dvd_mul_s" (fun th (b: Term<int>) (c: Term<int>) (d: Term<int>) -> dvd_mul th b c d)
+
+    /// `k ∣ a·k`
+    let private dvd_mul_self =
+        cached2 "dv_dvd_mul_self" (fun th (k: Term<int>) (a: Term<int>) ->
+            let D = Integers.order_domain th
+            let k', a' = D.Term k, D.Term a
+            lemma th (dvd k' (a' * k')) [
+                Integers.ring th (a' * k') (k' * a')                    |> at [right_branch]
+                Taut (mp (dvd_mul th k' k' a') (dvd_refl th k'))        |> apply ])
+
+    /// `1 ≤ a ∧ 1 ≤ b ⇒ 1 ≤ a·b` — `0 < a`, so `1·a ≤ b·a` (15.43), and Transitivity.
+    let private one_le_mul =
+        cached2 "dv_one_le_mul" (fun th (a: Term<int>) (b: Term<int>) ->
+            let D = Integers.order_domain th
+            let zero, one, a', b' = D.Zero, D.One, D.Term a, D.Term b
+            let grow = lemma th (((zero <. a') * (one <=. b')) ==> (a' <=. a' * b')) [
+                        Integers.ring th a' (one * a')                  |> at [right_branch; left_branch]
+                        Integers.ring th (a' * b') (b' * a')            |> at [right_branch; right_branch]
+                        Deduce (OrderedDomain.le_mul_pos D one b' a')   |> apply_right ]
+            let H = (one <=. a') * (one <=. b')
+            lemma th (H ==> (one <=. a' * b')) [
+                Establish (under th H (zero_lt_one th))                 |> apply
+                Establish (OrderedDomain.lt_le_trans D zero one a')     |> apply                                           // 0 < a
+                Establish grow                                          |> apply
+                Deduce (OrderedDomain.le_trans D one a' (a' * b'))      |> apply_right ])
+
+    /// `1 ≤ a ⇒ 1 < a + 1`
+    let private one_lt_succ =
+        cached1 "dv_one_lt_succ" (fun th (a: Term<int>) ->
+            let D = Integers.order_domain th
+            let one, a' = D.One, D.Term a
+            lemma th ((one <=. a') ==> (one <. a' + one)) [
+                Ident (lt_succ_le th one a')                            |> at_right                                        // 1 < a+1 → 1 ≤ a
+                Taut (reflex_implies (one <=. a'))                      |> apply ])
+
+    /// `(Πj | 1 ≤ j ∧ j ≤ n : j)` — `n!` for `0 ≤ n`, as a product quantification.
+    let private factorial_with (j: IntVar) (n: Term<int>) : IntTerm =
+        Sums.qprod j ((leq 1 (tm j)) * (leq (tm j) n)) (tm j)
+
+    /// The dummies a factorial lemma uses: `m` (the induction variable), `i` (its hypothesis), `j`
+    /// (the product's), fresh for `avoid`.
+    let private fact_dummies (avoid: Expr list) =
+        let m = fresh_int "m" avoid
+        let i = fresh_int "i" (m.Expr.Raw :: avoid)
+        let j = fresh_int "j" (m.Expr.Raw :: i.Expr.Raw :: avoid)
+        m, i, j
+
+    /// `0 ≤ n ⇒ 1 ≤ n!`, by induction (12.8) — Split off factor for Π in the step.
+    let private fact_pos (th: Theory) (n: Term<int>) : Theorem =
+        let D = Integers.order_domain th
+        let zero, one = D.Zero, D.One
+        let m, i, j = fact_dummies [ n.Expr.Raw ]
+        let F (w: Term<int>) = D.Term (factorial_with j w)
+        let P = pred_of m (one <=. F (tm m))
+        let bse = lemma th (base_case 0 P) [
+                    Ident (empty_prod th 1 0 j (tm j))                 |> at_right                                         // Π(1..0) → 1
+                    OrderedDomain.le_refl D one                         |> apply ]
+        let a, ih = leq 0 (tm m), hypothesis 0 m i P
+        let m1 = succ m
+        let Fm, M1 = F (tm m), D.Term m1
+        let body = lemma th (a ==> (ih ==> P.[m1])) [
+                    (shunt' a ih P.[m1] |> Commute)                     |> apply
+                    Establish (shift_bound th 0 (tm m))                 |> apply                                           // 1 ≤ m+1
+                    Deduce' (split_off_factor th 1 (tm m) j (tm j))     |> apply_right                                     // Π(1..m+1) → Π(1..m)·(m+1)
+                    Establish (hypothesis_at th 0 m i P)                |> apply                                           // 1 ≤ m!
+                    Deduce (one_le_mul th Fm M1)                        |> apply_right ]
+        let all = by_induction th 0 m i P bse (generalize_step th 0 m i P body)
+        let Rm = pred_of m a
+        mp (lemma th (Prop(Expr.Cast<bool> all.Stmt) ==> (Rm.[n] ==> P.[n])) [ trade_forall_implies m Rm P |> at_left ]) all
+
+    /// `0 ≤ n ∧ (1 ≤ k ∧ k ≤ n) ⇒ k ∣ n!`, by induction (12.8) on `n`: the new factor `n+1` is either
+    /// above `k` (the hypothesis, (15.84)) or `k` itself.
+    let private fact_dvd (th: Theory) (k: Term<int>) (n: Term<int>) : Theorem =
+        let D = Integers.order_domain th
+        let zero, one = D.Zero, D.One
+        let K = D.Term k
+        let m, i, j = fact_dummies [ k.Expr.Raw; n.Expr.Raw ]
+        let Fac (w: Term<int>) = D.Term (factorial_with j w)
+        let B (w: Term<int>) = (one <=. K) * (K <=. D.Term w)
+        let P = pred_of m (B (tm m) ==> dvd K (Fac (tm m)))
+        // Base: 1 ≤ k ≤ 0 is impossible.
+        let h, z = (one <=. K), (K <=. zero)
+        let zn = lemma th (z ==> !!h) [
+                    ident_implies_false_not h |> Commute                |> at_right                                        // ¬h → (h ⇒ F)
+                    shunt' z h F |> Commute                             |> apply
+                    ax_ident th ((leq 1 0) == F) |> Commute             |> at_right                                        // F → 1 ≤ 0, literal evaluation
+                    Deduce (OrderedDomain.le_trans D one K zero)        |> apply_right ]
+        let bse = mp (OrderedDomain.in_theory th (glue_absurd h z (dvd K (Fac (IntTerm 0))))) zn
+        // Step.
+        let a, ih = leq 0 (tm m), hypothesis 0 m i P
+        let m1 = succ m
+        let Mt, M1 = D.Term (tm m), D.Term m1
+        let Fm = Fac (tm m)
+        let Bm1 = B m1
+        let H = (a * ih) * Bm1
+        let R = dvd K (Fm * M1)
+        let hm = lemma th (((a * ih) * B (tm m)) ==> dvd K Fm) [
+                    shunt' (a * ih) (B (tm m)) (dvd K Fm)               |> apply
+                    Taut (hypothesis_at th 0 m i P)                     |> apply ]
+        let L1, E1 = (K <=. Mt), (K == M1)
+        let cA = lemma th ((H * L1) ==> R) [
+                    Establish hm                                        |> apply                                           // k ∣ m!
+                    Deduce (dvd_mul_s th K Fm M1)                       |> apply_right ]                                   // (15.84)
+        let cB = lemma th ((H * E1) ==> R) [
+                    Deduce' (OrderedDomain.eq_sym th K M1)              |> at [right_branch; right_branch; right_branch]   // m+1 → k
+                    Taut (dvd_mul_self th K Fm)                         |> apply_right ]
+        let split = lemma th ((K <=. M1) ==> (L1 + E1)) [
+                    discrete th K (tm m)                                |> at_left                                         // Discreteness
+                    Taut (reflex_implies (L1 + E1))                     |> apply ]
+        let full = lemma th (H ==> R) [
+                    Establish split                                     |> apply
+                    Deduce (by_cases2 th L1 E1 H R cA cB)               |> apply_right ]
+        let body = lemma th (a ==> (ih ==> P.[m1])) [
+                    (shunt' a ih P.[m1] |> Commute)                     |> apply
+                    shunt' (a * ih) Bm1 (dvd K (Fac m1)) |> Commute     |> apply
+                    Establish (shift_bound th 0 (tm m))                 |> apply
+                    Deduce' (split_off_factor th 1 (tm m) j (tm j))     |> apply_right                                     // Π(1..m+1) → Π(1..m)·(m+1)
+                    Deduce full                                         |> apply_right ]
+        let all = by_induction th 0 m i P bse (generalize_step th 0 m i P body)
+        let Rm = pred_of m a
+        let pn = mp (lemma th (Prop(Expr.Cast<bool> all.Stmt) ==> (Rm.[n] ==> P.[n])) [ trade_forall_implies m Rm P |> at_left ]) all
+        lemma th ((Rm.[n] * B n) ==> dvd K (Fac n)) [ shunt' Rm.[n] (B n) (dvd K (Fac n)) |> apply; Taut pn |> apply ]
+
+    /// **(15.116) Theorem**: there are infinitely many primes — `0 ≤ n ⇒ (∃p | prime p : n < p)`.
+    ///
+    /// Euclid's argument, with `n! + 1` for Gries' `p₀·…·p_{k−1} + 1` (15.117) — the product of all of
+    /// `1..n`, not just the primes among them, which needs no enumeration of the primes. `n!` is
+    /// `(Πj | 1 ≤ j ∧ j ≤ n : j)`; `1 ≤ n!` and `k ∣ n!` for `1 ≤ k ≤ n` are proved by induction. So
+    /// `n! + 1 > 1` has a prime divisor `p` (`prime_divisor`), and `p ≤ n` would make `p` divide both
+    /// `n!` and `n! + 1` (15.86).
+    let primes_unbounded (th: Theory) (n: Term<int>) : Theorem =
+        let D = Integers.order_domain th
+        let zero, one = D.Zero, D.One
+        let n' = D.Term n
+        let avoid = [ n.Expr.Raw ]
+        let q = fresh_int "p" avoid
+        let p = fresh_int "q" (q.Expr.Raw :: avoid)
+        let _, _, j = fact_dummies avoid
+        let F = D.Term (factorial_with j n)
+        let Mm = F + one
+        let N0 = zero <=. n'
+        let goal = exists (q, pred_of q (prime (tm q)), pred_of q (n' <. D.Term (tm q)))
+        let fpos = fact_pos th n                                                                                           // 0 ≤ n ⇒ 1 ≤ n!
+        let mgt1 = lemma th (N0 ==> (one <. Mm)) [
+                    Establish fpos                                      |> apply
+                    Deduce (one_lt_succ th F)                           |> apply_right ]
+        let P = D.Term (tm p)
+        let PR, PM, NL = prime P, dvd P Mm, (n' <. P)
+        let Kb = (PR * PM) * N0
+        let Rq, Bq = pred_of q (prime (tm q)), pred_of q (n' <. D.Term (tm q))
+        let cP = lemma th ((Kb * NL) ==> goal) [
+                    trade_exists_and q Rq Bq                            |> at_right
+                    Deduce (exists_intro q (Rq * Bq) P)                 |> apply_right ]
+        // p ≤ n: then 1 ≤ p ≤ n, so p ∣ n!, and p ∤ n! + 1 (15.86).
+        let Kn = Kb * !!NL
+        let notpm = lemma th (Kn ==> !!PM) [
+                    OrderedDomain.not_lt D n' P                         |> at [left_branch; right_branch]                  // ¬(n < p) → p ≤ n
+                    Establish (prime_gt_one th P)                       |> apply
+                    Establish (lt_le th one P)                          |> apply
+                    Establish (fact_dvd th P n)                         |> apply                                           // p ∣ n!
+                    Deduce (not_dvd_succ th P F)                        |> apply_right ]                                   // (15.86)
+        let pmK = lemma th (Kn ==> PM) [ Deduce (reflex_implies PM) |> apply_right ]
+        let cN = mp (mp (OrderedDomain.in_theory th (glue_contra PM Kn goal)) pmK) notpm
+        let body = mp (mp (OrderedDomain.in_theory th (glue_cases Kb NL goal)) cP) cN
+        let Q = N0 ==> goal
+        let pbody = lemma th ((PR * PM) ==> Q) [ shunt' (PR * PM) N0 goal |> Commute |> apply; Taut body |> apply ]
+        let elimP = exists_elim th p (pred_of p (prime (tm p))) (pred_of p (dvd (D.Term (tm p)) Mm)) Q pbody
+        let EX = exists (p, pred_of p (prime (tm p)), pred_of p (dvd (D.Term (tm p)) Mm))
+        let elimP' = lemma th ((EX * N0) ==> goal) [ shunt' EX N0 goal |> apply; Taut elimP |> apply ]
+        // `prime_divisor` at n! + 1, through a ∀ (generalization, then (9.13)): its proof rewrites
+        // under hypotheses about its argument, which a term containing the Π cannot be (see above).
+        let w = fresh_int "w" (p.Expr.Raw :: q.Expr.Raw :: j.Expr.Raw :: avoid)
+        let W = D.Term (tm w)
+        let Rw = pred_of w (one <. W)
+        let Pw = pred_of w (exists (p, pred_of p (prime (tm p)), pred_of p (dvd (D.Term (tm p)) W)))
+        let allw = lemma th (forall (w, Rw, Pw)) [
+                    trade_forall_implies w Rw Pw                        |> apply
+                    Taut (prime_divisor_with th p W)                    |> at [select_body]
+                    ident_forall_true' w                                |> apply ]
+        let pdM = lemma th (forall (w, Rw, Pw) ==> (Rw.[Mm] ==> Pw.[Mm])) [ trade_forall_implies w Rw Pw |> at_left ]   // (9.13)
+        lemma th (N0 ==> goal) [
+            Establish mgt1                                              |> apply
+            Establish (mp pdM allw)                                     |> apply
+            Deduce elimP'                                               |> apply_right ]
+
+    (* ------------------------------------------------------------------------------------------
+       The least common multiple (15.94), the dual of gcd.
+       ------------------------------------------------------------------------------------------ *)
+
+    /// **Existence of lcm** — proved WITHOUT the definition of lcm, which this justifies:
+    ///
+    /// ```
+    /// (∃l | 0 ≤ l : (b ∣ l ∧ c ∣ l) ∧ (∀m | b ∣ m ∧ c ∣ m : l ∣ m))
+    /// ```
+    ///
+    /// For `b, c ≠ 0`, the least positive common multiple `x` (Well ordering, `least_element`; the set
+    /// contains `(b·b)·(c·c)`): a common multiple `m` has remainder `r = m mod x`, again a common
+    /// multiple, with `0 ≤ r < x`, so `r = 0` and `x ∣ m`. If `b = 0` or `c = 0`, `l := 0`: a multiple
+    /// of 0 is 0.
+    let lcm_exists (th: Theory) (b: Term<int>) (c: Term<int>) : Theorem =
+        let D = Integers.order_domain th
+        let zero = D.Zero
+        let b', c' = D.Term b, D.Term c
+        let avoid = [ b.Expr.Raw; c.Expr.Raw ]
+        let l = fresh_int "l" avoid
+        let m = fresh_int "m" (l.Expr.Raw :: avoid)
+        let x = fresh_int "x" (m.Expr.Raw :: l.Expr.Raw :: avoid)
+        let y = fresh_int "y" (x.Expr.Raw :: m.Expr.Raw :: l.Expr.Raw :: avoid)
+        let Mv = D.Term (tm m)
+        let Rmm = dvd b' Mv * dvd c' Mv
+        let Phi (w: DomainTerm<int>) = (dvd b' w * dvd c' w) * qall m Rmm (dvd w Mv)
+        let Rl, Bl = pred_of l (zero <=. D.Term (tm l)), pred_of l (Phi (D.Term (tm l)))
+        let goal = exists (l, Rl, Bl)
+        // b = 0 or c = 0: l := 0.
+        let Zb, Zc = (b' == zero), (c' == zero)
+        let Z = Zb + Zc
+        let R0 = dvd zero Mv
+        let to0 (t: DomainTerm<int>) (Zt: Prop) =
+            lemma th ((Rmm * Zt) ==> R0) [
+                Establish (zero_dvd th t Mv)                            |> apply                                           // m = 0
+                Deduce' (reflex_implies (Mv == zero))                   |> at [right_branch; right_branch]
+                Taut (dvd_zero th zero)                                 |> apply_right ]
+        let body0 = lemma th ((Rmm * Z) ==> R0) [
+                    commute_and Rmm Z                                   |> at_left
+                    Taut (by_cases2 th Zb Zc Rmm R0 (to0 b' Zb) (to0 c' Zc)) |> apply ]
+        let all0 = gen_under th m Rmm Z R0 body0
+        let z = lemma th (Z ==> goal) [
+                    trade_exists_and l Rl Bl                            |> at_right                                        // (9.19)
+                    Establish (under th Z (dvd_zero th b'))             |> apply
+                    Establish (under th Z (dvd_zero th c'))             |> apply
+                    Establish all0                                      |> apply
+                    Establish (under th Z (lemma th (zero <=. zero) [ OrderedDomain.le_refl D zero |> apply ])) |> apply
+                    Deduce (exists_intro l (Rl * Bl) zero)              |> apply_right ]
+        // b, c ≠ 0: the least positive common multiple.
+        let X = D.Term (tm x)
+        let P = pred_of x ((zero <. X) * (dvd b' X * dvd c' X))
+        let minimal (w: Term<int>) = qall y ((leq 0 (tm y)) * (lt (tm y) w)) (!!P.[tm y])
+        let M = minimal (tm x)
+        let Rng = pred_of x ((leq 0 (tm x)) * P.[tm x])
+        let Min = pred_of x M
+        let A = Rng.[tm x] * Min.[tm x]
+        let H0 = zero <. X
+        let qq, r = D.Term (div_of Mv X), D.Term (mod_of Mv X)
+        // t ∣ r, for t a divisor of both m and x: r = m − x·q.
+        let rdvd (t: DomainTerm<int>) =
+            lemma th (((H0 * dvd t X) * dvd t Mv) ==> dvd t r) [
+                Establish (div_mod_def th Mv X)                         |> apply                                           // m = q·x + r
+                Integers.ring th r ((qq * X + r) - X * qq)              |> at [right_branch; right_branch]
+                Deduce' (OrderedDomain.eq_sym th Mv (qq * X + r))       |> at [right_branch; right_branch; left_branch]    // q·x + r → m
+                Establish (dvd_mul th t X qq)                           |> apply                                           // t ∣ x·q
+                Deduce (dvd_sub th t Mv (X * qq))                       |> apply_right ]
+        let Rm = pred_of y ((leq 0 (tm y)) * (lt (tm y) (tm x)))
+        let NPy = pred_of y (!!P.[tm y])
+        let inst = lemma th (M ==> (Rm.[r] ==> NPy.[r])) [ trade_forall_implies y Rm NPy |> at_left ]                     // (9.13)
+        let mi = lemma th ((M * Rm.[r]) ==> NPy.[r]) [ shunt' M Rm.[r] NPy.[r] |> apply; Taut inst |> apply ]
+        let A2 = Rmm * A
+        let le0 = lemma th (A2 ==> (r <=. zero)) [
+                    OrderedDomain.not_lt D zero r |> Commute            |> at_right                                        // r ≤ 0 → ¬(0 < r)
+                    ident_implies_false_not (zero <. r) |> Commute      |> at_right
+                    shunt' A2 (zero <. r) F |> Commute                  |> apply
+                    Establish (mod_nonneg th Mv X)                      |> apply
+                    Establish (mod_lt th Mv X)                          |> apply
+                    Establish (rdvd b')                                 |> apply
+                    Establish (rdvd c')                                 |> apply
+                    Establish (lemma th (((zero <. r) * (dvd b' r * dvd c' r)) ==> P.[r]) [ Deduce (reflex_implies P.[r]) |> apply_right ]) |> apply
+                    Establish mi                                        |> apply
+                    Deduce (lemma th ((P.[r] * !!P.[r]) ==> F) [ contr P.[r] |> at_left ]) |> apply_right ]
+        let xm = lemma th (A2 ==> dvd X Mv) [
+                    Deduce' (dvd_iff_mod_zero th X Mv)                  |> apply_right                                     // x ∣ m → m mod x = 0
+                    Establish le0                                       |> apply
+                    Establish (mod_nonneg th Mv X)                      |> apply
+                    Deduce (OrderedDomain.le_antisym D r zero)          |> apply_right ]
+        let allA = gen_under th m Rmm A (dvd X Mv) xm
+        let xbody = lemma th (A ==> goal) [
+                    trade_exists_and l Rl Bl                            |> at_right
+                    Establish allA                                      |> apply
+                    Deduce (exists_intro l (Rl * Bl) X)                 |> apply_right ]
+        let elimX = exists_elim th x Rng Min goal xbody
+        // The set contains e = (b·b)·(c·c).
+        let bb, cc = b' * b', c' * c'
+        let e = bb * cc
+        let posl (w: DomainTerm<int>) = lemma th (pos_of w ==> (zero <. w)) [ OrderedDomain.pos_lt D w |> at_left ]        // (15.40)
+        let NZ2 = (!!Zb) * (!!Zc)
+        let epos = lemma th (NZ2 ==> (zero <. e)) [
+                    Establish (OrderedDomain.sq_pos D b')               |> apply                                           // (15.34)
+                    Establish (posl bb)                                 |> apply
+                    Establish (OrderedDomain.sq_pos D c')               |> apply
+                    Establish (posl cc)                                 |> apply
+                    Integers.ring th zero (zero * cc)                   |> at [right_branch; left_branch]
+                    Deduce (OrderedDomain.lt_mul_pos D zero bb cc)      |> apply_right ]
+        let be = dvd_intro th b' e (b' * cc) (Integers.ring_ident th (b' * (b' * cc)) e)
+        let ce = dvd_intro th c' e (c' * bb) (Integers.ring_ident th (c' * (c' * bb)) e)
+        let least = least_element th x y P e
+        let nz = lemma th ((!!Z) ==> goal) [
+                    distrib_not_or Zb Zc                                |> at_left
+                    Establish epos                                      |> apply
+                    Establish (lt_le th zero e)                         |> apply
+                    Establish (under th NZ2 be)                         |> apply
+                    Establish (under th NZ2 ce)                         |> apply
+                    Establish least                                     |> apply                                           // (15.49)
+                    Deduce elimX                                        |> apply_right ]
+        by_em th Z goal z nz
+
+    (* The definition, in parts *)
+
+    type private LcmFacts = { Nonneg: Theorem; DvdL: Theorem; DvdR: Theorem; All: Theorem; Dummy: IntVar }
+
+    let private lcm_facts (th: Theory) (b: Term<int>) (c: Term<int>) : LcmFacts =
+        let D = Integers.order_domain th
+        let b', c', L = D.Term b, D.Term c, D.Term (lcm_of b c)
+        let dv = lcm_dummy b c
+        let x = D.Term (tm dv)
+        let N, B1, B2 = (D.Zero <=. L), dvd b' L, dvd c' L
+        let ALL = qall dv (dvd b' x * dvd c' x) (dvd L x)
+        let ax = axiom th (lcm_spec_with dv b c)
+        let left = conj_fst th (N * (B1 * B2)) ALL ax
+        let b12 = conj_snd th N (B1 * B2) left
+        { Nonneg = conj_fst th N (B1 * B2) left; DvdL = conj_fst th B1 B2 b12; DvdR = conj_snd th B1 B2 b12
+          All = conj_snd th (N * (B1 * B2)) ALL ax; Dummy = dv }
+
+    /// `0 ≤ b lcm c` — the definition of lcm.
+    let lcm_nonneg (th: Theory) (b: Term<int>) (c: Term<int>) : Theorem = (lcm_facts th b c).Nonneg
+    /// `b ∣ b lcm c` — the definition of lcm.
+    let dvd_lcm_l (th: Theory) (b: Term<int>) (c: Term<int>) : Theorem = (lcm_facts th b c).DvdL
+    /// `c ∣ b lcm c` — the definition of lcm.
+    let dvd_lcm_r (th: Theory) (b: Term<int>) (c: Term<int>) : Theorem = (lcm_facts th b c).DvdR
+
+    /// `b ∣ e ∧ c ∣ e ⇒ b lcm c ∣ e` — the definition of lcm, instantiated (9.13) at `e`.
+    let lcm_dvd (th: Theory) (e: Term<int>) (b: Term<int>) (c: Term<int>) : Theorem =
+        let D = Integers.order_domain th
+        let f = lcm_facts th b c
+        let dv = f.Dummy
+        let b', c', L, x = D.Term b, D.Term c, D.Term (lcm_of b c), D.Term (tm dv)
+        let Rp, Pp = pred_of dv (dvd b' x * dvd c' x), pred_of dv (dvd L x)
+        let inst = lemma th (qall dv (dvd b' x * dvd c' x) (dvd L x) ==> (Rp.[e] ==> Pp.[e])) [ trade_forall_implies dv Rp Pp |> at_left ]
+        mp inst f.All
+
+    let private lcm_eq_c =
+        cached3 "dv_lcm_eq" (fun th (b: Term<int>) (c: Term<int>) (l: Term<int>) ->
+            let D = Integers.order_domain th
+            let L, l' = D.Term (lcm_of b c), D.Term l
+            let H = ((D.Zero <=. l') * (dvd (D.Term b) l' * dvd (D.Term c) l')) * dvd l' L
+            lemma th (H ==> (L == l')) [
+                Establish (lcm_dvd th l b c)                            |> apply                                           // b lcm c ∣ l
+                Establish (under th H (lcm_nonneg th b c))              |> apply
+                Deduce (dvd_antisym_nonneg th L l')                     |> apply_right ])
+    /// `(0 ≤ l ∧ (b ∣ l ∧ c ∣ l)) ∧ l ∣ b lcm c ⇒ b lcm c = l` — the uniqueness the lcm laws are proved by.
+    let lcm_eq (th: Theory) (b: Term<int>) (c: Term<int>) (l: Term<int>) : Theorem = lcm_eq_c th b c l
+
+    let private lcm_least_c =
+        cached3 "dv_lcm_least" (fun th (k: Term<int>) (b: Term<int>) (c: Term<int>) ->
+            let D = Integers.order_domain th
+            let L, k' = D.Term (lcm_of b c), D.Term k
+            lemma th (((D.Zero <. k') * (dvd (D.Term b) k' * dvd (D.Term c) k')) ==> (L <=. k')) [
+                Establish (lcm_dvd th k b c)                            |> apply
+                Deduce (dvd_le th k L)                                  |> apply_right ])
+    /// **(15.94)**, Gries' definition, as a theorem: `0 < k ∧ (b ∣ k ∧ c ∣ k) ⇒ b lcm c ≤ k` — `b lcm c`
+    /// is below every positive common multiple, since it divides it (`dvd_le`).
+    let lcm_least (th: Theory) (k: Term<int>) (b: Term<int>) (c: Term<int>) : Theorem = lcm_least_c th k b c
+
+    let private lcm_zero_c =
+        cached2 "dv_lcm_zero" (fun th (b: Term<int>) (c: Term<int>) ->
+            let D = Integers.order_domain th
+            let zero = D.Zero
+            let b', c', L = D.Term b, D.Term c, D.Term (lcm_of b c)
+            let Zb, Zc = (b' == zero), (c' == zero)
+            let R = L == zero
+            let cb = lemma th ((T * Zb) ==> R) [
+                        Establish (under th Zb (dvd_lcm_l th b c))      |> apply
+                        Deduce (zero_dvd th b' L)                       |> apply_right ]
+            let cc = lemma th ((T * Zc) ==> R) [
+                        Establish (under th Zc (dvd_lcm_r th b c))      |> apply
+                        Deduce (zero_dvd th c' L)                       |> apply_right ]
+            lemma th ((Zb + Zc) ==> R) [
+                ident_and (Zb + Zc) |> Commute                          |> at_left
+                Taut (by_cases2 th Zb Zc T R cb cc)                     |> apply ])
+    /// **(15.94)** `b = 0 ∨ c = 0 ⇒ b lcm c = 0` — 0 divides only 0.
+    let lcm_zero (th: Theory) (b: Term<int>) (c: Term<int>) : Theorem = lcm_zero_c th b c
+
+    let private lcm_pos_c =
+        cached2 "dv_lcm_pos" (fun th (b: Term<int>) (c: Term<int>) ->
+            let D = Integers.order_domain th
+            let zero = D.Zero
+            let b', c', L = D.Term b, D.Term c, D.Term (lcm_of b c)
+            let Z = (b' == zero) + (c' == zero)
+            let bc = b' * c'
+            let bbc = mp (dvd_mul th b' b' c') (dvd_refl th b')
+            let cbc = lemma th (dvd c' bc) [ Integers.ring th bc (c' * b') |> at [right_branch]; Taut (mp (dvd_mul th c' c' b') (dvd_refl th c')) |> apply ]
+            let Lbc = mp (lcm_dvd th bc b c) (conj bbc cbc)
+            let le0 = lemma th ((L <=. zero) ==> Z) [
+                        IntegralDomain.zero_divisors D b' c' |> Commute |> at_right                                        // → b·c = 0 (15.11)
+                        Establish (under th (L <=. zero) (lcm_nonneg th b c)) |> apply
+                        Establish (OrderedDomain.le_antisym D L zero)   |> apply                                           // b lcm c = 0
+                        Establish (under th (L <=. zero) Lbc)           |> apply
+                        Deduce (zero_dvd th L bc)                       |> apply_right ]
+            lemma th ((!!Z) ==> (zero <. L)) [
+                def_implies_contr (!!Z) (zero <. L)                     |> apply
+                double_negation Z                                       |> at_right
+                OrderedDomain.not_lt D zero L                           |> at_left
+                Taut le0                                                |> apply ])
+    /// **(15.94)** `¬(b = 0 ∨ c = 0) ⇒ 0 < b lcm c` — it divides `b·c`, which is not 0 (15.11). With
+    /// `lcm_least` and `dvd_lcm_l`/`dvd_lcm_r`, `b lcm c` is Gries' least positive common multiple.
+    let lcm_pos (th: Theory) (b: Term<int>) (c: Term<int>) : Theorem = lcm_pos_c th b c
+
+    let private lcm_sym_c =
+        cached2 "dv_lcm_sym" (fun th (b: Term<int>) (c: Term<int>) ->
+            let L, L' = lcm_of b c, lcm_of c b
+            mp (lcm_eq th b c L')
+               (conj (conj (lcm_nonneg th c b) (conj (dvd_lcm_r th c b) (dvd_lcm_l th c b)))
+                     (mp (lcm_dvd th L c b) (conj (dvd_lcm_r th b c) (dvd_lcm_l th b c)))))
+    /// `b lcm c = c lcm b`
+    let lcm_sym (th: Theory) (b: Term<int>) (c: Term<int>) : Theorem = lcm_sym_c th b c
+
+    let private gcd_lcm_c =
+        cached2 "dv_gcd_lcm" (fun th (b: Term<int>) (c: Term<int>) ->
+            let D = Integers.order_domain th
+            let zero = D.Zero
+            let b', c' = D.Term b, D.Term c
+            let G, L = D.Term (gcd_of b c), D.Term (lcm_of b c)
+            let bc = b' * c'
+            let LG = L * G
+            let A = abs_of bc
+            // b·c ∣ L·G: L·G = (L·b) gcd (L·c) (15.104), and b·c divides both (15.85).
+            let bcLb = lemma th (dvd bc (L * b')) [
+                        Integers.ring th bc (c' * b')                   |> at [left_branch]
+                        Taut (mp (dvd_mul_both th c' L b') (dvd_lcm_r th b c)) |> apply ]
+            let bcLc = mp (dvd_mul_both th b' L c') (dvd_lcm_l th b c)
+            let bcK = mp (dvd_gcd th bc (L * b') (L * c')) (conj bcLb bcLc)
+            let dist = mp (gcd_mul th L b c) (lcm_nonneg th b c)                                                           // L·G = (L·b) gcd (L·c)
+            let bcLG = lemma th (dvd bc LG) [ Ident dist |> at [right_branch]; Taut bcK |> apply ]
+            // L·G ∣ b·c: with G·j = b and G·k = c, b·k is a common multiple, so L ∣ b·k, and (b·k)·G = b·c.
+            let R = dvd LG bc
+            let core (j: IntVar) (k: IntVar) =
+                let J, Kk = D.Term (tm j), D.Term (tm k)
+                let Hj, Hk = body G b' j, body G c' k
+                let bk = b' * Kk
+                let ck = lemma th ((Hj * Hk) ==> dvd c' bk) [
+                            Deduce' (OrderedDomain.eq_sym th (G * J) b') |> at [right_branch; right_branch; left_branch]   // b → G·j
+                            Integers.ring th ((G * J) * Kk) ((G * Kk) * J) |> at [right_branch; right_branch]
+                            Deduce' (reflex_implies Hk)                 |> at [right_branch; right_branch; left_branch]    // G·k → c
+                            Taut (mp (dvd_mul th c' c' J) (dvd_refl th c')) |> apply_right ]
+                lemma th ((Hj * Hk) ==> R) [
+                    Deduce' (OrderedDomain.eq_sym th (G * Kk) c')       |> at [right_branch; right_branch; right_branch]   // c → G·k
+                    Integers.ring th (b' * (G * Kk)) (bk * G)           |> at [right_branch; right_branch]
+                    Establish ck                                        |> apply
+                    Establish (under th (Hj * Hk) (mp (dvd_mul th b' b' Kk) (dvd_refl th b'))) |> apply              // b ∣ b·k
+                    Establish (lcm_dvd th bk b c)                       |> apply                                           // L ∣ b·k
+                    Deduce (dvd_mul_both th L bk G)                     |> apply_right ]                                   // (15.85)
+            let outer =
+                dvd_elim th G b' (dvd G c' ==> R) (fun j ->
+                    let Hj = body G b' j
+                    let inner = dvd_elim th G c' (Hj ==> R) (fun k ->
+                                    let Hk = body G c' k
+                                    lemma th (Hk ==> (Hj ==> R)) [
+                                        shunt' Hk Hj R |> Commute       |> apply
+                                        commute_and Hk Hj               |> at_left
+                                        Taut (core j k)                 |> apply ])
+                    lemma th (Hj ==> (dvd G c' ==> R)) [
+                        shunt' Hj (dvd G c') R |> Commute               |> apply
+                        commute_and Hj (dvd G c')                       |> at_left
+                        shunt' (dvd G c') Hj R                          |> apply
+                        Taut inner                                      |> apply ])
+            let LGbc = mp (mp outer (gcd_dvd_l th b c)) (gcd_dvd_r th b c)
+            let nonneg = lemma th (zero <=. LG) [
+                            Integers.ring th zero (L * zero)            |> at [left_branch]
+                            Taut (mp (OrderedDomain.le_mul_nonneg D L zero G) (conj (lcm_nonneg th b c) (gcd_nonneg th b c))) |> apply ]
+            let eq = mp (dvd_antisym_nonneg th LG A)
+                        (conj (conj nonneg (OrderedDomain.abs_nonneg D bc)) (conj (to_abs th LG bc LGbc) (dtrans th A bc LG (abs_dvd th bc) bcLG)))
+            lemma th ((G * L) == A) [ Integers.ring th (G * L) LG |> at_left; Taut eq |> apply ])
+    /// **`(b gcd c)·(b lcm c) = abs(b·c)`** — the identity Gries announces with (15.94) ("we prove later
+    /// … that `b·c = (b gcd c)·(b lcm c)`", for natural `b`, `c`). Each side divides the other and both
+    /// are non-negative: `b·c` divides `(b lcm c)·(b gcd c) = (L·b) gcd (L·c)` (15.104); and with
+    /// `b = g·j`, `c = g·k`, `b·k` is a common multiple, so `L ∣ b·k` and `L·g ∣ b·k·g = b·c`.
+    let gcd_lcm (th: Theory) (b: Term<int>) (c: Term<int>) : Theorem = gcd_lcm_c th b c
 
     (* Module information members *)
 

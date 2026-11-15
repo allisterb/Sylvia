@@ -15,6 +15,9 @@
 //   (J) (15.89) uniqueness of quotient and remainder; ÷ and mod (15.90)–(15.91), and c ∣ b ≡ b mod c = 0.
 //   (K) gcd: its definition (an axiom, justified by an existence proof that does not cite it), Bézout,
 //       Gries' (15.92) as a theorem, (15.96)–(15.104), (15.106)–(15.107), and Euclid's algorithm as a proof.
+//   (L) lcm: its definition (gcd's dual, justified the same way), (15.94) as theorems, gcd·lcm = abs(b·c),
+//       12 lcm 18 = 36; relatively prime (15.105), (15.111), (15.113); primes: the definition, ¬prime 4,
+//       Euclid's lemma (15.112), a prime divisor of every n > 1, and infinitely many primes (15.116).
 //
 // Run:  dotnet fsi examples/proofs/Divisibility.fsx
 
@@ -290,7 +293,7 @@ states "Bézout's lemma: ¬(b = 0 ∧ c = 0) ⇒ (∃x | 0 < x ∧ (x ∣ b ∧ 
     (fun () -> bezout_least th b c)
 let bez = qex uv T (qex vv T (G == t uv * t b + t vv * t c))
 let (bz, msBz) = timed (fun () -> try Some (gcd_bezout th b c) with e -> why "gcd_bezout" e |> ignore; None)
-states "Bézout's identity: (∃u |: (∃v |: b gcd c = u·b + v·c))" bez (fun () -> bz.Value)
+states "(15.108) Bézout's identity: (∃u |: (∃v |: b gcd c = u·b + v·c))" bez (fun () -> bz.Value)
 ok "... which does cite the definition of gcd (the walk sees it)"   (cites isGcdAx bz.Value)
 
 let a', e' = IntVar "a", IntVar "e"
@@ -350,5 +353,140 @@ states "gcd exists at b, c := x + 1, u (the core's dummy names)" (qex gv (zero <
 states "e ∣ b ∧ e ∣ c ⇒ e ∣ b gcd c at e := b gcd c"     ((dvd G b_ * dvd G c_) ==> dvd G G)            (fun () -> dvd_gcd th G b c)
 states "e ∣ b ∧ e ∣ c ⇒ e ∣ b gcd c at e := d (the definition's dummy)" ((dvd d_ b_ * dvd d_ c_) ==> dvd d_ G) (fun () -> dvd_gcd th d b c)
 states "(15.103) at a, b, c, d := c, b, c, b"            ((b_ == c_ * c_ + b_) ==> (G == gc c_ b_))     (fun () -> gcd_lin th c b c b)
+
+printfn "\n===== (L) lcm (15.94), relatively prime (15.105), primes (15.111)–(15.116) ====="
+
+// --- The definition of lcm: gcd's dual, and an axiom justified the same way.
+let Lc = D.Term (lcm_of b c)
+let lc (x: Term<int>) (y: Term<int>) = D.Term (lcm_of x y)
+let mv, lv = IntVar "m", IntVar "l"
+let m_ = t mv
+/// The definition of lcm at x, y with the dummy dv, as a user would write it.
+let lcm_def (dv: IntVar) (x: Term<int>) (y: Term<int>) =
+    let l, z = lc x y, t dv
+    ((zero <=. l) * (dvd x l * dvd y l)) * qall dv (dvd x z * dvd y z) (dvd l z)
+ok "(0 ≤ b lcm c ∧ (b ∣ b lcm c ∧ c ∣ b lcm c)) ∧ (∀m | b ∣ m ∧ c ∣ m : b lcm c ∣ m) is an axiom" (th.IsAxiom (lcm_def mv b c).Expr)
+printfn "     it prints as: %s" (th.PrintFormula (lcm_def mv b c).Expr)
+ok "... with any dummy fresh for b and c"                          (th.IsAxiom (lcm_def k b c).Expr)
+ok "it is NOT an axiom of plain Induction"                         (not ((induction :> Theory).IsAxiom (lcm_def mv b c).Expr))
+ok "refused: the dummy occurs in c"                                 (not (th.IsAxiom (lcm_def c b c).Expr))
+ok "refused: m ∣ b lcm c in the body (the divisibility turned round)" (not (th.IsAxiom (((zero <=. Lc) * (dvd b_ Lc * dvd c_ Lc)) * qall mv (dvd b_ m_ * dvd c_ m_) (dvd m_ Lc)).Expr))
+ok "refused: without 0 ≤ b lcm c (then −(b lcm c) qualifies too)"   (not (th.IsAxiom ((T * (dvd b_ Lc * dvd c_ Lc)) * qall mv (dvd b_ m_ * dvd c_ m_) (dvd Lc m_)).Expr))
+
+let isLcmAx e = match e with DefLcm _ -> true | _ -> false
+let lexists_stmt (x: Term<int>) (y: Term<int>) (dm: IntVar) =
+    qex lv (zero <=. t lv) ((dvd x (t lv) * dvd y (t lv)) * qall dm (dvd x (t dm) * dvd y (t dm)) (dvd (t lv) (t dm)))
+let (lex, msLex) = timed (fun () -> try Some (lcm_exists th b c) with e -> why "lcm_exists" e |> ignore; None)
+states "lcm exists: (∃l | 0 ≤ l : (b ∣ l ∧ c ∣ l) ∧ (∀m | b ∣ m ∧ c ∣ m : l ∣ m))" (lexists_stmt b_ c_ mv) (fun () -> lex.Value)
+printfn "     %d ms" msLex
+ok "... and no step of its proof cites the definition of lcm"      (not (cites isLcmAx lex.Value))
+ok "... nor that of gcd"                                            (not (cites isGcdAx lex.Value))
+ok "... though it does cite (15.90), the definition of ÷ and mod"  (cites isDivModAx lex.Value)
+
+// --- lcm's laws: Gries' (15.94) as theorems, and the product with gcd.
+let NZo = !!((b_ == zero) + (c_ == zero))
+let e_ = t e'
+states "0 ≤ b lcm c"                                     (zero <=. Lc)                                  (fun () -> lcm_nonneg th b c)
+states "b ∣ b lcm c"                                     (dvd b_ Lc)                                    (fun () -> dvd_lcm_l th b c)
+states "c ∣ b lcm c"                                     (dvd c_ Lc)                                    (fun () -> dvd_lcm_r th b c)
+states "b ∣ e ∧ c ∣ e ⇒ b lcm c ∣ e"                    ((dvd b_ e_ * dvd c_ e_) ==> dvd Lc e_)        (fun () -> lcm_dvd th e' b c)
+states "(0 ≤ e ∧ (b ∣ e ∧ c ∣ e)) ∧ e ∣ b lcm c ⇒ b lcm c = e" ((((zero <=. e_) * (dvd b_ e_ * dvd c_ e_)) * dvd e_ Lc) ==> (Lc == e_)) (fun () -> lcm_eq th b c e')
+states "(15.94) ¬(b = 0 ∨ c = 0) ⇒ 0 < b lcm c"          (NZo ==> (zero <. Lc))                         (fun () -> lcm_pos th b c)
+states "(15.94) 0 < k ∧ (b ∣ k ∧ c ∣ k) ⇒ b lcm c ≤ k — the least" (((zero <. t k) * (dvd b_ (t k) * dvd c_ (t k))) ==> (Lc <=. t k)) (fun () -> lcm_least th k b c)
+states "(15.94) b = 0 ∨ c = 0 ⇒ b lcm c = 0"             (((b_ == zero) + (c_ == zero)) ==> (Lc == zero)) (fun () -> lcm_zero th b c)
+states "b lcm c = c lcm b"                               (Lc == lc c_ b_)                               (fun () -> lcm_sym th b c)
+let (_, msGL) = timed (fun () -> gcd_lcm th b c)
+states "(b gcd c)·(b lcm c) = abs(b·c) — Gries' b·c = (b gcd c)·(b lcm c), at every integer" ((G * Lc) == abs_of (b_ * c_)) (fun () -> gcd_lcm th b c)
+printfn "     first use %d ms" msGL
+
+// Gries' examples (p. 317): 3 lcm 9 = 9, directly; 12 lcm 18 = 36 from 12 gcd 18 = 6 and the product.
+let lcm_3_9 () =
+    let d39 = dvd_intro th (L 3) (L 9) (L 3) (Integers.ring_ident th (L 3 * L 3) (L 9))
+    mp (lcm_eq th (L 3) (L 9) (L 9)) (conj (conj (lit_le 0 9) (conj d39 (dvd_refl th (L 9)))) (dvd_lcm_r th (L 3) (L 9)))
+states "3 lcm 9 = 9"                                     (lc (L 3) (L 9) == L 9)                        lcm_3_9
+let gcd_12_18 () =
+    let s1 = mp (gcd_mod th (L 12) (L 18)) (lit_lt 0 18)                                             // 12 gcd 18 = 18 gcd (12 mod 18)
+    let m1 = mp (mod_eq th (L 12) (L 18) (L 0) (L 12)) (qr_lit 12 18 0 12)
+    let s2 = mp (gcd_mod th (L 18) (L 12)) (lit_lt 0 12)
+    let m2 = mp (mod_eq th (L 18) (L 12) (L 1) (L 6)) (qr_lit 18 12 1 6)
+    let s3 = mp (gcd_mod th (L 12) (L 6)) (lit_lt 0 6)
+    let m3 = mp (mod_eq th (L 12) (L 6) (L 2) (L 0)) (qr_lit 12 6 2 0)
+    let abs6 = mp (OrderedDomain.abs_of_nonneg D (L 6)) (lit_le 0 6)
+    lemma th (gc (L 12) (L 18) == L 6) [
+        Ident s1 |> at_left; Ident m1 |> at [left_branch; right_branch]
+        Ident s2 |> at_left; Ident m2 |> at [left_branch; right_branch]
+        Ident s3 |> at_left; Ident m3 |> at [left_branch; right_branch]
+        Ident (gcd_zero_right th (L 6)) |> at_left; Ident abs6 |> at_left ]
+let lcm_12_18 () =
+    let L1218 = lc (L 12) (L 18)
+    let abs216 = mp (OrderedDomain.abs_of_nonneg D (L 216)) (lit_le 0 216)
+    let six = lemma th ((L 6 * L1218) == (L 6 * L 36)) [
+                Ident (mp (OrderedDomain.eq_sym th (gc (L 12) (L 18)) (L 6)) (gcd_12_18 ())) |> at [left_branch; left_branch]   // 6 → 12 gcd 18
+                Ident (gcd_lcm th (L 12) (L 18))                |> at_left                             // → abs(12·18)
+                Integers.ring th (L 12 * L 18) (L 216)          |> at [left_branch; apply_unary]
+                Ident abs216                                    |> at_left
+                Integers.ring th (L 6 * L 36) (L 216)           |> at_right ]
+    let nz6 = lemma th (!!(L 6 == zero)) [ ax_ident th ((L 6 == zero) == F) |> at [apply_unary]; not_false |> apply ]
+    let cancel = mp (axiom th (!!(L 6 == zero) ==> (((L 6 * L1218) == (L 6 * L 36)) == (L1218 == L 36)))) nz6   // (15.7)
+    lemma th (L1218 == L 36) [ Ident cancel |> Commute |> apply; Taut six |> apply ]
+states "12 gcd 18 = 6, by Euclid's algorithm"            (gc (L 12) (L 18) == L 6)                      gcd_12_18
+states "12 lcm 18 = 36: 6·(12 lcm 18) = abs(12·18) = 216, and Cancellation (15.7)" (lc (L 12) (L 18) == L 36) lcm_12_18
+
+// --- Relatively prime: notation for b gcd c = 1, and what Bézout gives.
+ok "(15.105) b ⊥ c is b gcd c = 1 — notation, no new symbol or axiom" (sequal (rel_prime b c).Expr.Raw (G == one).Expr.Raw)
+states "(15.111) k ∣ b ∧ k ∣ c ≡ k ∣ (b gcd c)"           ((dvd (t k) b_ * dvd (t k) c_) == dvd (t k) G) (fun () -> dvd_gcd_iff th k b c)
+let (_, ms113) = timed (fun () -> coprime_dvd th b c d)
+states "(15.113) b ⊥ c ∧ c ∣ (b·d) ⇒ c ∣ d"             ((rel_prime b c * dvd c_ (b_ * d_)) ==> dvd c_ d_) (fun () -> coprime_dvd th b c d)
+printfn "     first use %d ms (Bézout inside)" ms113
+
+// --- Primes: an explicit definition.
+let pv = IntVar "p"
+let p_ = t pv
+let prime_stmt (dv: IntVar) (x: DomainTerm<int>) (lo: Prop) (rng: Prop) =
+    prime x == (lo * qall dv rng ((t dv == one) + (t dv == x)))
+let prime_def_stmt (dv: IntVar) (x: DomainTerm<int>) = prime_stmt dv x (one <. x) ((zero <. t dv) * dvd (t dv) x)
+ok "prime p = 1 < p ∧ (∀d | 0 < d ∧ d ∣ p : d = 1 ∨ d = p) is an axiom" (th.IsAxiom (prime_def_stmt d p_).Expr)
+printfn "     it prints as: %s" (th.PrintFormula (prime_def_stmt d p_).Expr)
+ok "... with any dummy fresh for p"                                 (th.IsAxiom (prime_def_stmt k p_).Expr)
+ok "it is NOT an axiom of plain Induction"                         (not ((induction :> Theory).IsAxiom (prime_def_stmt d p_).Expr))
+ok "refused: the dummy occurs in p"                                 (not (th.IsAxiom (prime_def_stmt d d_).Expr))
+ok "refused: 0 ≤ d in the range (then d = 0 would have to be 1 or p)" (not (th.IsAxiom (prime_stmt d p_ (one <. p_) ((zero <=. d_) * dvd d_ p_)).Expr))
+ok "refused: 0 < p for 1 < p (then 1 would be prime)"              (not (th.IsAxiom (prime_stmt d p_ (zero <. p_) ((zero <. d_) * dvd d_ p_)).Expr))
+
+states "prime p ⇒ 1 < p"                                 (prime p_ ==> (one <. p_))                     (fun () -> prime_gt_one th p_)
+states "prime p ∧ (0 < d ∧ d ∣ p) ⇒ d = 1 ∨ d = p"      ((prime p_ * ((zero <. d_) * dvd d_ p_)) ==> ((d_ == one) + (d_ == p_))) (fun () -> prime_dvd th p_ d)
+let not_prime_4 () =
+    let d24 = dvd_intro th (L 2) (L 4) (L 2) (Integers.ring_ident th (L 2 * L 2) (L 4))
+    let under (h: Prop) (x: Theorem) = lemma th (h ==> Prop(Expr.Cast<bool> x.Stmt)) [ Taut x |> apply_right ]   // h ⇒ φ, from ⊢ φ
+    let to_lits = lemma th (prime (L 4) ==> ((L 2 == one) + (L 2 == L 4))) [
+                    Establish (under (prime (L 4)) (lit_lt 0 2))       |> apply
+                    Establish (under (prime (L 4)) d24)                 |> apply
+                    Deduce (prime_dvd th (L 4) (L 2))                   |> apply_right ]
+    lemma th (!!(prime (L 4))) [
+        ident_implies_false_not (prime (L 4)) |> Commute               |> apply                       // ¬prime 4 → (prime 4 ⇒ F)
+        idemp_or F |> Commute                                          |> at_right                    // F → F ∨ F
+        ax_ident th ((L 2 == one) == F) |> Commute                     |> at [right_branch; left_branch]
+        ax_ident th ((L 2 == L 4) == F) |> Commute                     |> at [right_branch; right_branch]
+        Taut to_lits                                                   |> apply ]
+states "¬(prime 4) — 2 is a positive divisor of 4 that is neither 1 nor 4" (!!(prime (L 4)))             not_prime_4
+states "prime p ∧ ¬(p ∣ b) ⇒ b ⊥ p"                      ((prime p_ * !!(dvd p_ b_)) ==> rel_prime b p_) (fun () -> prime_coprime th p_ b)
+states "(15.112) Euclid's lemma: prime p ∧ p ∣ b·c ⇒ p ∣ b ∨ p ∣ c" ((prime p_ * dvd p_ (b_ * c_)) ==> (dvd p_ b_ + dvd p_ c_)) (fun () -> euclid_lemma th p_ b c)
+let nv = IntVar "n"
+let n_ = t nv
+states "a prime divisor: 1 < n ⇒ (∃p | prime p : p ∣ n)" ((one <. n_) ==> qex pv (prime p_) (dvd p_ n_))  (fun () -> prime_divisor th n_)
+let (inf, msInf) = timed (fun () -> try Some (primes_unbounded th n_) with e -> why "primes_unbounded" e |> ignore; None)
+states "(15.116) infinitely many primes: 0 ≤ n ⇒ (∃p | prime p : n < p)" ((zero <=. n_) ==> qex pv (prime p_) (n_ <. p_)) (fun () -> inf.Value)
+printfn "     %d ms (Euclid, with n! + 1)" msInf
+let isInduction e = match e with NatInduction _ -> true | _ -> false
+ok "... and the walk finds Mathematical Induction (12.8) in its proof (n! by induction)" (cites isInduction inf.Value)
+
+// Arguments that contain one another, and that clash with the library's dummies (l, m, x, u, v, p, q, w).
+let m1v, p1v = IntVar "m#1", IntVar "p#1"
+states "lcm exists at b, c := x + 1, m"                  (lexists_stmt (t xv + one) m_ m1v)             (fun () -> lcm_exists th (t xv + one) mv)
+states "b ∣ e ∧ c ∣ e ⇒ b lcm c ∣ e at e := m (the definition's dummy)" ((dvd b_ m_ * dvd c_ m_) ==> dvd Lc m_) (fun () -> lcm_dvd th mv b c)
+states "(b gcd c)·(b lcm c) = abs(b·c) at b, c := b, b·c" ((gc b_ (b_ * c_) * lc b_ (b_ * c_)) == abs_of (b_ * (b_ * c_))) (fun () -> gcd_lcm th b (b_ * c_))
+states "(15.113) at b, c, d := c, b, b·c"                ((rel_prime c b * dvd b_ (c_ * (b_ * c_))) ==> dvd b_ (b_ * c_)) (fun () -> coprime_dvd th c b (b_ * c_))
+states "(15.112) at b, c := p, p"                        ((prime p_ * dvd p_ (p_ * p_)) ==> (dvd p_ p_ + dvd p_ p_)) (fun () -> euclid_lemma th p_ p_ p_)
+states "(15.116) at n := p (the conclusion's own dummy)" ((zero <=. p_) ==> qex p1v (prime (t p1v)) (p_ <. t p1v)) (fun () -> primes_unbounded th p_)
 
 printfn "\n%s" (if failures = 0 then "All divisibility checks passed." else sprintf "%d CHECK(S) FAILED." failures)

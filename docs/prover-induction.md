@@ -1240,7 +1240,7 @@ take ~20–40 ms, and (15.87) ~1.7 s, since its statement has binders and cannot
 
 **Not done.** ~~(15.89) uniqueness and the operators `÷`/`mod` (15.90)–(15.91)~~ (done, §30);
 ~~gcd (15.92) and its properties (15.96)–(15.104)~~ (done, §31, via Bézout and `least_element`);
-lcm (15.94); primes.
+~~lcm (15.94); primes~~ (done, §32, except the Fundamental Theorem of Arithmetic (15.114)–(15.115)).
 
 **Gate.** Solution builds; suite 149/149; Divisibility 51/51; Induction 151/151;
 InductiveDefinitions 49/49; OrderedDomain 133/133; SetTheory 175/175; AdversarialSweep ALL CLEAR.
@@ -1546,6 +1546,120 @@ the `∃` part had to be established on its own as well as `P.r`.
 158/158; Divisibility 126/126; Induction 151; InductiveDefinitions 49; OrderedDomain 133;
 SetTheory 175; PredCalculus 24; VerifyRuleFixes passed; AdversarialSweep ALL CLEAR (3556).
 
-**Next.** lcm (15.94), defined dually by `(∀m | b ∣ m ∧ c ∣ m : b lcm c ∣ m)`, and `b·c = (b gcd c)·(b lcm c)`
-up to sign. Relatively prime (15.105) is an abbreviation for `b gcd c = 1`. Then primes: Euclid's lemma
-`p ∣ b·c ⇒ p ∣ b ∨ p ∣ c` follows from Bézout, and then unique factorization.
+**Next.** lcm and primes — done in §32.
+
+## 32. lcm (15.94), relatively prime (15.105), primes (15.111)–(15.116)
+
+`Theories/Divisibility.fs`; `examples/proofs/Divisibility.fsx` (L), 172/172 (46 new).
+
+**Two more definitions, and one piece of notation.** The theory now has five definitional axioms.
+
+- **lcm**, the dual of the gcd definition, a scheme over `b`, `c` and any dummy `m` fresh for both:
+
+  ```
+  (0 ≤ b lcm c ∧ (b ∣ b lcm c ∧ c ∣ b lcm c)) ∧ (∀m | b ∣ m ∧ c ∣ m : b lcm c ∣ m)
+  ```
+
+  This is the non-negative common multiple that divides every common multiple. Gries' (15.94) is a
+  minimum over `ℤ⁺` when `b, c ≠ 0`, and `0` otherwise. All of it is a theorem here: `lcm_least`
+  (`0 < k ∧ (b ∣ k ∧ c ∣ k) ⇒ b lcm c ≤ k`), `lcm_pos` (`¬(b = 0 ∨ c = 0) ⇒ 0 < b lcm c`, because it
+  divides `b·c ≠ 0` (15.11)) and `lcm_zero` (`b = 0 ∨ c = 0 ⇒ b lcm c = 0`, because 0 divides only 0).
+  (L) checks that the recognizer refuses a dummy occurring in `c`, the divisibility turned round in the
+  body, and a definition without `0 ≤`.
+- **prime**, Gries p. 322: `prime p = 1 < p ∧ (∀d | 0 < d ∧ d ∣ p : d = 1 ∨ d = p)`. This is an
+  EXPLICIT definition, an abbreviation, so it is conservative with nothing to prove. (L) checks refusals
+  of a captured dummy, `0 ≤ d` for `0 < d` (then `d = 0` would have to be 1 or `p`), and `0 < p` for
+  `1 < p` (then 1 would be prime). `prime` is a prefix symbol, `[<Symbol "prime ">]`: the trailing space
+  is what makes it print `prime p`.
+- **b ⊥ c** (15.105) is `rel_prime b c`, which builds `b gcd c = 1`. It is notation, with no symbol and
+  no axiom.
+
+**lcm exists without its axiom (`lcm_exists`).** This mirrors `gcd_exists`.
+- For `b, c ≠ 0`, the set `{x | 0 < x ∧ (b ∣ x ∧ c ∣ x)}` contains `(b·b)·(c·c)`. That is positive by
+  (15.34) and (15.43). So it has a least element `x` by `least_element`.
+- For a common multiple `m`, the remainder `r = m mod x` is `m − x·(m ÷ x)`, so `b` and `c` divide it.
+  Since `0 ≤ r < x`, minimality forces `r = 0`, so `x ∣ m`.
+- If `b = 0` or `c = 0`, `l := 0` works: a multiple of 0 is 0.
+
+(L)'s proof walk finds no use of the lcm axiom, and none of the gcd axiom either. As a control, it does
+find (15.90).
+
+**The product law: `gcd_lcm`, `(b gcd c)·(b lcm c) = abs(b·c)`.** Gries announces this with (15.94) as
+"`b·c = (b gcd c)·(b lcm c)`" for natural `b`, `c`. Here it holds at every integer, and it has no case
+split. Write `L` for `b lcm c` and `g` for `b gcd c`. Each side divides the other and both are
+non-negative, so they are equal (`dvd_antisym_nonneg`).
+- `b·c ∣ L·g`: by (15.104), `L·g = (L·b) gcd (L·c)`, and `b·c` divides both `L·b` and `L·c` (15.85).
+- `L·g ∣ b·c`: with `b = g·j` and `c = g·k`, `b·k` is a common multiple, since `b·k = c·j`. So `L ∣ b·k`,
+  and `L·g ∣ b·k·g = b·c`.
+
+(L) uses it on Gries' example. `12 gcd 18 = 6` by Euclid's algorithm. Then
+`6·(12 lcm 18) = abs(12·18) = 216 = 6·36`, and Cancellation (15.7) gives `12 lcm 18 = 36`. `3 lcm 9 = 9`
+comes directly from `lcm_eq`.
+
+**What Bézout gives.**
+- `dvd_gcd_iff` (15.111): `k ∣ b ∧ k ∣ c ≡ k ∣ (b gcd c)`.
+- `coprime_dvd` (15.113): `b ⊥ c ∧ c ∣ (b·d) ⇒ c ∣ d`. Two ∃-eliminations of Bézout's witnesses give
+  `d = d·(u·b + v·c) = (b·d)·u + (c·d)·v`.
+- `prime_coprime`: `prime p ∧ ¬(p ∣ b) ⇒ b ⊥ p`. `b gcd p` is a positive divisor of `p`, so it is 1 or
+  `p`, and if it were `p` then `p ∣ b`.
+- `euclid_lemma` (15.112): `prime p ∧ p ∣ b·c ⇒ p ∣ b ∨ p ∣ c`. Gries' proof: either `p ∣ b`, or
+  `prime_coprime` and then (15.113).
+- `gcd_bezout` is now labelled (15.108).
+
+**Primes.**
+- `prime_gt_one`, `prime_pos` and `prime_dvd` take the definition apart, the last one by instantiation
+  (9.13). (L) proves `¬(prime 4)`, since 2 is a positive divisor of 4 that is neither 1 nor 4.
+- `prime_divisor`: `1 < n ⇒ (∃p | prime p : p ∣ n)`. This is the step of (15.114)'s existence proof.
+  The least `x > 1` dividing `n` is prime. Take a positive divisor `d ≠ 1` of `x`. Then `d > 1` and
+  `d ∣ n`, so minimality rules out `d < x`. And `d ≤ x` by `dvd_le`.
+- `primes_unbounded` (15.116): `0 ≤ n ⇒ (∃p | prime p : n < p)`. This is Euclid's argument with
+  `n! + 1` in place of Gries' `p₀·…·p_{k−1} + 1` (15.117). It needs no enumeration of the primes.
+  - `n!` is `(Πj | 1 ≤ j ∧ j ≤ n : j)`.
+  - Two inductions (12.8) give `1 ≤ n!` and `1 ≤ k ≤ n ⇒ k ∣ n!`. The second splits the step's new
+    factor with Discreteness: either `k ≤ n` (use the hypothesis, then (15.84)), or `k = n + 1`.
+  - So `n! + 1 > 1` has a prime divisor `p`. If `p ≤ n`, then `p` divides `n!` and `n! + 1`, which
+    contradicts (15.86).
+  - (L)'s walk finds Mathematical Induction in the proof.
+
+**Trap: Substitution (3.84a) will not exchange a term that contains a binder.** Its capture check asks
+that no variable of `e` or `f` be bound anywhere in the conjuncts. It uses `get_vars`, which includes
+the variables `e`/`f` bind themselves, such as the `j` of a Π. Any `f` containing a Π therefore
+"rebinds" its own dummy, and the instance is refused. So `eq_sym` and `Deduce'` fail at such a term,
+and so does any lemma that rewrites under a hypothesis about its argument when that argument is `n!`.
+The first attempt at `primes_unbounded` failed this way, inside `le_mul_nonneg`'s `eq_sym`.
+
+The refusal is conservative, never unsound. Checking only the FREE variables of `e`/`f` would be the
+precise condition, but that is a kernel change and has not been made. The workaround keeps the kernel
+as it is:
+- each step that touches `n!` is a schema lemma derived at metavariables (`dvd_mul_s`, `dvd_mul_self`,
+  `one_le_mul`, `one_lt_succ`), then instantiated at the Π term. `InstantiateTerms` allows a value with
+  binders when the statement has none.
+- `prime_divisor` is used through a `∀` (generalization, then (9.13) at `n! + 1`).
+
+**Cost.** Measured in (L), each the first use in the process:
+
+| Theorem | Time |
+|---|---|
+| `lcm_exists` | 2.1 s |
+| `gcd_lcm` | 1.1 s |
+| `coprime_dvd` | 2.8 s (13 s when it is the first Bézout use in the process) |
+| `primes_unbounded` | 3.7 s |
+
+`Divisibility.fsx` runs in about 63 s.
+
+**Overlapping arguments.** (L) runs:
+- `lcm_exists` at `x + 1, m`, the library's own dummy names, so its `∀` dummy becomes `m#1`;
+- `lcm_dvd` at `e := m`;
+- `gcd_lcm` at `b, b·c`;
+- (15.113) at `c, b, b·c`;
+- (15.112) at `p, p, p`;
+- (15.116) at `n := p`, the conclusion's own dummy, which becomes `p#1`.
+
+**Not done.**
+- **The Fundamental Theorem of Arithmetic (15.114)–(15.115).** It quantifies over a finite sequence of
+  primes, `n = p₀·…·p_{m−1}`. The logic's quantifiers range over integer dummies only, so there is no
+  way to say "there exists a sequence". It needs either sequence-valued variables or a multiplicity
+  encoding (`n = (Πp | prime p ∧ p ≤ n : p^(v_p n))`, with `v_p` defined). `prime_divisor` is its
+  existence step.
+- Congruences (15.118) onwards.
+- Quantified `↓`/`↑` (15.63)–(15.70).
