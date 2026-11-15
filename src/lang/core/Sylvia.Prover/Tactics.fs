@@ -293,6 +293,16 @@ module Tactics =
             let s = lazy (f a b c)
             fun x y z -> InstantiateTerms s.Value [ a.Raw, x.Raw; b.Raw, y.Raw; c.Raw, z.Raw ]
 
+        /// Wrap an `n`-term-argument theorem whose arguments share one type, derived once. For
+        /// statements with more parameters than `th3` takes (a uniqueness theorem over two
+        /// quotient–remainder pairs, say). The arguments are passed as a list of exactly `n`.
+        let thn (name: string) (n: int) (f: Expr<'a> list -> Theorem) : Expr<'a> list -> Theorem =
+            let vs = List.init n (fun _ -> tv<'a> name)
+            let s = lazy (f vs)
+            fun xs ->
+                if List.length xs <> n then failwithf "Schema %s: expected %d arguments, got %d." name n (List.length xs)
+                InstantiateTerms s.Value (List.map2 (fun (v: Expr<'a>) (x: Expr<'a>) -> v.Raw, x.Raw) vs xs)
+
     /// If A is theorem then so is the dual of A.
     let Dual (t:Theorem) dual =
         let proof = t.Proof

@@ -1238,10 +1238,9 @@ After that (15.81)/(15.83)/(15.86) take ~0 ms per call (instantiation). The ∃-
 take ~20–40 ms, and (15.87) ~1.7 s, since its statement has binders and cannot be a schema.
 `Divisibility.fsx` runs in ~19 s.
 
-**Not done.** (15.89) uniqueness and the operators `÷`/`mod` (15.90)–(15.91); gcd (15.92) and its
-properties (15.96)–(15.104) (errata: (15.98)/(15.100) are `abs.b`, and (15.104) needs `0 ≤ d`);
-lcm (15.94); primes. Gries defines gcd as a quantified `↑`, i.e. (15.63)–(15.70), which are not done
-either. The natural route is `least_element` again: Bézout via the least positive `x·b + y·c`.
+**Not done.** ~~(15.89) uniqueness and the operators `÷`/`mod` (15.90)–(15.91)~~ (done, §30);
+~~gcd (15.92) and its properties (15.96)–(15.104)~~ (done, §31, via Bézout and `least_element`);
+lcm (15.94); primes.
 
 **Gate.** Solution builds; suite 149/149; Divisibility 51/51; Induction 151/151;
 InductiveDefinitions 49/49; OrderedDomain 133/133; SetTheory 175/175; AdversarialSweep ALL CLEAR.
@@ -1367,3 +1366,186 @@ PredCalculus 24); VerifyRuleFixes passed; AdversarialSweep ALL CLEAR (3556 insta
 7 s before — within noise). The `SetAlgebra` change above was made before the run, found by reading
 the code (SetTheory.fsx (T) uses `SetAlgebra.commute<int>` & co. inside `SetTheory` proofs), so it
 was never observed failing; nothing else in the library tripped the new checks.
+
+## 30. Uniqueness (15.89), and the operators ÷ and mod (15.90)–(15.91)
+
+`Theories/Divisibility.fs`; `examples/proofs/Divisibility.fsx` (J), 82/82 (21 new).
+
+**(15.89) Uniqueness, as a binder-free theorem.** With `qr(q, r)` for `b = q·c + r ∧ 0 ≤ r ∧ r < c`:
+
+```
+(0 < c ∧ qr(q, r)) ∧ qr(q', r')  ⇒  q = q' ∧ r = r'
+```
+
+The core is `q ≤ q'`. Otherwise `q' + 1 ≤ q` (`lt_iff_succ_le`), and then the chain
+`b = q'·c + r' < c·(q' + 1) ≤ c·q ≤ q·c + r = b` gives `b < b`. The chain uses Monotonicity
+(15.42) twice, `le_mul_nonneg` with `0 ≤ c`, and (15.41c) twice. It is written as one `Establish`
+chain that ends in `lt_irrefl`. By symmetry `q' ≤ q`, so `q = q'` by (15.45). Then
+`r = (q·c + r) − q·c = b − q·c = (q'·c + r') − q'·c = r'`, by rewriting.
+
+`quot_unique` and `rem_unique` have six parameters, more than `Schema.th3` takes. A new
+`Tactics.Schema.thn name n` wraps an n-argument theorem whose arguments share one type. It is
+`InstantiateTerms` at n metavariables and adds nothing to the trusted base. The two are derived once
+per theory: about 1.3 s on first use, including one-time glue, then about 0 ms per call.
+
+**÷ and mod: a definitional axiom.** `div` and `modulo` are uninterpreted `[<Symbol "÷">]` and
+`[<Symbol "mod">]` functions (`mod` is reserved in F#). They print infix, as `∣` does. The one new
+axiom, a scheme over any `b` and `c`, is (15.90):
+
+```
+0 < c  ⇒  (b = (b ÷ c)·c + b mod c  ∧  0 ≤ b mod c)  ∧  b mod c < c
+```
+
+It is a definitional extension. (15.87) gives such a pair and (15.89) makes it unique, so `÷` and `mod`
+name a function the theory already defines. Induction instances that mention them translate into
+instances about the defining formula, so the extension is conservative. Gries' side condition `c ≠ 0`
+is the same erratum as (15.87): at `c < 0` the range `0 ≤ r < c` is empty. So the condition is
+`0 < c`, and at `c ≤ 0` nothing is known about `b ÷ c`. The recognizer builds the canonical statement
+for the `b` and `c` it finds, and compares the whole formula. (J) checks that it refuses `c ≠ 0`, a
+remainder bounded only by `≤`, and a different dividend.
+
+**Euclidean, not truncated.** Integer division has three common conventions, and they differ only when
+a sign is negative:
+- **Truncated** — the quotient rounds toward zero, and the remainder takes the dividend's sign. Used by
+  F#, C#, C/C++, Java, Go, Rust's `/` and `%`, and x86 `idiv`.
+- **Floored** — the quotient rounds toward −∞, and the remainder takes the divisor's sign. Used by
+  Python's `//` and `%`, Haskell's `div` and `mod`, Ruby and Lua.
+- **Euclidean** — `0 ≤ r < abs.c`. Used by Gries, by mathematics generally, and by Rust's
+  `div_euclid`/`rem_euclid`.
+
+(15.90) is Euclidean, and since it requires `0 < c` it agrees with the floored convention, i.e. Python,
+on every case it covers. `÷` and `mod` never call F#'s `/` and `%`: the only facts about them are the
+axiom and what follows from it.
+
+(J) shows the difference at `b, c := −7, 2`, where F# gives `-7 / 2 = -3` and `-7 % 2 = -1`. The prover
+learns a value of `b ÷ c` only through `div_eq`, whose premise `qr(q, r)` must be proved at the
+specific numbers. At `q, r := −4, 1` every conjunct reduces to true, so `(−7) ÷ 2 = −4` and
+`(−7) mod 2 = 1` are theorems. At F#'s `q, r := −3, −1` the conjunct `0 ≤ −1` reduces to false, so the
+premise cannot be proved, and neither can `(−7) ÷ 2 = −3`. (J) checks this refusal. The convention
+matters for what follows: a remainder in `0..c−1` names the residue class, so `c ∣ b` is exactly
+`b mod c = 0` (`dvd_iff_mod_zero`), and gcd can use `mod` without sign cases.
+
+| Function | Statement | How |
+|---|---|---|
+| `quot_unique`, `rem_unique`, `div_unique` (15.89) | `(0 < c ∧ qr(q,r)) ∧ qr(q',r') ⇒ q = q'` / `r = r'` / both | above; per-theory `Schema.thn` |
+| `div_mod_def`, `mod_nonneg`, `mod_lt` (15.90) | `0 < c ⇒ b = (b÷c)·c + b mod c`, `⇒ 0 ≤ b mod c`, `⇒ b mod c < c` | the axiom, projected by two three-atom glues |
+| `div_eq`, `mod_eq` (15.90) | `0 < c ∧ qr(q, r) ⇒ b ÷ c = q` / `b mod c = r` | the three parts, `Establish`ed, then uniqueness |
+| `div_mod` (15.91) | `0 < c ⇒ b = c·(b ÷ c) + b mod c` | ring rewrite of the first part |
+| `dvd_iff_mod_zero` | `0 < c ⇒ (c ∣ b = (b mod c = 0))` | `⇐`: `b ÷ c` is a witness (9.28); `⇒`: with `c·k = b`, `qr(k, 0)`, so `mod_eq` |
+
+**Overlapping arguments.** (J) runs the non-schema theorems at arguments that contain one another:
+(15.91) at `c·c, c`, `dvd_iff_mod_zero` at `b, b·b` and at `b + 1, b`, and (15.90) at
+`b·b, b, b, 0`.
+
+**Next.** gcd — done in §31, by Bézout.
+
+## 31. The greatest common divisor (15.92)–(15.107), by Bézout
+
+`Theories/Divisibility.fs`; `examples/proofs/Divisibility.fsx` (K), 126/126 (44 new).
+
+**The definition is not Gries' (15.92), on purpose.** Gries defines `b gcd c = (↑d | d ∣ b ∧ d ∣ c : d)`
+for `b, c` not both 0, and `0 gcd 0 = 0` separately. Quantified `↑` (15.63)–(15.70) is not mechanized,
+and the case split would have to be carried by every law. The definition used here is the algebraic
+one, a scheme over `b`, `c` and any dummy `d` fresh for both:
+
+```
+(0 ≤ b gcd c ∧ (b gcd c ∣ b ∧ b gcd c ∣ c)) ∧ (∀d | d ∣ b ∧ d ∣ c : d ∣ b gcd c)
+```
+
+That is, the non-negative common divisor that every common divisor divides. It covers `0 gcd 0 = 0`
+with no special case, since every integer divides 0. Both halves of Gries' (15.92) are theorems:
+- `gcd_greatest`: `¬(b = 0 ∧ c = 0) ∧ (d ∣ b ∧ d ∣ c) ⇒ d ≤ b gcd c`, where `b gcd c` is positive
+  (`gcd_pos`) and a divisor of a positive number is at most it (`dvd_le`);
+- `gcd_zero_zero`: `0 gcd 0 = 0`.
+
+`gcd` is an uninterpreted `[<Symbol "gcd">]` function and prints infix, as Gries writes it. The
+recognizer `(|DefGcd|_|)` rebuilds the canonical statement at the `b`, `c` and dummy it finds, and
+compares the whole formula. (K) checks that it refuses:
+- a dummy occurring in `b`;
+- the order form `d ≤ b gcd c` in the body;
+- the definition without `0 ≤ b gcd c`, which `−(b gcd c)` would also satisfy.
+
+**Why the axiom is safe: existence is proved without it.** The axiom is conservative if
+`(∃g | 0 ≤ g : (g ∣ b ∧ g ∣ c) ∧ (∀d | d ∣ b ∧ d ∣ c : d ∣ g))` is a theorem of the theory without
+it, and if such a `g` is unique.
+- **Existence (`gcd_exists`)** rests on Bézout's lemma (`bezout_least`). For `b, c` not both 0, the set
+  `S = {x | 0 < x ∧ (∃u,v |: x = u·b + v·c)}` contains `b·b + c·c`, so it has a least element `x` by
+  `least_element` (15.49). For `t` either of `b`, `c`, the remainder `r = t mod x` is `t − (t ÷ x)·x`.
+  That is again a combination of `b` and `c`, and `0 ≤ r < x` by (15.90). So `r` is not in S, so
+  `r = 0`, so `x ∣ t` (`dvd_iff_mod_zero`). A common divisor `d` of `b`, `c` divides `u·b + v·c = x`
+  by (15.84) and ex.15.65. Generalization and (9.5) give the `∀`. At `b = c = 0`, `g := 0` works.
+- **Uniqueness:** two such `g` divide each other and are non-negative, so they are equal
+  (`dvd_antisym_nonneg`, from (15.83)).
+
+(K) checks the existence claim mechanically. A walk over `gcd_exists`'s proof tree (every
+`Derive`/`Deduce`/`Establish` sub-proof, and each proof's statement and final state) finds no use of
+the gcd axiom. As a control, the same walk does find (15.90) in that proof, and the gcd axiom in the
+proof of Bézout's identity. During development, `gcd_exists` was also proved in a `Divisibility` that
+had no gcd axiom at all.
+
+**One lemma does the rest.** `gcd_eq`: `(0 ≤ g ∧ (g ∣ b ∧ g ∣ c)) ∧ b gcd c ∣ g ⇒ b gcd c = g`. The
+definition gives `g ∣ b gcd c`, and `dvd_antisym_nonneg` closes it. Each law below exhibits `g` and
+the four facts, with no case analysis:
+
+| Function | Statement | `g`, and how `b gcd c ∣ g` |
+|---|---|---|
+| `gcd_sym` (15.96) | `b gcd c = c gcd b` | `c gcd b`; the definition at `c, b` |
+| `gcd_assoc` (15.97) | `(b gcd c) gcd d = b gcd (c gcd d)` | each side divides `b`, `c`, `d` (15.82) |
+| `gcd_self` (15.98) | `b gcd b = abs.b` | `abs.b`; `dvd_abs_eq` |
+| `gcd_one` (15.99) | `1 gcd b = 1` | `1`; `gcd_dvd_l` |
+| `gcd_zero` (15.100) | `0 gcd b = abs.b` | `abs.b`; (15.79) and `dvd_abs_eq` |
+| `gcd_abs` (15.101) | `b gcd c = abs.b gcd abs.c` | `(d ∣ abs.x) = (d ∣ x)` both ways |
+| `gcd_add`, `gcd_sub` (15.102) | `b gcd c = b gcd (b ± c)` | ex.15.65 and its `−` twin |
+| `gcd_lin` (15.103) | `b = a·c + d ⇒ b gcd c = c gcd d` | under the antecedent, a divisor of two of `b`, `c`, `d` divides the third |
+| `gcd_mul` (15.104) | `0 ≤ d ⇒ d·(b gcd c) = (d·b) gcd (d·c)` | (15.85); `(d·b) gcd (d·c) ∣ d·(u·b + v·c)` by Bézout |
+| `gcd_mod` (15.106) | `0 < c ⇒ b gcd c = c gcd (b mod c)` | (15.103) at `a, d := b ÷ c, b mod c`; its antecedent is (15.90) |
+| `gcd_zero_right` (15.107) | `b gcd 0 = abs.b` | (15.96), (15.100) |
+
+These are exactly as the book prints them, with `abs.b` in (15.98) and (15.100), and `0 ≤ d` in (15.104).
+The "errata" note in §27 and §30's "Next" was wrong, and is removed. (15.107) is Gries' base case of
+Euclid's algorithm, `b gcd 0 = b`, stated for natural `b`.
+
+**Bézout's identity, `gcd_bezout`:** `(∃u |: (∃v |: b gcd c = u·b + v·c))`. The least positive
+combination `x` is a non-negative common divisor, and `b gcd c` divides it by (15.84) and ex.15.65,
+so `x = b gcd c` by `gcd_eq`. `0 gcd 0 = 0·0 + 0·0`. It cites the gcd axiom, which is fine: it is a
+theorem ABOUT gcd. (15.104) needs it.
+
+**Supporting theorems, all public:**
+- `gcd_nonneg`, `gcd_dvd_l`, `gcd_dvd_r`, `dvd_gcd`: the parts of the definition, with `dvd_gcd`
+  instantiating the `∀` (9.13);
+- `dvd_le`: `0 < g ∧ d ∣ g ⇒ d ≤ g`;
+- `zero_dvd`: `x = 0 ∧ x ∣ b ⇒ b = 0`;
+- `dvd_antisym_nonneg`;
+- `dvd_neg_eq`: `(d ∣ −x) = (d ∣ x)`;
+- `abs_dvd`: `abs.b ∣ b`;
+- `dvd_abs_eq`: `(d ∣ abs.b) = (d ∣ b)`;
+- `gcd_pos`: `¬(b = 0 ∧ c = 0) ⇒ 0 < b gcd c`.
+
+**Euclid's algorithm as a proof.** (K) proves `30 gcd 24 = 6` by rewriting:
+- `30 gcd 24` becomes `24 gcd (30 mod 24)` by (15.106);
+- `30 mod 24 = 6` by `mod_eq` at literals, giving `24 gcd 6`;
+- the same two steps give `6 gcd 0`;
+- (15.107) gives `abs.6`, and `abs_of_nonneg` gives `6`.
+
+**Cost.** The binder-free theorems are derived once per theory at schema metavariables, by a small
+`cached1`–`cached4` wrapper over `Tactics.Schema.thn`, and then instantiated per call. It adds no
+trusted step. The statements with binders (`bezout_least`, `gcd_exists`, `gcd_bezout`) are
+re-derived per call, at about 2–4 s each. Measured in (K): `gcd_exists` takes 2.3 s, and (15.104)
+1.5 s on first use. One trap: an `Establish`ed conjunction is not split, but `Deduce` asks for
+EVERY nested conjunct of its premise. To discharge `P.r ∧ ¬P.r`, where `P.r = 0 < r ∧ (∃u,v …)`,
+the `∃` part had to be established on its own as well as `P.r`.
+
+**Overlapping arguments.** (K) runs:
+- Bézout at `b, b·b`;
+- `gcd_exists` at `x + 1, u`, which reuses the Bézout core's own dummy names, so the fresh-name choice
+  has to step around them;
+- `dvd_gcd` at `e := b gcd c` and at `e := d`, the definition's own dummy;
+- (15.103) at `a, b, c, d := c, b, c, b`.
+
+**Gate.** Solution builds (into a scratch output folder: an IDE FSI session holds `bin/Debug`); suite
+158/158; Divisibility 126/126; Induction 151; InductiveDefinitions 49; OrderedDomain 133;
+SetTheory 175; PredCalculus 24; VerifyRuleFixes passed; AdversarialSweep ALL CLEAR (3556).
+
+**Next.** lcm (15.94), defined dually by `(∀m | b ∣ m ∧ c ∣ m : b lcm c ∣ m)`, and `b·c = (b gcd c)·(b lcm c)`
+up to sign. Relatively prime (15.105) is an abbreviation for `b gcd c = 1`. Then primes: Euclid's lemma
+`p ∣ b·c ⇒ p ∣ b ∨ p ∣ c` follows from Bézout, and then unique factorization.

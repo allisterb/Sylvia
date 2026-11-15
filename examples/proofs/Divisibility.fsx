@@ -12,6 +12,9 @@
 //   (G) refusals: wrong witnesses, the wrong theory, captured dummies;
 //   (H) every non-schema theorem at arguments that contain one another;
 //   (I) which theories' theorems a proof may use, and Witness (9.30) inside this theory.
+//   (J) (15.89) uniqueness of quotient and remainder; ÷ and mod (15.90)–(15.91), and c ∣ b ≡ b mod c = 0.
+//   (K) gcd: its definition (an axiom, justified by an existence proof that does not cite it), Bézout,
+//       Gries' (15.92) as a theorem, (15.96)–(15.104), (15.106)–(15.107), and Euclid's algorithm as a proof.
 //
 // Run:  dotnet fsi examples/proofs/Divisibility.fsx
 
@@ -24,6 +27,7 @@ open PredCalculus
 open Integers
 open Induction
 open Divisibility
+open DomainTerms
 
 fsi.PrintWidth <- 300
 Proof.LogLevel <- 0
@@ -186,5 +190,165 @@ let by_witness () =
             Deduce (exists_intro d (pred_of d ((IntTerm c.Expr * d :> Term<int>) == b)) kh) |> apply_right ])
 states "witness: (∃k |: c·k = b) ⇒ c ∣ b, in Divisibility"                 (ex_dvd ==> dvd c b) by_witness
 ok     "... and the conclusion is a Divisibility theorem"                 (try obj.ReferenceEquals((by_witness ()).Proof.Theory, th) with e -> why "witness" e)
+
+printfn "\n===== (J) (15.89) uniqueness; ÷ and mod (15.90)–(15.91) ====="
+
+let q2, r2 = IntVar "q2", IntVar "r2"          // q, r are (F)'s
+let C0 = zero <. t c
+/// `b = q·c + r ∧ 0 ≤ r ∧ r < c` at the dividend `bb` and divisor `cc`.
+let QRat (bb: DomainTerm<int>) (cc: DomainTerm<int>) (qq: DomainTerm<int>) (rr: DomainTerm<int>) = ((bb == qq * cc + rr) * (zero <=. rr)) * (rr <. cc)
+let QR (qq: IntVar) (rr: IntVar) = QRat (t b) (t c) (t qq) (t rr)
+let (uq, ms89) = timed (fun () -> try Some (div_unique th b c q r q2 r2) with e -> why "div_unique" e |> ignore; None)
+states "(15.89) (0 < c ∧ qr(q,r)) ∧ qr(q2,r2) ⇒ q = q2 ∧ r = r2"   (((C0 * QR q r) * QR q2 r2) ==> ((t q == t q2) * (t r == t r2))) (fun () -> uq.Value)
+let (_, ms89') = timed (fun () -> div_unique th c b r q r2 q2)
+printfn "     first use %d ms (one-time glue included); again, at other arguments, %d ms" ms89 ms89'
+
+let bdc, bmc = D.Term (div_of b c), D.Term (mod_of b c)
+let spec90 = C0 ==> (((t b == bdc * t c + bmc) * (zero <=. bmc)) * (bmc <. t c))
+ok "(15.90) 0 < c ⇒ b = (b÷c)·c + b mod c ∧ 0 ≤ b mod c < c is an axiom of Divisibility" (th.IsAxiom spec90.Expr)
+printfn "     it prints as: %s" (th.PrintFormula spec90.Expr)
+ok "it is NOT an axiom of plain Induction"                                   (not ((induction :> Theory).IsAxiom spec90.Expr))
+ok "refused: Gries' printed side condition c ≠ 0 (the range is empty at c < 0)" (not (th.IsAxiom ((t c != zero) ==> (((t b == bdc * t c + bmc) * (zero <=. bmc)) * (bmc <. t c))).Expr))
+ok "refused: a remainder only bounded by r ≤ c"                              (not (th.IsAxiom (C0 ==> (((t b == bdc * t c + bmc) * (zero <=. bmc)) * (bmc <=. t c))).Expr))
+ok "refused: a different dividend in the equation"                           (not (th.IsAxiom (C0 ==> (((t q == bdc * t c + bmc) * (zero <=. bmc)) * (bmc <. t c))).Expr))
+
+states "(15.90) 0 < c ⇒ b = (b ÷ c)·c + b mod c"      (C0 ==> (t b == bdc * t c + bmc)) (fun () -> div_mod_def th b c)
+states "(15.90) 0 < c ⇒ 0 ≤ b mod c"                   (C0 ==> (zero <=. bmc))           (fun () -> mod_nonneg th b c)
+states "(15.90) 0 < c ⇒ b mod c < c"                   (C0 ==> (bmc <. t c))             (fun () -> mod_lt th b c)
+states "(15.91) 0 < c ⇒ b = c·(b ÷ c) + b mod c"      (C0 ==> (t b == t c * bdc + bmc)) (fun () -> div_mod th b c)
+states "(15.90) 0 < c ∧ qr(q,r) ⇒ b ÷ c = q"           ((C0 * QR q r) ==> (bdc == t q))  (fun () -> div_eq th b c q r)
+states "(15.90) 0 < c ∧ qr(q,r) ⇒ b mod c = r"         ((C0 * QR q r) ==> (bmc == t r))  (fun () -> mod_eq th b c q r)
+states "0 < c ⇒ (c ∣ b = (b mod c = 0))"               (C0 ==> (dvd c b == (bmc == zero))) (fun () -> dvd_iff_mod_zero th c b)
+
+// A concrete instance: (−7) ÷ 2 = −4 and (−7) mod 2 = 1 — Euclidean, NOT F#'s truncating −3 and −1.
+let L (n: int) = D.Term (IntTerm n)
+let lit_lt (a: int) (bb: int) =
+    lemma th (lt a bb) [
+        Ident (lt_iff_succ_le th (IntTerm a) (IntTerm bb))  |> apply              // (a < b) → (a + 1 ≤ b)
+        Integers.reduce                                     |> at_left
+        ax_ident th ((leq (a + 1) bb) == T)                 |> apply ]            // literal evaluation
+let lit_le (a: int) (bb: int) = lemma th (leq a bb) [ ax_ident th ((leq a bb) == T) |> apply ]
+let qr_7_2 () = conj (lit_lt 0 2) (conj (conj (Integers.ring_ident th (L -7) (L -4 * L 2 + L 1)) (lit_le 0 1)) (lit_lt 1 2))
+states "0 < 2 ∧ (−7 = (−4)·2 + 1 ∧ 0 ≤ 1 ∧ 1 < 2)"   ((zero <. L 2) * QRat (L -7) (L 2) (L -4) (L 1)) qr_7_2
+states "(−7) ÷ 2 = −4"   (D.Term (div_of (IntTerm -7) (IntTerm 2)) == L -4) (fun () -> mp (div_eq th (IntTerm -7) (IntTerm 2) (IntTerm -4) (IntTerm 1)) (qr_7_2 ()))
+states "(−7) mod 2 = 1"  (D.Term (mod_of (IntTerm -7) (IntTerm 2)) == L 1)  (fun () -> mp (mod_eq th (IntTerm -7) (IntTerm 2) (IntTerm -4) (IntTerm 1)) (qr_7_2 ()))
+refuses "refused: the truncated pair q, r := −3, −1 (0 ≤ −1 does not evaluate to true)"
+    (fun () -> mp (div_eq th (IntTerm -7) (IntTerm 2) (IntTerm -3) (IntTerm -1))
+                  (conj (lit_lt 0 2) (conj (conj (Integers.ring_ident th (L -7) (L -3 * L 2 + L -1)) (lit_le 0 -1)) (lit_lt -1 2))))
+
+// Arguments that contain one another (the mis-targeting class): non-schema theorems only.
+let bb = t b * t b
+states "(15.91) at b, c := c·c, c"                      ((zero <. t c) ==> ((t c * t c) == t c * D.Term (div_of (t c * t c) c) + D.Term (mod_of (t c * t c) c)))
+                                                        (fun () -> div_mod th (t c * t c) c)
+states "0 < b ⇒ (b ∣ b·b = (b·b mod b = 0))"          ((zero <. t b) ==> (dvd b bb == (D.Term (mod_of bb b) == zero))) (fun () -> dvd_iff_mod_zero th b bb)
+states "0 < b + 1 ⇒ (b + 1 ∣ b = (b mod (b + 1) = 0))" ((zero <. t b + one) ==> (dvd (t b + one) b == (D.Term (mod_of b (t b + one)) == zero)))
+                                                        (fun () -> dvd_iff_mod_zero th (t b + one) b)
+states "(15.90) at b, c, q, r := b·b, b, b, 0"          (((zero <. t b) * QRat bb (t b) (t b) zero) ==> (D.Term (div_of bb b) == t b)) (fun () -> div_eq th bb b b zero)
+
+printfn "\n===== (K) gcd: its definition, Bézout, and (15.92)–(15.107) ====="
+
+let G = D.Term (gcd_of b c)
+let gc (x: Term<int>) (y: Term<int>) = D.Term (gcd_of x y)
+/// The definition of gcd at x, y with the dummy dv, as a user would write it.
+let gcd_def (dv: IntVar) (x: Term<int>) (y: Term<int>) =
+    let g, z = gc x y, t dv
+    ((zero <=. g) * (dvd g x * dvd g y)) * qall dv (dvd z x * dvd z y) (dvd z g)
+ok "(0 ≤ b gcd c ∧ (b gcd c ∣ b ∧ b gcd c ∣ c)) ∧ (∀d | d ∣ b ∧ d ∣ c : d ∣ b gcd c) is an axiom" (th.IsAxiom (gcd_def d b c).Expr)
+printfn "     it prints as: %s" (th.PrintFormula (gcd_def d b c).Expr)
+ok "... with any dummy fresh for b and c"                          (th.IsAxiom (gcd_def k b c).Expr)
+ok "it is NOT an axiom of plain Induction"                         (not ((induction :> Theory).IsAxiom (gcd_def d b c).Expr))
+ok "refused: the dummy occurs in b"                                 (not (th.IsAxiom (gcd_def b b c).Expr))
+ok "refused: Gries' order form, d ≤ b gcd c in the body"            (not (th.IsAxiom ((((zero <=. G) * (dvd G (t b) * dvd G (t c))) * qall d (dvd (t d) (t b) * dvd (t d) (t c)) (t d <=. G))).Expr))
+ok "refused: without 0 ≤ b gcd c (then −(b gcd c) qualifies too)"   (not (th.IsAxiom (((T * (dvd G (t b) * dvd G (t c))) * qall d (dvd (t d) (t b) * dvd (t d) (t c)) (dvd (t d) G))).Expr))
+
+/// Does any step of the proof — or of a proof it rests on — use an axiom matched by `isAx`?
+let cites (isAx: Expr -> bool) (thm: Theorem) =
+    let seen = System.Collections.Generic.HashSet<Proof>(HashIdentity.Reference)
+    let rec walk (p: Proof) =
+        seen.Add p
+        && (isAx p.Stmt
+            || (match p.State with [] -> false | s -> isAx (fst (List.last s)))
+            || p.Steps |> List.exists (fun st ->
+                   match (try Some st.Rule with _ -> None) with
+                   | Some (Derive(_, q, _)) | Some (Deduce(_, q, _)) | Some (Establish(_, q)) -> walk q
+                   | _ -> false))
+    walk thm.Proof
+let isGcdAx e = match e with DefGcd _ -> true | _ -> false
+let isDivModAx e = match e with DefDivMod _ -> true | _ -> false
+
+let gv, dv' = IntVar "g", IntVar "d"
+let exists_stmt = qex gv (zero <=. t gv) ((dvd (t gv) (t b) * dvd (t gv) (t c)) * qall dv' (dvd (t dv') (t b) * dvd (t dv') (t c)) (dvd (t dv') (t gv)))
+let (ex, msEx) = timed (fun () -> try Some (gcd_exists th b c) with e -> why "gcd_exists" e |> ignore; None)
+states "gcd exists: (∃g | 0 ≤ g : (g ∣ b ∧ g ∣ c) ∧ (∀d | d ∣ b ∧ d ∣ c : d ∣ g))" exists_stmt (fun () -> ex.Value)
+printfn "     %d ms" msEx
+ok "... and no step of its proof cites the definition of gcd"      (not (cites isGcdAx ex.Value))
+ok "... though it does cite (15.90), the definition of ÷ and mod"  (cites isDivModAx ex.Value)
+let xv, uv, vv = IntVar "x", IntVar "u", IntVar "v"
+let NZ = !!((t b == zero) * (t c == zero))
+states "Bézout's lemma: ¬(b = 0 ∧ c = 0) ⇒ (∃x | 0 < x ∧ (x ∣ b ∧ x ∣ c) : (∃u |: (∃v |: x = u·b + v·c)))"
+    (NZ ==> qex xv ((zero <. t xv) * (dvd (t xv) (t b) * dvd (t xv) (t c))) (qex uv T (qex vv T (t xv == t uv * t b + t vv * t c))))
+    (fun () -> bezout_least th b c)
+let bez = qex uv T (qex vv T (G == t uv * t b + t vv * t c))
+let (bz, msBz) = timed (fun () -> try Some (gcd_bezout th b c) with e -> why "gcd_bezout" e |> ignore; None)
+states "Bézout's identity: (∃u |: (∃v |: b gcd c = u·b + v·c))" bez (fun () -> bz.Value)
+ok "... which does cite the definition of gcd (the walk sees it)"   (cites isGcdAx bz.Value)
+
+let a', e' = IntVar "a", IntVar "e"
+let b_, c_, d_ = t b, t c, t d
+states "0 ≤ b gcd c"                                     (zero <=. G)                                   (fun () -> gcd_nonneg th b c)
+states "b gcd c ∣ b"                                     (dvd G b_)                                     (fun () -> gcd_dvd_l th b c)
+states "b gcd c ∣ c"                                     (dvd G c_)                                     (fun () -> gcd_dvd_r th b c)
+states "e ∣ b ∧ e ∣ c ⇒ e ∣ b gcd c"                    ((dvd (t e') b_ * dvd (t e') c_) ==> dvd (t e') G) (fun () -> dvd_gcd th e' b c)
+states "(0 ≤ e ∧ (e ∣ b ∧ e ∣ c)) ∧ b gcd c ∣ e ⇒ b gcd c = e" ((((zero <=. t e') * (dvd (t e') b_ * dvd (t e') c_)) * dvd G (t e')) ==> (G == t e')) (fun () -> gcd_eq th b c e')
+states "0 < c ∧ d ∣ c ⇒ d ≤ c"                           (((zero <. c_) * dvd d_ c_) ==> (d_ <=. c_))   (fun () -> dvd_le th c d)
+states "b = 0 ∧ b ∣ c ⇒ c = 0"                           (((b_ == zero) * dvd b_ c_) ==> (c_ == zero))  (fun () -> zero_dvd th b c)
+states "(0 ≤ b ∧ 0 ≤ c) ∧ (b ∣ c ∧ c ∣ b) ⇒ b = c"      ((((zero <=. b_) * (zero <=. c_)) * (dvd b_ c_ * dvd c_ b_)) ==> (b_ == c_)) (fun () -> dvd_antisym_nonneg th b c)
+states "(d ∣ −b) = (d ∣ b)"                              (dvd d_ (-b_) == dvd d_ b_)                    (fun () -> dvd_neg_eq th d b)
+states "abs.b ∣ b"                                       (dvd (abs_of b_) b_)                           (fun () -> abs_dvd th b)
+states "(d ∣ abs.b) = (d ∣ b)"                           (dvd d_ (abs_of b_) == dvd d_ b_)              (fun () -> dvd_abs_eq th d b)
+states "¬(b = 0 ∧ c = 0) ⇒ 0 < b gcd c"                  (NZ ==> (zero <. G))                           (fun () -> gcd_pos th b c)
+states "(15.92) ¬(b = 0 ∧ c = 0) ∧ (d ∣ b ∧ d ∣ c) ⇒ d ≤ b gcd c — the greatest" ((NZ * (dvd d_ b_ * dvd d_ c_)) ==> (d_ <=. G)) (fun () -> gcd_greatest th d b c)
+states "(15.92) 0 gcd 0 = 0"                             (gc zero zero == zero)                         (fun () -> gcd_zero_zero th)
+states "(15.96) b gcd c = c gcd b"                       (G == gc c_ b_)                                (fun () -> gcd_sym th b c)
+states "(15.97) (b gcd c) gcd d = b gcd (c gcd d)"       (gc (gc b_ c_) d_ == gc b_ (gc c_ d_))         (fun () -> gcd_assoc th b c d)
+states "(15.98) b gcd b = abs.b"                         (gc b_ b_ == abs_of b_)                        (fun () -> gcd_self th b)
+states "(15.99) 1 gcd b = 1"                             (gc one b_ == one)                             (fun () -> gcd_one th b)
+states "(15.100) 0 gcd b = abs.b"                        (gc zero b_ == abs_of b_)                      (fun () -> gcd_zero th b)
+states "(15.101) b gcd c = (abs.b) gcd (abs.c)"          (G == gc (abs_of b_) (abs_of c_))              (fun () -> gcd_abs th b c)
+states "(15.102) b gcd c = b gcd (b + c)"                (G == gc b_ (b_ + c_))                         (fun () -> gcd_add th b c)
+states "(15.102) b gcd c = b gcd (b − c)"                (G == gc b_ (b_ - c_))                         (fun () -> gcd_sub th b c)
+states "(15.103) b = a·c + d ⇒ b gcd c = c gcd d"        ((b_ == t a' * c_ + d_) ==> (G == gc c_ d_))   (fun () -> gcd_lin th a' b c d)
+let (_, ms104) = timed (fun () -> gcd_mul th d b c)
+states "(15.104) 0 ≤ d ⇒ d·(b gcd c) = (d·b) gcd (d·c)"  ((zero <=. d_) ==> (d_ * G == gc (d_ * b_) (d_ * c_))) (fun () -> gcd_mul th d b c)
+printfn "     (15.104) first use %d ms (Bézout inside); again: instantiation" ms104
+states "(15.106) 0 < c ⇒ b gcd c = c gcd (b mod c)"      ((zero <. c_) ==> (G == gc c_ (D.Term (mod_of b c)))) (fun () -> gcd_mod th b c)
+states "(15.107) b gcd 0 = abs.b"                        (gc b_ zero == abs_of b_)                      (fun () -> gcd_zero_right th b)
+
+// Euclid's algorithm, run as a proof: 30 gcd 24 = 24 gcd 6 = 6 gcd 0 = abs.6 = 6.
+let qr_lit (x: int) (y: int) (q: int) (r: int) =
+    conj (lit_lt 0 y) (conj (conj (Integers.ring_ident th (L x) (L q * L y + L r)) (lit_le 0 r)) (lit_lt r y))
+let euclid () =
+    let step1 = mp (gcd_mod th (L 30) (L 24)) (lit_lt 0 24)                                          // 30 gcd 24 = 24 gcd (30 mod 24)
+    let mod1 = mp (mod_eq th (L 30) (L 24) (L 1) (L 6)) (qr_lit 30 24 1 6)                          // 30 mod 24 = 6
+    let step2 = mp (gcd_mod th (L 24) (L 6)) (lit_lt 0 6)                                            // 24 gcd 6 = 6 gcd (24 mod 6)
+    let mod2 = mp (mod_eq th (L 24) (L 6) (L 4) (L 0)) (qr_lit 24 6 4 0)                            // 24 mod 6 = 0
+    let abs6 = mp (OrderedDomain.abs_of_nonneg D (L 6)) (lit_le 0 6)                                 // abs.6 = 6
+    lemma th (gc (L 30) (L 24) == L 6) [
+        Ident step1                                     |> at_left
+        Ident mod1                                      |> at [left_branch; right_branch]
+        Ident step2                                     |> at_left
+        Ident mod2                                      |> at [left_branch; right_branch]
+        Ident (gcd_zero_right th (L 6))                 |> at_left
+        Ident abs6                                      |> at_left
+    ]
+states "30 gcd 24 = 6, by Euclid's algorithm ((15.106), (15.107), and (15.90) at literals)" (gc (L 30) (L 24) == L 6) euclid
+
+// Arguments that contain one another, and that clash with the library's dummies (x, u, v, g, d).
+states "Bézout at b, c := b, b·b"                        (qex uv T (qex vv T (gc b_ bb == t uv * b_ + t vv * bb))) (fun () -> gcd_bezout th b bb)
+states "gcd exists at b, c := x + 1, u (the core's dummy names)" (qex gv (zero <=. t gv) ((dvd (t gv) (t xv + one) * dvd (t gv) (t uv)) * qall dv' (dvd (t dv') (t xv + one) * dvd (t dv') (t uv)) (dvd (t dv') (t gv))))
+                                                         (fun () -> gcd_exists th (t xv + one) uv)
+states "e ∣ b ∧ e ∣ c ⇒ e ∣ b gcd c at e := b gcd c"     ((dvd G b_ * dvd G c_) ==> dvd G G)            (fun () -> dvd_gcd th G b c)
+states "e ∣ b ∧ e ∣ c ⇒ e ∣ b gcd c at e := d (the definition's dummy)" ((dvd d_ b_ * dvd d_ c_) ==> dvd d_ G) (fun () -> dvd_gcd th d b c)
+states "(15.103) at a, b, c, d := c, b, c, b"            ((b_ == c_ * c_ + b_) ==> (G == gc c_ b_))     (fun () -> gcd_lin th c b c b)
 
 printfn "\n%s" (if failures = 0 then "All divisibility checks passed." else sprintf "%d CHECK(S) FAILED." failures)
