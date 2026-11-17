@@ -2180,11 +2180,13 @@ module Divisibility =
     let prime_divisor (th: Theory) (n: Term<int>) : Theorem =
         prime_divisor_with th (fresh_int "p" [ n.Expr ]) n
 
-    // The factorial lemmas below reason about terms that contain a binder (the Π). Substitution
-    // (3.84a) refuses to exchange such a term — its capture check counts the Π's own dummy — so
-    // `eq_sym`, `Deduce'` and every lemma built on them fail at it. Each step that touches `n!` is
-    // therefore a schema lemma, derived once at metavariables (`cached1`–`cached3`): instantiating a
-    // binder-free statement at a value that contains a binder is safe (`Tactics.InstantiateTerms`).
+    // The factorial lemmas below reason about terms that contain a binder (the Π). Each step that
+    // touches `n!` is a schema lemma, derived once at metavariables (`cached1`–`cached3`), then
+    // instantiated at the Π term (`Tactics.InstantiateTerms` allows a binder-containing value when
+    // the statement has none). This was first a workaround: Substitution (3.84a) used to refuse any
+    // e/f containing a binder, counting the Π's own dummy in its capture check. The kernel now checks
+    // only FREE variables, so `eq_sym`/`Deduce'` work at `n!` directly; the schemas stay because they
+    // are cheaper than re-deriving each step.
 
     /// `b ∣ c ⇒ b ∣ (c·d)` — (15.84), as a schema.
     let private dvd_mul_s = cached3 "dv_dvd_mul_s" (fun th (b: Term<int>) (c: Term<int>) (d: Term<int>) -> dvd_mul th b c d)

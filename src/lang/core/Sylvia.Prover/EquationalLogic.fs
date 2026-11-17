@@ -124,13 +124,19 @@ module EquationalLogic =
     /// No template is given — an axiom recognizer sees only the statement — so it is recovered: the
     /// two conjuncts must agree everywhere except at positions where one holds `e` and the other `f`
     /// (`exchanges_some`). Sound because, under `e = f`, each such exchange is Leibniz. The one
-    /// obligation is that the exchange be capture-free: no variable of `e` or `f` is bound anywhere
-    /// inside either conjunct, so no exchanged position sits under a binder that would capture it.
+    /// obligation is that the exchange be capture-free: no variable FREE in `e` or `f` is bound
+    /// anywhere inside either conjunct, so no exchanged position sits under a binder that would
+    /// capture it. Only free variables matter: a dummy bound INSIDE `e` or `f` (the `j` of
+    /// `(Π j | 1 ≤ j ≤ n : j)`) is owned by that term's own binder wherever the term is put, so
+    /// no outer binder can capture it. Counting it too (as `get_vars` alone does) refused every
+    /// `e`/`f` containing a Σ/Π/∀/∃, since the conjuncts necessarily contain that binder.
+    let private free_vars_of (x: Expr) = get_vars x |> List.filter (fun v -> occurs_free [v] x)
+
     let (|Substitution|_|) =
         function
         | Equals(And(Equals(e, f), E), And(Equals(e', f'), E'))
             when sequal e e' && sequal f f'
-                 && (get_vars e @ get_vars f |> List.forall (fun v -> not (rebinds v E) && not (rebinds v E')))
+                 && (free_vars_of e @ free_vars_of f |> List.forall (fun v -> not (rebinds v E) && not (rebinds v E')))
                  && exchanges_some e f E E' ->
             pattern_desc' (lazy "Substitution") (lazy <@ fun e f E E' -> (e = f && E) = (e = f && E') @>) |> Some
         | _ -> None

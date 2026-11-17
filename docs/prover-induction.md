@@ -1621,16 +1621,21 @@ comes directly from `lcm_eq`.
     contradicts (15.86).
   - (L)'s walk finds Mathematical Induction in the proof.
 
-**Trap: Substitution (3.84a) will not exchange a term that contains a binder.** Its capture check asks
-that no variable of `e` or `f` be bound anywhere in the conjuncts. It uses `get_vars`, which includes
-the variables `e`/`f` bind themselves, such as the `j` of a Π. Any `f` containing a Π therefore
-"rebinds" its own dummy, and the instance is refused. So `eq_sym` and `Deduce'` fail at such a term,
-and so does any lemma that rewrites under a hypothesis about its argument when that argument is `n!`.
-The first attempt at `primes_unbounded` failed this way, inside `le_mul_nonneg`'s `eq_sym`.
+**Trap (FIXED 2026-11-15): Substitution (3.84a) would not exchange a term that contains a binder.**
+Its capture check asked that no variable of `e` or `f` be bound anywhere in the conjuncts. It used
+`get_vars`, which includes the variables `e`/`f` bind themselves, such as the `j` of a Π. Any `f`
+containing a Π therefore "rebinds" its own dummy, and the instance was refused. So `eq_sym` and
+`Deduce'` failed at such a term, and so did any lemma that rewrites under a hypothesis about its
+argument when that argument is `n!`. The first attempt at `primes_unbounded` failed this way, inside
+`le_mul_nonneg`'s `eq_sym`.
 
-The refusal is conservative, never unsound. Checking only the FREE variables of `e`/`f` would be the
-precise condition, but that is a kernel change and has not been made. The workaround keeps the kernel
-as it is:
+The refusal was conservative, never unsound. The kernel now checks only the FREE variables of `e`/`f`
+(`free_vars_of` in `EquationalLogic.fs`), which is the precise condition: a dummy bound inside `e` is
+owned by `e`'s own binder wherever `e` is put, so no outer binder can capture it, while a free
+variable of `e` under an outer binder of the same name still is refused. `Induction.fsx` (G) checks
+both: `n!` is exchanged, even under an outer `∀j`, and refused under an outer `∀n`.
+
+The workaround written before the fix stays, because the schemas are cheaper than re-deriving:
 - each step that touches `n!` is a schema lemma derived at metavariables (`dvd_mul_s`, `dvd_mul_self`,
   `one_le_mul`, `one_lt_succ`), then instantiated at the Π term. `InstantiateTerms` allows a value with
   binders when the statement has none.

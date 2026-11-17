@@ -244,6 +244,18 @@ ok "(3.84a) rejects capture of e's variables by a binder in E"
 // substitute, and a naive traversal would rewrite them anyway.
 ok "(3.84a) rejects substituting under a binder of z"
    (not (Theory.S.AxEquiv ((ieq * (qall i T (leq i n))) == (ieq * (qall i T (leq (n + 1) n)))).Expr))
+// e may itself CONTAIN a binder: e := n! = (Π j | 1 ≤ j ≤ n : j). Only its FREE variable `n` can be
+// captured; its own dummy `j` belongs to its own Π wherever the term is put. (The capture check once
+// counted `j` too, which refused every e/f with a Σ/Π/∀/∃ in it.)
+let sj, sm = IntVar "j", IntVar "m"
+let nfact = qprod sj ((leq 1 sj) * (leq sj n)) sj
+let feq = (nfact :> Term<int>) == (sm :> Term<int>)
+ok "(3.84a) exchanges a term that contains a binder"
+   (Theory.S.AxEquiv ((feq * (leq nfact i)) == (feq * (leq sm i))).Expr)
+ok "... even under an outer binder of its own dummy"
+   (Theory.S.AxEquiv ((feq * (qall sj T (leq nfact sj))) == (feq * (qall sj T (leq sm sj)))).Expr)
+ok "... but rejects capture of its FREE variable by a binder in E"
+   (not (Theory.S.AxEquiv ((feq * (qall n T (leq nfact i))) == (feq * (qall n T (leq sm i)))).Expr))
 
 // The integer order: discreteness, and a successor is never ≤ its predecessor. Both are THEOREMS
 // now. The successor fact is one of the ordered domain `Integers` is. Discreteness is FALSE over the
