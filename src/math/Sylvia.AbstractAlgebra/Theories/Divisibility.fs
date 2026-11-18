@@ -14,9 +14,9 @@ open PredCalculus
 open DomainTerms
 open Induction
 
-/// Divisibility — Gries & Schneider ch.15, §15.4 (pp. 315–325).
+/// Divisibility — Gries & Schneider ch.15, §15.4 (pp. 315–327), with congruences.
 ///
-/// FIVE axioms, all definitions. (15.77) defines the relation `∣`:
+/// SIX axioms, all definitions. (15.77) defines the relation `∣`:
 ///
 /// ```
 /// c ∣ b  ≡  (∃d |: c·d = b)
@@ -42,20 +42,29 @@ open Induction
 /// prime p  =  1 < p ∧ (∀d | 0 < d ∧ d ∣ p : d = 1 ∨ d = p)
 /// ```
 ///
-/// All five are definitional extensions. `∣`, `÷`, `mod`, `gcd`, `lcm` and `prime` are fresh symbols,
+/// and congruence (15.118):
+///
+/// ```
+/// b ≡ c (mod m)  =  m ∣ (c − b)
+/// ```
+///
+/// All six are definitional extensions. `∣`, `÷`, `mod`, `gcd`, `lcm`, `prime` and `≡` are fresh symbols,
 /// so the axioms say nothing about anything else and cannot make the theory inconsistent. (15.90) can
 /// be stated because (15.87) proves a quotient and remainder exist and (15.89) proves they are unique.
 /// The gcd and lcm definitions can be stated because `gcd_exists` and `lcm_exists` prove such values
 /// exist, without citing them (both from Well ordering), and `dvd_antisym_nonneg` makes them unique.
-/// The definitions of `∣` and of prime are explicit: they abbreviate formulas, so nothing has to
-/// exist. All but (15.90) are SCHEMES over their arguments and a dummy, which must occur in none of
-/// them, or the quantifier would capture it; (15.90) is a scheme over `b` and `c`. Relatively prime
-/// (15.105), `b ⊥ c`, is notation (`rel_prime`), not a symbol. Everything else in the section is a
+/// The definitions of `∣`, of prime and of congruence are explicit: they abbreviate formulas, so
+/// nothing has to exist. `∣`, gcd, lcm and prime are SCHEMES over their arguments and a dummy, which
+/// must occur in none of them, or the quantifier would capture it; (15.90) and (15.118) are schemes
+/// over their arguments alone. Relatively prime (15.105), `b ⊥ c`, and the power `bⁿ`, as
+/// `(Πj | 1 ≤ j ∧ j ≤ n : b)`, are notation (`rel_prime`, `power`), not symbols. Everything else in
+/// the section is a
 /// theorem: (15.78)–(15.86), Gries' exercise 15.65 `d ∣ b ∧ d ∣ c ⇒ d ∣ (b + c)` and its `−` twin,
 /// Theorem (15.87), the division theorem, proved from Well ordering (15.49), (15.89), (15.90)–(15.91)
 /// as properties of `÷` and `mod`, (15.92) and (15.94) themselves, (15.96)–(15.104), (15.106)–(15.108)
 /// (Bézout), (15.111)–(15.113) (Euclid's lemma), `(b gcd c)·(b lcm c) = abs(b·c)`, a prime divisor of
-/// every `n > 1`, and (15.116), that there are infinitely many primes.
+/// every `n > 1`, (15.116), that there are infinitely many primes, and the congruence theorems: `≡`
+/// is an equivalence relation, and (15.119)–(15.127).
 ///
 /// ∃-reasoning stays inside the theory. ∃-introduction is (9.28) `exists_intro`. ∃-elimination is
 /// ex.9.27, `((∃x|R:P) ⇒ Q) = (∀x|R: P ⇒ Q)`, followed by two steps: rewriting the ∀'s body to `T`
@@ -63,7 +72,7 @@ open Induction
 /// and (9.8). This was written before Metatheorem Witness (9.30), `PredCalculus.witness`, worked inside
 /// a theory. It does now (`docs/prover-induction.md` §28), and either route adds no rule of inference.
 ///
-/// The theory is `Induction` plus the five definitions: (15.81) needs "no integer lies between 0 and 1", which is
+/// The theory is `Induction` plus the six definitions: (15.81) needs "no integer lies between 0 and 1", which is
 /// induction, and (15.87) needs Well ordering, which is too.
 module Divisibility =
 
@@ -278,6 +287,31 @@ module Divisibility =
         let D = Integers.order_domain Integers.integers
         D.Term (gcd_of b c) == D.One
 
+    /// Congruence, `b ≡ c (mod m)`. Uninterpreted: its meaning is the axiom `(|DefCong|_|)`. Gries
+    /// writes `b ≡ c` with the modulus `m` over the `≡`, and avoids the usual `b ≡ c (mod m)` because
+    /// `≡` is his propositional equivalence. Here equivalence prints as `=`, so the usual form is free.
+    [<Symbol "{0} ≡ {1} (mod {2})">]
+    let congruent (b: int) (c: int) (m: int) : bool = invalidOp "≡ is a symbolic relation; its meaning is the definition (15.118)."
+
+    /// `b ≡ c (mod m)`, as a proposition.
+    let cong (b: Term<int>) (c: Term<int>) (m: Term<int>) : Prop = Prop(<@ congruent %b.Expr %c.Expr %m.Expr @> |> expand_as<bool>)
+
+    /// The definition (15.118) at `b`, `c`, `m`: `b ≡ c (mod m) = m ∣ (c − b)`.
+    let private cong_spec (b: Term<int>) (c: Term<int>) (m: Term<int>) : Prop =
+        let D = Integers.order_domain Integers.integers
+        cong b c m == dvd m (D.Term c - D.Term b)
+
+    /// **(15.118) Definition of congruence**: `b ≡ c (mod m) = m ∣ (c − b)`, a scheme over any `b`, `c`,
+    /// `m`. An EXPLICIT definition, like prime: `≡` abbreviates a formula in `∣` and `−`, so it is
+    /// trivially conservative.
+    let (|DefCong|_|) (e: Expr) =
+        match e with
+        | Equals(FSharp.Quotations.Patterns.Call(None, _, [b; c; m]), _)
+            when b.Type = typeof<int> && c.Type = typeof<int> && m.Type = typeof<int>
+                 && sequal e (cong_spec (IntTerm(Expr.Cast<int> b)) (IntTerm(Expr.Cast<int> c)) (IntTerm(Expr.Cast<int> m))).Expr.Raw ->
+            Some (axiom_name "Divisibility" "Definition of congruence")
+        | _ -> None
+
     let divisibility_axioms =
         function
         | DefDivides x -> Some x
@@ -285,19 +319,20 @@ module Divisibility =
         | DefGcd x -> Some x
         | DefLcm x -> Some x
         | DefPrime x -> Some x
+        | DefCong x -> Some x
         | _ -> None
 
     (* Theory *)
 
     /// Integer arithmetic, Σ and Π, induction (12.8) — everything `Induction` has — and the definitions
-    /// of `∣`, `÷`/`mod`, `gcd`, `lcm` and `prime`. A
+    /// of `∣`, `÷`/`mod`, `gcd`, `lcm`, `prime` and `≡`. A
     /// caller's own axioms and rules go on top, as with `Induction`. It accepts theorems proved in
     /// the canonical `Induction.induction` (and, through it, `Integers.integers`).
     type Divisibility(?axioms: Axioms, ?rules: Rules, ?extends: Theory list) =
         inherit Induction.Induction(BooleanAlgebra.combine_axioms (defaultArg axioms (fun _ -> None)) divisibility_axioms,
                                     defaultArg rules [], (Induction.induction :> Theory) :: defaultArg extends [])
 
-    /// The theory: `Induction` and the five definitions, with nothing extra.
+    /// The theory: `Induction` and the six definitions, with nothing extra.
     let divisibility = Divisibility()
 
     (* Building blocks *)
@@ -2664,6 +2699,371 @@ module Divisibility =
     /// are non-negative: `b·c` divides `(b lcm c)·(b gcd c) = (L·b) gcd (L·c)` (15.104); and with
     /// `b = g·j`, `c = g·k`, `b·k` is a common multiple, so `L ∣ b·k` and `L·g ∣ b·k·g = b·c`.
     let gcd_lcm (th: Theory) (b: Term<int>) (c: Term<int>) : Theorem = gcd_lcm_c th b c
+
+    (* ------------------------------------------------------------------------------------------
+       Congruences (15.118)–(15.127), Gries pp. 325–327.
+       ------------------------------------------------------------------------------------------ *)
+
+    /// The definition (15.118) as a rewrite: `b ≡ c (mod m) → m ∣ (c − b)`.
+    let cong_def (th: Theory) (b: Term<int>) (c: Term<int>) (m: Term<int>) : Rule = ax_ident th (cong_spec b c m)
+
+    /// (x ⇒ (a ⇒ y)) ⇒ ((a ⇒ (y ⇒ x)) ⇒ (a ⇒ (x = y)))
+    let private glue_iff = OrderedDomain.taut3 "dv_iff_under" (fun a x y -> (x ==> (a ==> y)) ==> ((a ==> (y ==> x)) ==> (a ==> (x == y))))
+
+    /// `a ⇒ (x = y)`, from `x ⇒ (a ⇒ y)` and `a ⇒ (y ⇒ x)` — mutual implication under a hypothesis.
+    let private iff_under (th: Theory) (a: Prop) (x: Prop) (y: Prop) (fwd: Theorem) (bwd: Theorem) : Theorem =
+        mp (mp (OrderedDomain.in_theory th (glue_iff a x y)) fwd) bwd
+
+    /// `x ⇒ (a ⇒ y)`, from `(a ∧ x) ⇒ y`.
+    let private shunt_swap (th: Theory) (a: Prop) (x: Prop) (y: Prop) (t: Theorem) : Theorem =
+        lemma th (x ==> (a ==> y)) [ shunt' x a y |> Commute |> apply; commute_and x a |> at_left; Taut t |> apply ]
+
+    /// `a ⇒ (x ⇒ y)`, from `(a ∧ x) ⇒ y`.
+    let private shunt_t (th: Theory) (a: Prop) (x: Prop) (y: Prop) (t: Theorem) : Theorem =
+        lemma th (a ==> (x ==> y)) [ shunt' a x y |> Commute |> apply; Taut t |> apply ]
+
+    /// `H ⇒ c ∣ b`, from `H ⇒ c·k = b` — ∃-introduction (9.28) at the witness `k`, under a hypothesis.
+    let private dvd_intro_under (th: Theory) (H: Prop) (c: Term<int>) (b: Term<int>) (k: Term<int>) (h: Theorem) : Theorem =
+        let d = fresh_int "d" [ c.Expr; b.Expr; k.Expr ]
+        let P = pred_of d (body c b d)
+        let ex = lemma th (P.[k] ==> dvd c b) [
+                    dvd_def_with th d c b                               |> at_right
+                    Taut (OrderedDomain.in_theory th (exists_intro d P k)) |> apply ]
+        lemma th (H ==> dvd c b) [ Establish h |> apply; Deduce ex |> apply_right ]
+
+    /// `0 < x ⇒ ¬(x = 0)`
+    let private pos_ne_zero (th: Theory) (x: Term<int>) : Theorem =
+        let D = Integers.order_domain th
+        let zero, x' = D.Zero, D.Term x
+        let P, Z = (zero <. x'), (x' == zero)
+        lemma th (P ==> !!Z) [
+            ident_implies_false_not Z |> Commute                        |> at_right                                        // ¬Z → (Z ⇒ F)
+            shunt' P Z F |> Commute                                     |> apply
+            OrderedDomain.lt_irrefl D zero |> Commute                   |> at_right                                        // F → 0 < 0
+            Deduce' (OrderedDomain.eq_sym th x' zero)                   |> at [right_branch; right_branch]                 // 0 → x
+            Deduce (reflex_implies P)                                   |> apply_right ]
+
+    let private cong_refl_c =
+        cached2 "dv_cong_refl" (fun th (b: Term<int>) (m: Term<int>) ->
+            let D = Integers.order_domain th
+            let b', m' = D.Term b, D.Term m
+            lemma th (cong b' b' m') [
+                cong_def th b' b' m'                                    |> apply
+                Integers.ring th (b' - b') D.Zero                       |> at [right_branch]
+                Taut (dvd_zero th m')                                   |> apply ])
+    /// **(15.118) Reflexivity**: `b ≡ b (mod m)`.
+    let cong_refl (th: Theory) (b: Term<int>) (m: Term<int>) : Theorem = cong_refl_c th b m
+
+    let private cong_sym_c =
+        cached3 "dv_cong_sym" (fun th (b: Term<int>) (c: Term<int>) (m: Term<int>) ->
+            let D = Integers.order_domain th
+            let b', c', m' = D.Term b, D.Term c, D.Term m
+            lemma th (cong b' c' m' == cong c' b' m') [
+                cong_def th b' c' m'                                    |> at_left
+                cong_def th c' b' m'                                    |> at_right
+                Integers.ring th (c' - b') (-(b' - c'))                 |> at [left_branch; right_branch]
+                Ident (dvd_neg_eq th m' (b' - c'))                      |> at_left ])
+    /// **(15.118) Symmetry**: `b ≡ c (mod m) = c ≡ b (mod m)` — `c − b = −(b − c)`.
+    let cong_sym (th: Theory) (b: Term<int>) (c: Term<int>) (m: Term<int>) : Theorem = cong_sym_c th b c m
+
+    let private cong_trans_c =
+        cached4 "dv_cong_trans" (fun th (b: Term<int>) (c: Term<int>) (e: Term<int>) (m: Term<int>) ->
+            let D = Integers.order_domain th
+            let b', c', e', m' = D.Term b, D.Term c, D.Term e, D.Term m
+            lemma th ((cong b' c' m' * cong c' e' m') ==> cong b' e' m') [
+                cong_def th b' c' m'                                    |> at [left_branch; left_branch]
+                cong_def th c' e' m'                                    |> at [left_branch; right_branch]
+                cong_def th b' e' m'                                    |> at_right
+                Integers.ring th (e' - b') ((c' - b') + (e' - c'))      |> at [right_branch; right_branch]
+                Taut (dvd_add th m' (c' - b') (e' - c'))                |> apply ])
+    /// **(15.118) Transitivity**: `b ≡ c (mod m) ∧ c ≡ e (mod m) ⇒ b ≡ e (mod m)` — `e − b` is
+    /// `(c − b) + (e − c)` (Gries' exercise 15.65).
+    let cong_trans (th: Theory) (b: Term<int>) (c: Term<int>) (e: Term<int>) (m: Term<int>) : Theorem = cong_trans_c th b c e m
+
+    let private cong_mod_eq_c =
+        cached3 "dv_cong_mod_eq" (fun th (b: Term<int>) (c: Term<int>) (m: Term<int>) ->
+            let D = Integers.order_domain th
+            let zero = D.Zero
+            let b', c', m' = D.Term b, D.Term c, D.Term m
+            let qb, rb = D.Term (div_of b' m'), D.Term (mod_of b' m')
+            let qc, rc = D.Term (div_of c' m'), D.Term (mod_of c' m')
+            let C0, E = (zero <. m'), (rb == rc)
+            let Sb, Sc = (b' == qb * m' + rb), (c' == qc * m' + rc)
+            let X = dvd m' (c' - b')
+            // ⇐ : c − b = (qc·m + rc) − (qb·m + rb) = m·(qc − qb) when rb = rc.
+            let w = qc - qb
+            let wit = lemma th ((C0 * E) ==> (m' * w == c' - b')) [
+                        Establish (div_mod_def th b' m')                    |> apply
+                        Establish (div_mod_def th c' m')                    |> apply
+                        Deduce' (reflex_implies Sc)                         |> at [right_branch; right_branch; left_branch]                  // c → qc·m + rc
+                        Deduce' (reflex_implies Sb)                         |> at [right_branch; right_branch; right_branch]                 // b → qb·m + rb
+                        Deduce' (reflex_implies E)                          |> at [right_branch; right_branch; right_branch; right_branch]   // rb → rc
+                        Integers.ring th ((qc * m' + rc) - (qb * m' + rc)) (m' * w) |> at [right_branch; right_branch]
+                        IntegralDomain.refl_true th (m' * w)                |> apply_right ]
+            let bwd = shunt_t th C0 E X (dvd_intro_under th (C0 * E) m' (c' - b') w wit)
+            // ⇒ : with m·k = c − b, c = (qb + k)·m + rb with 0 ≤ rb < m, so c mod m = rb (15.90).
+            let fwd =
+                dvd_elim th m' (c' - b') (C0 ==> E) (fun k ->
+                    let K = D.Term (tm k)
+                    let Hk = body m' (c' - b') k
+                    let A = Hk * C0
+                    let qk = qb + K
+                    let ec = lemma th (A ==> (c' == qk * m' + rb)) [
+                                Establish (div_mod_def th b' m')            |> apply
+                                Integers.ring th (qk * m' + rb) (m' * K + (qb * m' + rb)) |> at [right_branch; right_branch]
+                                Deduce' (reflex_implies Hk)                 |> at [right_branch; right_branch; left_branch]                  // m·k → c − b
+                                Deduce' (OrderedDomain.eq_sym th b' (qb * m' + rb)) |> at [right_branch; right_branch; right_branch]     // qb·m + rb → b
+                                Integers.ring th ((c' - b') + b') c'        |> at [right_branch; right_branch]
+                                IntegralDomain.refl_true th c'              |> apply_right ]
+                    let inner = lemma th (A ==> E) [
+                                Establish ec                                |> apply
+                                Establish (mod_nonneg th b' m')             |> apply
+                                Establish (mod_lt th b' m')                 |> apply
+                                Establish (mod_eq th c' m' qk rb)           |> apply                                                         // c mod m = rb
+                                Deduce (OrderedDomain.eq_sym th rc rb)      |> apply_right ]
+                    shunt_t th Hk C0 E inner)
+            lemma th (C0 ==> (cong b' c' m' == E)) [
+                cong_def th b' c' m'                                    |> at [right_branch; left_branch]
+                Taut (iff_under th C0 X E fwd bwd)                      |> apply ])
+    /// **(15.119) Alternative definition of congruence**: `0 < m ⇒ (b ≡ c (mod m) = (b mod m = c mod m))`.
+    /// Gries omits `0 < m`, but `mod` is defined only for a positive modulus (15.90). Gries' proof:
+    /// `⇐` subtracts the two division equations; `⇒` writes `c = (b ÷ m + k)·m + b mod m` and uses
+    /// the uniqueness of the remainder.
+    let cong_mod_eq (th: Theory) (b: Term<int>) (c: Term<int>) (m: Term<int>) : Theorem = cong_mod_eq_c th b c m
+
+    let private cong_add_c =
+        cached4 "dv_cong_add" (fun th (b: Term<int>) (c: Term<int>) (d: Term<int>) (m: Term<int>) ->
+            let D = Integers.order_domain th
+            let b', c', d', m' = D.Term b, D.Term c, D.Term d, D.Term m
+            lemma th (cong b' c' m' == cong (b' + d') (c' + d') m') [
+                cong_def th b' c' m'                                    |> at_left
+                cong_def th (b' + d') (c' + d') m'                      |> at_right
+                Integers.ring th ((c' + d') - (b' + d')) (c' - b')      |> at [right_branch; right_branch] ])
+    /// **(15.120) Addition**: `b ≡ c (mod m) = b + d ≡ c + d (mod m)`.
+    let cong_add (th: Theory) (b: Term<int>) (c: Term<int>) (d: Term<int>) (m: Term<int>) : Theorem = cong_add_c th b c d m
+
+    let private cong_neg_c =
+        cached3 "dv_cong_neg" (fun th (b: Term<int>) (c: Term<int>) (m: Term<int>) ->
+            let D = Integers.order_domain th
+            let b', c', m' = D.Term b, D.Term c, D.Term m
+            lemma th (cong b' c' m' == cong (-b') (-c') m') [
+                cong_def th b' c' m'                                    |> at_left
+                cong_def th (-b') (-c') m'                              |> at_right
+                Integers.ring th ((-c') - (-b')) (-(c' - b'))           |> at [right_branch; right_branch]
+                Ident (dvd_neg_eq th m' (c' - b'))                      |> at_right ])
+    /// **(15.121) Negation**: `b ≡ c (mod m) = −b ≡ −c (mod m)`.
+    let cong_neg (th: Theory) (b: Term<int>) (c: Term<int>) (m: Term<int>) : Theorem = cong_neg_c th b c m
+
+    let private cong_mul_c =
+        cached4 "dv_cong_mul" (fun th (b: Term<int>) (c: Term<int>) (d: Term<int>) (m: Term<int>) ->
+            let D = Integers.order_domain th
+            let b', c', d', m' = D.Term b, D.Term c, D.Term d, D.Term m
+            lemma th (cong b' c' m' ==> cong (b' * d') (c' * d') m') [
+                cong_def th b' c' m'                                    |> at_left
+                cong_def th (b' * d') (c' * d') m'                      |> at_right
+                Integers.ring th ((c' * d') - (b' * d')) ((c' - b') * d') |> at [right_branch; right_branch]
+                Taut (dvd_mul th m' (c' - b') d')                       |> apply ])
+    /// **(15.122) Multiplication**: `b ≡ c (mod m) ⇒ b·d ≡ c·d (mod m)` — (15.84). Not an equality:
+    /// `4·2 ≡ 1·2 (mod 6)` but not `4 ≡ 1 (mod 6)`.
+    let cong_mul (th: Theory) (b: Term<int>) (c: Term<int>) (d: Term<int>) (m: Term<int>) : Theorem = cong_mul_c th b c d m
+
+    /// `x ≡ y (mod m) ∧ b ≡ c (mod m) ⇒ x·b ≡ y·c (mod m)` — `x·b ≡ y·b ≡ y·c`.
+    let private cong_mul2 =
+        cachedn "dv_cong_mul2" 5 (fun th args ->
+            match args with
+            | [ x; y; b; c; m ] ->
+                let D = Integers.order_domain th
+                let x', y', b', c', m' = D.Term x, D.Term y, D.Term b, D.Term c, D.Term m
+                let yb = lemma th (cong b' c' m' ==> cong (y' * b') (y' * c') m') [
+                            cong_def th b' c' m'                        |> at_left
+                            cong_def th (y' * b') (y' * c') m'          |> at_right
+                            Integers.ring th ((y' * c') - (y' * b')) ((c' - b') * y') |> at [right_branch; right_branch]
+                            Taut (dvd_mul th m' (c' - b') y')           |> apply ]
+                lemma th ((cong x' y' m' * cong b' c' m') ==> cong (x' * b') (y' * c') m') [
+                    Establish (cong_mul th x' y' b' m')                 |> apply
+                    Establish yb                                        |> apply
+                    Deduce (cong_trans th (x' * b') (y' * b') (y' * c') m') |> apply_right ]
+            | _ -> invalidArg "args" "dv_cong_mul2")
+
+    /// `(Πj | 1 ≤ j ∧ j ≤ n : b)` — the power `bⁿ` for `0 ≤ n`, as a product quantification, with
+    /// the given dummy.
+    let private power_with (j: IntVar) (b: Term<int>) (n: Term<int>) : IntTerm =
+        Sums.qprod j ((leq 1 (tm j)) * (leq (tm j) n)) b
+
+    /// **The power `bⁿ`** — `(Πj | 1 ≤ j ∧ j ≤ n : b)`, meaningful for `0 ≤ n` (`b⁰ = 1` is the empty
+    /// product). Notation, not a symbol: it adds nothing to the theory. The dummy is `j`, or the first
+    /// `j#i` fresh for `b` and `n`.
+    let power (b: Term<int>) (n: Term<int>) : IntTerm = power_with (fresh_int "j" [ b.Expr; n.Expr ]) b n
+
+    /// **(15.123) Powers**: `0 ≤ n ⇒ (b ≡ c (mod m) ⇒ bⁿ ≡ cⁿ (mod m))`, by induction (12.8) on `n`:
+    /// `b⁰ = 1 = c⁰`, and `b^(k+1) = bᵏ·b ≡ cᵏ·c = c^(k+1)` (Split off factor, then `cong_mul2`). The
+    /// products' dummy is `j`, or the first `j#i` fresh for `b`, `c`, `n` and `m` — the dummy of
+    /// `power b n` whenever neither `c` nor `m` mentions `j`.
+    let cong_pow (th: Theory) (b: Term<int>) (c: Term<int>) (n: Term<int>) (m: Term<int>) : Theorem =
+        let D = Integers.order_domain th
+        let b', c', m' = D.Term b, D.Term c, D.Term m
+        let avoid = [ b.Expr.Raw; c.Expr.Raw; n.Expr.Raw; m.Expr.Raw ]
+        let j = fresh_int "j" avoid
+        let kv = fresh_int "k" (j.Expr.Raw :: avoid)
+        let i = fresh_int "i" (kv.Expr.Raw :: j.Expr.Raw :: avoid)
+        let Pw (x: DomainTerm<int>) (w: Term<int>) = D.Term (power_with j x w)
+        let H = cong b' c' m'
+        let C (w: Term<int>) = cong (Pw b' w) (Pw c' w) m'
+        let P = pred_of kv (H ==> C (tm kv))
+        // Base: b⁰ = 1 = c⁰.
+        let bse = lemma th (base_case 0 P) [
+                    cong_def th (Pw b' (IntTerm 0)) (Pw c' (IntTerm 0)) m'  |> at_right
+                    Ident (empty_prod th 1 0 j b')                      |> at [right_branch; right_branch; right_branch]   // b⁰ → 1
+                    Ident (empty_prod th 1 0 j c')                      |> at [right_branch; right_branch; left_branch]    // c⁰ → 1
+                    Integers.ring th (D.One - D.One) D.Zero             |> at [right_branch; right_branch]
+                    Taut (dvd_zero th m')                               |> apply_right ]
+        // Step: b^(k+1) = bᵏ·b, c^(k+1) = cᵏ·c.
+        let a, ih = leq 0 (tm kv), hypothesis 0 kv i P
+        let k1 = succ kv
+        let Ck1 = C k1
+        let hk = lemma th (((a * ih) * H) ==> C (tm kv)) [
+                    shunt' (a * ih) H (C (tm kv))                       |> apply
+                    Taut (hypothesis_at th 0 kv i P)                    |> apply ]
+        let body = lemma th (a ==> (ih ==> P.[k1])) [
+                    (shunt' a ih P.[k1] |> Commute)                     |> apply
+                    shunt' (a * ih) H Ck1 |> Commute                    |> apply
+                    Establish (shift_bound th 0 (tm kv))                |> apply                                           // 1 ≤ k+1
+                    Deduce' (split_off_factor th 1 (tm kv) j b')        |> apply_right                                     // b^(k+1) → bᵏ·b
+                    Deduce' (split_off_factor th 1 (tm kv) j c')        |> apply_right                                     // c^(k+1) → cᵏ·c
+                    Establish hk                                        |> apply                                           // bᵏ ≡ cᵏ
+                    Deduce (cong_mul2 th [ Pw b' (tm kv); Pw c' (tm kv); b'; c'; m' ]) |> apply_right ]
+        let all = by_induction th 0 kv i P bse (generalize_step th 0 kv i P body)
+        let Rk = pred_of kv a
+        mp (lemma th (Prop(Expr.Cast<bool> all.Stmt) ==> (Rk.[n] ==> P.[n])) [ trade_forall_implies kv Rk P |> at_left ]) all
+
+    let private cong_cancel_c =
+        cached4 "dv_cong_cancel" (fun th (b: Term<int>) (c: Term<int>) (d: Term<int>) (m: Term<int>) ->
+            let D = Integers.order_domain th
+            let b', c', d', m' = D.Term b, D.Term c, D.Term d, D.Term m
+            let H = rel_prime d' m'
+            let X, Y = cong (b' * d') (c' * d') m', cong b' c' m'
+            // ⇒ : m ∣ d·(c − b) and d ⊥ m, so m ∣ c − b (15.113).
+            let fwd = lemma th ((H * X) ==> Y) [
+                        cong_def th (b' * d') (c' * d') m'              |> at [left_branch; right_branch]
+                        cong_def th b' c' m'                            |> at_right
+                        Integers.ring th ((c' * d') - (b' * d')) (d' * (c' - b')) |> at [left_branch; right_branch; right_branch]
+                        Taut (coprime_dvd th d' m' (c' - b'))           |> apply ]
+            iff_under th H X Y (shunt_swap th H X Y fwd) (under th H (cong_mul th b' c' d' m')))
+    /// **(15.124) Cancellation**: `d ⊥ m ⇒ (b·d ≡ c·d (mod m) = b ≡ c (mod m))` — `⇒` is (15.113),
+    /// `⇐` is (15.122).
+    let cong_cancel (th: Theory) (b: Term<int>) (c: Term<int>) (d: Term<int>) (m: Term<int>) : Theorem = cong_cancel_c th b c d m
+
+    let private cong_cancel_mod_c =
+        cached4 "dv_cong_cancel_mod" (fun th (b: Term<int>) (c: Term<int>) (d: Term<int>) (m: Term<int>) ->
+            let D = Integers.order_domain th
+            let zero = D.Zero
+            let b', c', d', m' = D.Term b, D.Term c, D.Term d, D.Term m
+            let P0 = zero <. d'
+            let md, cdbd = m' * d', (c' * d') - (b' * d')
+            let X, Y = cong (b' * d') (c' * d') md, cong b' c' m'
+            let R = dvd m' (c' - b')
+            // ⇐ : (15.85).
+            let bwd = lemma th (Y ==> X) [
+                        cong_def th b' c' m'                            |> at_left
+                        cong_def th (b' * d') (c' * d') md              |> at_right
+                        Integers.ring th cdbd ((c' - b') * d')          |> at [right_branch; right_branch]
+                        Taut (dvd_mul_both th m' (c' - b') d')          |> apply ]
+            // ⇒ : with (m·d)·k = c·d − b·d, d·(m·k) = d·(c − b), and d ≠ 0 cancels (15.7).
+            let fwd =
+                dvd_elim th md cdbd (P0 ==> R) (fun k ->
+                    let K = D.Term (tm k)
+                    let Hk = body md cdbd k
+                    let A = Hk * P0
+                    let NZ = !!(d' == zero)
+                    let Xe, Ye = (d' * (m' * K) == d' * (c' - b')), (m' * K == c' - b')
+                    let xe = lemma th (A ==> Xe) [
+                                Integers.ring th (d' * (m' * K)) (md * K)   |> at [right_branch; left_branch]
+                                Integers.ring th (d' * (c' - b')) cdbd      |> at [right_branch; right_branch]
+                                Deduce' (reflex_implies Hk)                 |> at [right_branch; left_branch]                                // (m·d)·k → c·d − b·d
+                                IntegralDomain.refl_true th cdbd            |> apply_right ]
+                    let cancel = axiom th (NZ ==> (Xe == Ye))                                                                                // (15.7)
+                    let detach = mp (OrderedDomain.in_theory th (glue_detach NZ Xe Ye)) cancel
+                    let ye = lemma th (A ==> Ye) [
+                                Establish (pos_ne_zero th d')               |> apply
+                                Establish xe                                |> apply
+                                Deduce detach                               |> apply_right ]
+                    shunt_t th Hk P0 R (dvd_intro_under th A m' (c' - b') K ye))
+            let fwd' = lemma th (X ==> (P0 ==> Y)) [
+                        cong_def th (b' * d') (c' * d') md              |> at_left
+                        cong_def th b' c' m'                            |> at [right_branch; right_branch]
+                        Taut fwd                                        |> apply ]
+            iff_under th P0 X Y fwd' (under th P0 bwd))
+    /// **(15.125) Cancellation**: `0 < d ⇒ (b·d ≡ c·d (mod m·d) = b ≡ c (mod m))` — cancelling in the
+    /// modulus too. `⇐` is (15.85); `⇒` cancels `d ≠ 0` from `d·(m·k) = d·(c − b)` (15.7).
+    let cong_cancel_mod (th: Theory) (b: Term<int>) (c: Term<int>) (d: Term<int>) (m: Term<int>) : Theorem = cong_cancel_mod_c th b c d m
+
+    /// **(15.126)** `d ⊥ m ⇒ (∃x |: d·x ≡ b (mod m))` — by Bézout (15.108), `1 = u·d + v·m`, so
+    /// `b − d·(u·b) = m·(v·b)`: `x = u·b` is a solution. The dummy is `x`, or the first `x#i` fresh
+    /// for `d`, `b` and `m`.
+    let cong_solvable (th: Theory) (d: Term<int>) (b: Term<int>) (m: Term<int>) : Theorem =
+        let D = Integers.order_domain th
+        let one = D.One
+        let d', b', m' = D.Term d, D.Term b, D.Term m
+        let G = D.Term (gcd_of d' m')
+        let H = G == one
+        let avoid = [ d'.Expr.Raw; b'.Expr.Raw; m'.Expr.Raw ]
+        let x = fresh_int "x" avoid
+        let u = fresh_int "u" (x.Expr.Raw :: avoid)
+        let v = fresh_int "v" (u.Expr.Raw :: x.Expr.Raw :: avoid)
+        let U, V = D.Term (tm u), D.Term (tm v)
+        let HB = G == U * d' + V * m'
+        let P = pred_of x (cong (d' * D.Term (tm x)) b' m')
+        let EX = qex x T P.[tm x]
+        let ub = U * b'
+        let A = HB * H
+        // m·(v·b) = b − d·(u·b): b − d·(u·b) = b·1 − b·(u·d) = b·G − b·(u·d) = b·(u·d + v·m) − b·(u·d).
+        let wit = lemma th (A ==> (m' * (V * b') == b' - d' * ub)) [
+                    Integers.ring th (b' - d' * ub) (b' * one - b' * (U * d')) |> at [right_branch; right_branch]
+                    Deduce' (OrderedDomain.eq_sym th G one)             |> at [right_branch; right_branch; left_branch; right_branch]   // 1 → d gcd m
+                    Deduce' (reflex_implies HB)                         |> at [right_branch; right_branch; left_branch; right_branch]   // → u·d + v·m
+                    Integers.ring th (b' * (U * d' + V * m') - b' * (U * d')) (m' * (V * b')) |> at [right_branch; right_branch]
+                    IntegralDomain.refl_true th (m' * (V * b'))         |> apply_right ]
+        let sol = lemma th (A ==> P.[ub]) [
+                    cong_def th (d' * ub) b' m'                         |> at_right
+                    Taut (dvd_intro_under th A m' (b' - d' * ub) (V * b') wit) |> apply ]
+        let core = lemma th (A ==> EX) [
+                    Establish sol                                       |> apply
+                    Deduce (OrderedDomain.in_theory th (exists_intro x P ub)) |> apply_right ]
+        // ∃-eliminate v, then u, from Bézout.
+        let Q = H ==> EX
+        let inner' = shunt_t th HB H EX core
+        let EXv = qex v T HB
+        let tv_ = lemma th ((T * HB) ==> Q) [ commute_and T HB |> at_left; ident_and HB |> at_left; Taut inner' |> apply ]
+        let elimV = exists_elim th v truepred (pred_of v HB) Q tv_
+        let tu_ = lemma th ((T * EXv) ==> Q) [ commute_and T EXv |> at_left; ident_and EXv |> at_left; Taut elimV |> apply ]
+        let elimU = exists_elim th u truepred (pred_of u EXv) Q tu_
+        mp elimU (gcd_bezout_with th u v d' m')
+
+    let private cong_unique_c =
+        cachedn "dv_cong_unique" 5 (fun th args ->
+            match args with
+            | [ d; x; y; b; m ] ->
+                let D = Integers.order_domain th
+                let d', x', y', b', m' = D.Term d, D.Term x, D.Term y, D.Term b, D.Term m
+                let H = rel_prime d' m'
+                let dx, dy = d' * x', d' * y'
+                let A1, A2, R = cong dx b' m', cong dy b' m', cong x' y' m'
+                // d·x ≡ d·y is x·d ≡ y·d, which cancels (15.124).
+                let cf = lemma th ((H * cong dx dy m') ==> R) [
+                            cong_def th dx dy m'                        |> at [left_branch; right_branch]
+                            Integers.ring th (dy - dx) ((y' * d') - (x' * d')) |> at [left_branch; right_branch; right_branch]
+                            cong_def th (x' * d') (y' * d') m' |> Commute |> at [left_branch; right_branch]
+                            Taut (mp (OrderedDomain.in_theory th (glue_detach H (cong (x' * d') (y' * d') m') R)) (cong_cancel th x' y' d' m')) |> apply ]
+                let core = lemma th ((H * (A1 * A2)) ==> R) [
+                            Ident (cong_sym th dy b' m')                |> at [left_branch; right_branch; right_branch]                  // b ≡ d·y
+                            Establish (cong_trans th dx b' dy m')       |> apply
+                            Deduce cf                                   |> apply_right ]
+                shunt_t th H (A1 * A2) R core
+            | _ -> invalidArg "args" "dv_cong_unique")
+    /// **(15.127)** `d ⊥ m ⇒ (d·x ≡ b (mod m) ∧ d·y ≡ b (mod m) ⇒ x ≡ y (mod m))` — the solution of
+    /// (15.126) is unique mod `m`: Symmetry and Transitivity give `d·x ≡ d·y`, and (15.124) cancels `d`.
+    let cong_unique (th: Theory) (d: Term<int>) (x: Term<int>) (y: Term<int>) (b: Term<int>) (m: Term<int>) : Theorem =
+        cong_unique_c th [ d; x; y; b; m ]
 
     (* Module information members *)
 

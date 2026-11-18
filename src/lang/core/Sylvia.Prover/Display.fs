@@ -71,6 +71,17 @@ module Display =
             | _ -> None
         | _ -> None
 
+    /// A THREE-argument operator whose symbol is a template with placeholders `{0}`, `{1}`, `{2}` for
+    /// its arguments in order — `[<Symbol "{0} ≡ {1} (mod {2})">]` renders congruence as Gries' text
+    /// reads it, where an operator name alone would print as a prefix call `congruent b c m`.
+    let private (|SymbolicTernary|_|) (e: Expr) =
+        match e with
+        | Patterns.Call(None, mi, [a; b; c]) ->
+            match box mi with
+            | SymbolDisplay symbol when symbol.Contains "{0}" -> Some(symbol, a, b, c)
+            | _ -> None
+        | _ -> None
+
     /// Whether an operand can be written without parentheses: a leaf (variable or nullary constant)
     /// or a prefix application, which binds tighter than any infix operator. Everything else is
     /// bracketed — `~(S ∪ T)` and `(S − T) ⊆ ~T`, never `~S ∪ T`.
@@ -231,6 +242,8 @@ module Display =
         | SymbolicUnary(symbol, x) -> sprintf "%s%s" symbol (print_symbolic_operand x)
         | SymbolicBinary(symbol, l, r) ->
             sprintf "%s %s %s" (print_symbolic_operand l) symbol (print_symbolic_operand r)
+        | SymbolicTernary(symbol, a, b, c) ->
+            System.String.Format(symbol, print_arith_operand a, print_arith_operand b, print_arith_operand c)
 
         (* Integer arithmetic and order. Not a theory's notation — these are the F# built-ins — and they
            are here for the same reason `SymbolicBinary` is: a term with no structural case is

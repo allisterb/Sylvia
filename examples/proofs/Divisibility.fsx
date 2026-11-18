@@ -18,6 +18,9 @@
 //   (L) lcm: its definition (gcd's dual, justified the same way), (15.94) as theorems, gcd·lcm = abs(b·c),
 //       12 lcm 18 = 36; relatively prime (15.105), (15.111), (15.113); primes: the definition, ¬prime 4,
 //       Euclid's lemma (15.112), a prime divisor of every n > 1, and infinitely many primes (15.116).
+//   (M) congruences: the definition (15.118) and that ≡ is an equivalence, (15.119)–(15.127) — powers by
+//       induction, cancellation, solvability of d·x ≡ b by Bézout — and Gries' examples: the 12-hour
+//       clock, 4·2 ≡ 1·2 but not 4 ≡ 1 (mod 6), and 3·x ≡ 1 (mod 7).
 //
 // Run:  dotnet fsi examples/proofs/Divisibility.fsx
 
@@ -488,5 +491,104 @@ states "(b gcd c)·(b lcm c) = abs(b·c) at b, c := b, b·c" ((gc b_ (b_ * c_) *
 states "(15.113) at b, c, d := c, b, b·c"                ((rel_prime c b * dvd b_ (c_ * (b_ * c_))) ==> dvd b_ (b_ * c_)) (fun () -> coprime_dvd th c b (b_ * c_))
 states "(15.112) at b, c := p, p"                        ((prime p_ * dvd p_ (p_ * p_)) ==> (dvd p_ p_ + dvd p_ p_)) (fun () -> euclid_lemma th p_ p_ p_)
 states "(15.116) at n := p (the conclusion's own dummy)" ((zero <=. p_) ==> qex p1v (prime (t p1v)) (p_ <. t p1v)) (fun () -> primes_unbounded th p_)
+
+printfn "\n===== (M) Congruences (15.118)–(15.127) ====="
+
+// --- The definition: an explicit one, like prime.
+let cg (x: Term<int>) (y: Term<int>) (mm: Term<int>) = cong x y mm
+let cong_def_stmt (x: DomainTerm<int>) (y: DomainTerm<int>) (mm: DomainTerm<int>) = cg x y mm == dvd mm (y - x)
+ok "(15.118) b ≡ c (mod m) = m ∣ (c − b) is an axiom"              (th.IsAxiom (cong_def_stmt b_ c_ m_).Expr)
+printfn "     it prints as: %s" (th.PrintFormula (cong_def_stmt b_ c_ m_).Expr)
+ok "≡ prints as Gries' text reads it: b ≡ c (mod m)"              (th.PrintFormula (cg b_ c_ m_).Expr = "b ≡ c (mod m)")
+ok "... at any terms: b·b ≡ c + 1 (mod m − 1) = (m − 1) ∣ ((c + 1) − b·b)" (th.IsAxiom (cong_def_stmt bb (c_ + one) (m_ - one)).Expr)
+ok "it is NOT an axiom of plain Induction"                         (not ((induction :> Theory).IsAxiom (cong_def_stmt b_ c_ m_).Expr))
+ok "refused: m ∣ (b − c), the difference turned round"             (not (th.IsAxiom (cg b_ c_ m_ == dvd m_ (b_ - c_)).Expr))
+ok "refused: c ∣ (m − b), the modulus in the wrong place"           (not (th.IsAxiom (cg b_ c_ m_ == dvd c_ (m_ - b_)).Expr))
+
+// --- The theorems.
+states "(15.118) reflexive: b ≡ b (mod m)"               (cg b_ b_ m_)                                  (fun () -> cong_refl th b mv)
+states "(15.118) symmetric: b ≡ c (mod m) = c ≡ b (mod m)" (cg b_ c_ m_ == cg c_ b_ m_)                 (fun () -> cong_sym th b c mv)
+states "(15.118) transitive: b ≡ c ∧ c ≡ e ⇒ b ≡ e (mod m)" ((cg b_ c_ m_ * cg c_ e_ m_) ==> cg b_ e_ m_) (fun () -> cong_trans th b c e' mv)
+let (_, ms119) = timed (fun () -> cong_mod_eq th b c mv)
+states "(15.119) 0 < m ⇒ (b ≡ c (mod m) = (b mod m = c mod m))" ((zero <. m_) ==> (cg b_ c_ m_ == (D.Term (mod_of b mv) == D.Term (mod_of c mv)))) (fun () -> cong_mod_eq th b c mv)
+printfn "     first use %d ms (uniqueness of the remainder inside)" ms119
+states "(15.120) b ≡ c = b + d ≡ c + d (mod m)"          (cg b_ c_ m_ == cg (b_ + d_) (c_ + d_) m_)    (fun () -> cong_add th b c d mv)
+states "(15.121) b ≡ c = −b ≡ −c (mod m)"                (cg b_ c_ m_ == cg (-b_) (-c_) m_)            (fun () -> cong_neg th b c mv)
+states "(15.122) b ≡ c ⇒ b·d ≡ c·d (mod m)"              (cg b_ c_ m_ ==> cg (b_ * d_) (c_ * d_) m_)   (fun () -> cong_mul th b c d mv)
+let pw (x: Term<int>) (y: Term<int>) = D.Term (power x y)
+printfn "     bⁿ is notation: %s" (th.PrintFormula (expand (pw b_ n_).Expr))
+let (pow123, ms123) = timed (fun () -> try Some (cong_pow th b c n_ mv) with e -> why "cong_pow" e |> ignore; None)
+states "(15.123) 0 ≤ n ⇒ (b ≡ c ⇒ bⁿ ≡ cⁿ (mod m))"     ((zero <=. n_) ==> (cg b_ c_ m_ ==> cg (pw b_ n_) (pw c_ n_) m_)) (fun () -> pow123.Value)
+printfn "     %d ms" ms123
+ok "... and the walk finds Mathematical Induction (12.8) in its proof" (cites isInduction pow123.Value)
+let (_, ms124) = timed (fun () -> cong_cancel th b c d mv)
+states "(15.124) d ⊥ m ⇒ (b·d ≡ c·d = b ≡ c (mod m))"    (rel_prime d m_ ==> (cg (b_ * d_) (c_ * d_) m_ == cg b_ c_ m_)) (fun () -> cong_cancel th b c d mv)
+printfn "     first use %d ms" ms124
+states "(15.125) 0 < d ⇒ (b·d ≡ c·d (mod m·d) = b ≡ c (mod m))" ((zero <. d_) ==> (cg (b_ * d_) (c_ * d_) (m_ * d_) == cg b_ c_ m_)) (fun () -> cong_cancel_mod th b c d mv)
+let (sol126, ms126) = timed (fun () -> try Some (cong_solvable th d b mv) with e -> why "cong_solvable" e |> ignore; None)
+states "(15.126) d ⊥ m ⇒ (∃x |: d·x ≡ b (mod m))"        (rel_prime d m_ ==> qex xv T (cg (d_ * t xv) b_ m_)) (fun () -> sol126.Value)
+printfn "     %d ms" ms126
+ok "... by Bézout: the walk finds the definition of gcd in its proof" (cites isGcdAx sol126.Value)
+let yv = IntVar "y"
+states "(15.127) d ⊥ m ⇒ (d·x ≡ b ∧ d·y ≡ b ⇒ x ≡ y (mod m))" (rel_prime d m_ ==> ((cg (d_ * t xv) b_ m_ * cg (d_ * t yv) b_ m_) ==> cg (t xv) (t yv) m_)) (fun () -> cong_unique th d xv yv b mv)
+
+// --- Gries' examples. Hours on a 12-hour clock (p. 325): 14 ≡ 2 and 38 ≡ 2 (mod 12).
+/// `x ≡ y (mod mm)`, from `mm·w = y − x` at literals.
+let cong_lit (x: DomainTerm<int>) (y: DomainTerm<int>) (mm: DomainTerm<int>) (w: int) =
+    lemma th (cg x y mm) [
+        cong_def th x y mm                                          |> apply
+        Taut (dvd_intro th mm (y - x) (L w) (Integers.ring_ident th (mm * L w) (y - x))) |> apply ]
+states "14 ≡ 2 (mod 12)"                                 (cg (L 14) (L 2) (L 12))                       (fun () -> cong_lit (L 14) (L 2) (L 12) -1)
+states "38 ≡ 2 (mod 12)"                                 (cg (L 38) (L 2) (L 12))                       (fun () -> cong_lit (L 38) (L 2) (L 12) -3)
+let mod_14_2 () =
+    let iff = mp (cong_mod_eq th (L 14) (L 2) (L 12)) (lit_lt 0 12)                                       // (15.119) at m := 12
+    lemma th (D.Term (mod_of (L 14) (L 12)) == D.Term (mod_of (L 2) (L 12))) [
+        Ident iff |> Commute                                        |> apply
+        Taut (cong_lit (L 14) (L 2) (L 12) -1)                      |> apply ]
+states "(15.119) at 14, 2, 12: 14 mod 12 = 2 mod 12"     (D.Term (mod_of (L 14) (L 12)) == D.Term (mod_of (L 2) (L 12))) mod_14_2
+// Why (15.122) is not an equality (p. 326): 4·2 ≡ 1·2 (mod 6) but not 4 ≡ 1 (mod 6) — 2 is a factor of 6.
+states "4·2 ≡ 1·2 (mod 6)"                               (cg (L 4 * L 2) (L 1 * L 2) (L 6))             (fun () -> cong_lit (L 4 * L 2) (L 1 * L 2) (L 6) -1)
+let not_4_1 () =
+    let X = cg (L 4) (L 1) (L 6)
+    let under (h: Prop) (x: Theorem) = lemma th (h ==> Prop(Expr.Cast<bool> x.Stmt)) [ Taut x |> apply_right ]
+    lemma th (!!X) [
+        ident_implies_false_not X |> Commute                       |> apply                       // ¬X → (X ⇒ F)
+        cong_def th (L 4) (L 1) (L 6)                              |> at_left                     // → 6 ∣ (1 − 4)
+        Integers.ring th (L 1 - L 4) (-(L 3))                      |> at [left_branch; right_branch]
+        Ident (dvd_neg_eq th (L 6) (L 3))                          |> at_left                     // 6 ∣ −3 → 6 ∣ 3
+        ax_ident th ((L 6 <=. L 3) == F) |> Commute                |> at_right                    // F → 6 ≤ 3, literal evaluation
+        Establish (under (dvd (L 6) (L 3)) (lit_lt 0 3))           |> apply
+        Deduce (dvd_le th (L 3) (L 6))                             |> apply_right ]               // 0 < 3 ∧ 6 ∣ 3 ⇒ 6 ≤ 3
+states "¬(4 ≡ 1 (mod 6))"                                (!!(cg (L 4) (L 1) (L 6)))                     not_4_1
+// (15.126) at d, b, m := 3, 1, 7, from 3 gcd 7 = 1 by Euclid's algorithm — and a solution, x = 5.
+let gcd_3_7 () =
+    let s1 = mp (gcd_mod th (L 3) (L 7)) (lit_lt 0 7)                                                  // 3 gcd 7 = 7 gcd (3 mod 7)
+    let m1 = mp (mod_eq th (L 3) (L 7) (L 0) (L 3)) (qr_lit 3 7 0 3)
+    let s2 = mp (gcd_mod th (L 7) (L 3)) (lit_lt 0 3)
+    let m2 = mp (mod_eq th (L 7) (L 3) (L 2) (L 1)) (qr_lit 7 3 2 1)
+    let s3 = mp (gcd_mod th (L 3) (L 1)) (lit_lt 0 1)
+    let m3 = mp (mod_eq th (L 3) (L 1) (L 3) (L 0)) (qr_lit 3 1 3 0)
+    let abs1 = mp (OrderedDomain.abs_of_nonneg D one) (lit_le 0 1)
+    lemma th (gc (L 3) (L 7) == one) [
+        Ident s1 |> at_left; Ident m1 |> at [left_branch; right_branch]
+        Ident s2 |> at_left; Ident m2 |> at [left_branch; right_branch]
+        Ident s3 |> at_left; Ident m3 |> at [left_branch; right_branch]
+        Ident (gcd_zero_right th one) |> at_left; Ident abs1 |> at_left ]
+states "3 ⊥ 7, by Euclid's algorithm"                    (rel_prime (L 3) (L 7))                        gcd_3_7
+states "(15.126) at 3, 1, 7: (∃x |: 3·x ≡ 1 (mod 7))"    (qex xv T (cg (L 3 * t xv) one (L 7)))         (fun () -> mp (cong_solvable th (L 3) one (L 7)) (gcd_3_7 ()))
+states "... and x = 5 is one: 3·5 ≡ 1 (mod 7)"           (cg (L 3 * L 5) one (L 7))                     (fun () -> cong_lit (L 3 * L 5) one (L 7) -2)
+
+// Arguments that contain one another, and that clash with the library's dummies (d, j, k, i, u, v, x).
+let jv, j1v = IntVar "j", IntVar "j#1"
+let x1v = IntVar "x#1"
+let pj (dummy: IntVar) (x: Term<int>) (y: Term<int>) = D.Term (Sums.qprod dummy ((leq 1 (tm dummy)) * (leq (tm dummy) y)) x)
+states "transitivity at b, c, e := b, b, b"              ((cg b_ b_ m_ * cg b_ b_ m_) ==> cg b_ b_ m_)  (fun () -> cong_trans th b b b mv)
+states "(15.122) at d := b"                              (cg b_ c_ m_ ==> cg (b_ * b_) (c_ * b_) m_)    (fun () -> cong_mul th b c b mv)
+states "(15.119) at c := b mod m"                        ((zero <. m_) ==> (cg b_ (D.Term (mod_of b mv)) m_ == (D.Term (mod_of b mv) == D.Term (mod_of (D.Term (mod_of b mv)) mv)))) (fun () -> cong_mod_eq th b (D.Term (mod_of b mv)) mv)
+states "(15.123) at b := j (the product's dummy): Π over j#1" ((zero <=. n_) ==> (cg (t jv) c_ m_ ==> cg (pj j1v (t jv) n_) (pj j1v c_ n_) m_)) (fun () -> cong_pow th jv c n_ mv)
+states "(15.123) at n, m := n, n"                        ((zero <=. n_) ==> (cg b_ c_ n_ ==> cg (pw b_ n_) (pw c_ n_) n_)) (fun () -> cong_pow th b c n_ nv)
+states "(15.125) at m := d"                              ((zero <. d_) ==> (cg (b_ * d_) (c_ * d_) (d_ * d_) == cg b_ c_ d_)) (fun () -> cong_cancel_mod th b c d d)
+states "(15.126) at b := x (the conclusion's dummy): ∃x#1" (rel_prime d m_ ==> qex x1v T (cg (d_ * t x1v) (t xv) m_)) (fun () -> cong_solvable th d xv mv)
+states "(15.127) at x, y := y, x"                        (rel_prime d m_ ==> ((cg (d_ * t yv) b_ m_ * cg (d_ * t xv) b_ m_) ==> cg (t yv) (t xv) m_)) (fun () -> cong_unique th d yv xv b mv)
 
 printfn "\n%s" (if failures = 0 then "All divisibility checks passed." else sprintf "%d CHECK(S) FAILED." failures)

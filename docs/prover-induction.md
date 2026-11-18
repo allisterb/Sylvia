@@ -1666,5 +1666,95 @@ The workaround written before the fix stays, because the schemas are cheaper tha
   way to say "there exists a sequence". It needs either sequence-valued variables or a multiplicity
   encoding (`n = (Πp | prime p ∧ p ≤ n : p^(v_p n))`, with `v_p` defined). `prime_divisor` is its
   existence step.
-- Congruences (15.118) onwards.
+- Congruences (15.118) onwards — done in §33.
 - Quantified `↓`/`↑` (15.63)–(15.70).
+
+## 33. Congruences (15.118)–(15.127)
+
+Gries pp. 325–327, the end of §15.4. All of it is in `Theories/Divisibility.fs`, and (M) of
+`Divisibility.fsx` checks it (208/208, 36 new).
+
+**The definition.** (15.118) is the theory's sixth definitional axiom:
+
+```
+b ≡ c (mod m)  =  m ∣ (c − b)
+```
+
+It is an EXPLICIT definition, like prime, so it is trivially conservative: `≡` abbreviates a formula in
+`∣` and `−`. It is a scheme over any `b`, `c`, `m` with no dummy, so it has no side condition. The
+recognizer `(|DefCong|_|)` rebuilds the statement and compares. (M) checks that it refuses the
+difference turned round (`m ∣ (b − c)`, equivalent but not the definition) and the modulus in the wrong
+place.
+
+`≡` is a fresh symbol `congruent b c m`, whose meaning is only the axiom. Gries writes the modulus over
+the `≡`, and avoids `b ≡ c (mod m)` because `≡` is his propositional equivalence. Sylvia prints
+equivalence as `=`, so the usual notation is free.
+
+The printer had no case for a three-argument symbol and printed the call as `congruent b c m`.
+`Display.fs` now has `SymbolicTernary`: a three-argument operator whose `[<Symbol>]` is a template with
+`{0}`, `{1}` and `{2}` renders through it. Congruence's symbol is `"{0} ≡ {1} (mod {2})"`. This is
+display only, not kernel code.
+
+**The theorems.** Every statement is checked exactly in (M).
+
+| | Statement | Proof |
+|---|---|---|
+| (15.118) | `b ≡ b`; `b ≡ c = c ≡ b`; `b ≡ c ∧ c ≡ e ⇒ b ≡ e` | unfold; `c − b = −(b − c)` with `dvd_neg_eq`; ex. 15.65 |
+| (15.119) | `0 < m ⇒ (b ≡ c (mod m) = (b mod m = c mod m))` | Gries' proof (below) |
+| (15.120) | `b ≡ c = b + d ≡ c + d` | `(c + d) − (b + d) = c − b` |
+| (15.121) | `b ≡ c = −b ≡ −c` | `(−c) − (−b) = −(c − b)` |
+| (15.122) | `b ≡ c ⇒ b·d ≡ c·d` | (15.84) |
+| (15.123) | `0 ≤ n ⇒ (b ≡ c ⇒ bⁿ ≡ cⁿ)` | induction (12.8) |
+| (15.124) | `d ⊥ m ⇒ (b·d ≡ c·d = b ≡ c)` | `⇒` (15.113), `⇐` (15.122) |
+| (15.125) | `0 < d ⇒ (b·d ≡ c·d (mod m·d) = b ≡ c (mod m))` | `⇐` (15.85); `⇒` Cancellation (15.7) |
+| (15.126) | `d ⊥ m ⇒ (∃x |: d·x ≡ b)` | Bézout (15.108) |
+| (15.127) | `d ⊥ m ⇒ (d·x ≡ b ∧ d·y ≡ b ⇒ x ≡ y)` | symmetry, transitivity, (15.124) |
+
+- **(15.119) needs `0 < m`.** Gries omits it, but `mod` is defined only for a positive modulus (15.90).
+  The proof is Gries'.
+  - `⇐` subtracts the two division equations: `c − b = m·(c ÷ m − b ÷ m)` when the remainders are
+    equal.
+  - `⇒` writes `c = (b ÷ m + k)·m + b mod m` from `m·k = c − b`, and the uniqueness of the remainder
+    (`mod_eq`) gives `c mod m = b mod m`.
+- **(15.123) needs a power.** The library had none; `InductiveDefinitions.fsx` defines one with its own
+  axioms. Here `bⁿ` is notation, `power b n = (Πj | 1 ≤ j ∧ j ≤ n : b)`, which adds no axiom.
+  - `b⁰ = 1` is the empty product, and `b^(k+1) = bᵏ·b` is Split off factor.
+  - The step is `bᵏ·b ≡ cᵏ·b ≡ cᵏ·c`.
+  - The statement's dummy is `j`, or the first `j#i` fresh for all four arguments. (M) runs it at
+    `b := j`, where the products' dummy becomes `j#1`.
+- **(15.125) uses Cancellation (15.7)** `d ≠ 0 ⇒ (d·x = d·y = (x = y))`, on `d·(m·k) = d·(c − b)`. The
+  book's side condition is `d > 0`. `d ≠ 0` would suffice, but the theorem keeps Gries' form.
+- **(15.126)** takes `1 = u·d + v·m` from Bézout. Then `b − d·(u·b) = m·(v·b)`, so `x = u·b` is a
+  solution. (M) checks that its proof cites the definition of gcd.
+
+**Gries' examples, as proofs.**
+- 12-hour clock (p. 325): `14 ≡ 2` and `38 ≡ 2 (mod 12)`, and through (15.119),
+  `14 mod 12 = 2 mod 12`.
+- (15.122) is not an equality (p. 326): `4·2 ≡ 1·2 (mod 6)` holds and `¬(4 ≡ 1 (mod 6))` is proved,
+  from `6 ∣ 3 ⇒ 6 ≤ 3` (`dvd_le`) and literal evaluation.
+- (15.126) at `3·x ≡ 1 (mod 7)`: `3 ⊥ 7` by Euclid's algorithm, then the theorem gives the ∃. Then
+  `3·5 ≡ 1 (mod 7)` directly.
+
+**Proof technique.** Everything without a binder in its statement is a cached schema (`cached2`–`cachedn
+5`), including `cong_mul2` (`x ≡ y ∧ b ≡ c ⇒ x·b ≡ y·c`). That one is instantiated at Π terms inside
+(15.123)'s step. Two small devices were added:
+- `iff_under`: `a ⇒ (x = y)` from `x ⇒ (a ⇒ y)` and `a ⇒ (y ⇒ x)`, with one cached propositional glue.
+- `dvd_intro_under`: ∃-introduction for `∣` under a hypothesis.
+
+A reminder written into the code: `Deduce t` on a consequent CLOSES it only when `t`'s premise is
+already in the antecedent; it does not rewrite backwards. So `Establish` the premise first.
+
+**Cost** (in (M), each the first use in the process): (15.119) 2.6 s, (15.126) 2.4 s, (15.123) 0.2 s.
+The rest are milliseconds. `Divisibility.fsx` runs in about 75 s (was 63 s).
+
+**Overlapping arguments.** (M) runs:
+- transitivity at `b, b, b`;
+- (15.122) at `d := b`;
+- (15.119) at `c := b mod m`;
+- (15.123) at `b := j` and at `m := n`;
+- (15.125) at `m := d`;
+- (15.126) at `b := x`, the conclusion's dummy, which becomes `x#1`;
+- (15.127) with `x` and `y` swapped.
+
+**Not done.** §15.5 onwards (representations of numbers). Gries' "many other theorems" on congruences
+(Fermat, the Chinese remainder theorem) are not in the book's list.
