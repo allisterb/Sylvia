@@ -1,0 +1,6 @@
+# pip itself, pinned and hash-locked. Released 2026-10-20; PyPI Trusted Publishing
+# attestation from GitHub pypa/pip, workflow release.yml, environment "pypi".
+# Install with:
+#   python -m pip install --require-hashes --only-binary :all: --no-deps -r requirements-pip.txt
+pip==26.2.2 \
+    --hash=sha256:fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70

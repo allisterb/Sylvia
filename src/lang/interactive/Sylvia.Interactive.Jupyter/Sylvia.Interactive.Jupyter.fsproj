@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Sylvia Jupyter kernel: an F# kernel from .NET Interactive (our fork in ext/interactive,
+    branch `sylvia`) behind .NET Interactive's own Jupyter protocol server (Shell + Heartbeat).
+
+    It replaces Microsoft's discontinued `dotnet interactive jupyter` global tool for Sylvia
+    notebooks, and builds only what an F# Jupyter kernel needs: no C#, PowerShell, HTTP,
+    VS Code or telemetry projects, and no npm build. Register it with install-kernel.ps1.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Sylvia.Interactive.Jupyter</AssemblyName>
+    <RootNamespace>Sylvia.Interactive.Jupyter</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.fs" />
+    <None Include="install-kernel.ps1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\ext\interactive\src\Microsoft.DotNet.Interactive\Microsoft.DotNet.Interactive.csproj" />
+    <ProjectReference Include="..\..\..\..\ext\interactive\src\Microsoft.DotNet.Interactive.Formatting\Microsoft.DotNet.Interactive.Formatting.csproj" />
+    <ProjectReference Include="..\..\..\..\ext\interactive\src\Microsoft.DotNet.Interactive.FSharp\Microsoft.DotNet.Interactive.FSharp.fsproj" />
+    <ProjectReference Include="..\..\..\..\ext\interactive\src\Microsoft.DotNet.Interactive.Jupyter\Microsoft.DotNet.Interactive.Jupyter.csproj" />
+    <ProjectReference Include="..\..\..\..\ext\interactive\src\Microsoft.DotNet.Interactive.PackageManagement\Microsoft.DotNet.Interactive.PackageManagement.csproj" />
+  </ItemGroup>
+
+</Project>
