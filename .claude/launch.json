@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "jupyterlab",
+      "runtimeExecutable": "C:\\Projects\\Sylvia\\python\\Scripts\\python.exe",
+      "runtimeArgs": [
+        "-I", "-m", "jupyterlab",
+        "--no-browser",
+        "--port=8890",
+        "--ServerApp.port_retries=0",
+        "--ServerApp.root_dir=C:\\Projects\\Sylvia",
+        "--LabApp.workspaces_dir=C:\\Users\\Allister\\.jupyter\\lab\\workspaces-claude"
+      ],
+      "port": 8890
+    }
+  ]
+}

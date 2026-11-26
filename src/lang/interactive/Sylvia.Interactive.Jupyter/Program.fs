@@ -41,10 +41,18 @@ let private useNuget (kernel: FSharpKernel) : FSharpKernel =
             Task.CompletedTask)
     kernel.UseNugetDirective(onResolved, false)
 
+/// F# Interactive options for every notebook session. A `#nowarn` in a cell only covers that
+/// cell (each cell is its own submission), so session-wide settings belong here.
+let fsiOptions = [
+    // FS3391: implicit conversion at a method argument. Sylvia's bare-rule proof style
+    // (`ident ... [ rule |> at ...; rule ]`) converts `Rule` to `RuleApplication` this way.
+    "--nowarn:3391"
+]
+
 /// The kernel tree: one F# subkernel, set up as dotnet-interactive sets up its own, inside a
 /// composite that carries the notebook magics (`#!lsmagic`, `#!markdown`, `#!time`, `#!import`).
 let createKernel () : CompositeKernel =
-    let fsharp = (new FSharpKernel()).UseDefaultFormatting() |> useNuget
+    let fsharp = (new FSharpKernel(fsiOptions)).UseDefaultFormatting() |> useNuget
     let fsharp = fsharp.UseKernelHelpers().UseWho().UseValueSharing()
 
     let kernel = new CompositeKernel()

@@ -905,6 +905,30 @@ module Scalar =
 
     let realconst4 (p:string) (q:string) (r:string) (s:string) = realconst p, realconst q, realconst r, realconst s
 
+    let intvar2 (p:string) (q:string) = intvar p, intvar q
+
+    let intvar3 (p:string) (q:string) (r:string) = intvar p, intvar q, intvar r
+
+    let intvar4 (p:string) (q:string) (r:string) (s:string) = intvar p, intvar q, intvar r, intvar s
+
+    let intconst2 (p:string) (q:string) = intconst p, intconst q
+
+    let intconst3 (p:string) (q:string) (r:string) = intconst p, intconst q, intconst r
+
+    let intconst4 (p:string) (q:string) (r:string) (s:string) = intconst p, intconst q, intconst r, intconst s
+    
+    let ratvar2 (p:string) (q:string) = ratvar p, ratvar q
+
+    let ratvar3 (p:string) (q:string) (r:string) = ratvar p, ratvar q, ratvar r
+
+    let ratvar4 (p:string) (q:string) (r:string) (s:string) = ratvar p, ratvar q, ratvar r, ratvar s
+
+    let ratconst2 (p:string) (q:string) = ratconst p, ratconst q
+
+    let ratconst3 (p:string) (q:string) (r:string) = ratconst p, ratconst q, ratconst r
+
+    let ratconst4 (p:string) (q:string) (r:string) (s:string) = ratconst p, ratconst q, ratconst r, ratconst s
+
     let const_as_var (c:ScalarConst<'a>) = ScalarVar<'a>(c.Name)
 
     let var_name (v:ScalarVar<_>) = v.Name
@@ -1011,11 +1035,19 @@ module Pred =
 
     let realpred s = symbolic_pred<real> s
 
+    let realpred2 s p = symbolic_pred<real> s, symbolic_pred<real> p
+
     let intpred s = IntPred(symbol=s)
+
+    let intpred2 s p = symbolic_pred<int> s, symbolic_pred<int> p
 
     let ratpred s = symbolic_pred<rat> s
 
+    let ratpred2 s p = symbolic_pred<rat> s, symbolic_pred<rat> p
+            
     let boolpred s = symbolic_pred<bool> s
+
+    let boolpred2 s p = symbolic_pred<bool> s, symbolic_pred<bool> p
 
 /// An `int` OR any `Term<int>` where an integer term is expected, for let-bound functions — which
 /// cannot be overloaded, and at which an implicit conversion would not fire for `Term<int>`
